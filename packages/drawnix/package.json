@@ -1,0 +1,34 @@
+{
+  "name": "@drawnix/drawnix",
+  "version": "0.3.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "private": false,
+  "dependencies": {
+    "@floating-ui/react": "^0.26.24",
+    "@plait-board/markdown-to-drawnix": "^0.0.6",
+    "@plait-board/mermaid-to-drawnix": "^0.0.7",
+    "@plait-board/react-board": "file:../react-board",
+    "@plait/common": "^0.82.0",
+    "@plait/core": "^0.82.0",
+    "@plait/draw": "^0.82.0",
+    "@plait/layouts": "^0.82.0",
+    "@plait/mind": "^0.82.0",
+    "@plait/text-plugins": "^0.82.0",
+    "browser-fs-access": "^0.35.0",
+    "classnames": "^2.5.1",
+    "lodash": "^4.17.21",
+    "mobile-detect": "^1.4.5",
+    "open-color": "^1.9.1",
+    "react": "^18",
+    "slate": "^0.116.0",
+    "slate-react": "^0.116.0"
+  },
+  "exports": {
+    ".": {
+      "import": "./index.mjs",
+      "require": "./index.js",
+      "types": "./index.d.ts"
+    }
+  }
+}
