@@ -6,8 +6,8 @@ import { Toaster } from 'sonner'
 import { cn } from '@/lib/utils'
 
 export const metadata: Metadata = {
-  title: 'Graphini Demo',
-  description: 'Demo application using Graphini packages',
+  title: 'Graphini — AI-powered diagram workspace',
+  description: 'Turn ideas into diagrams instantly. Describe your system in plain English or Mermaid syntax and watch it render live on an infinite canvas.',
 }
 
 export default function RootLayout({
