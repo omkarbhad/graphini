@@ -112,6 +112,56 @@ npm run lint
 npm run build
 ```
 
+### Ways to contribute
+
+- 🐛 [Report a bug](https://github.com/omkarbhad/graphini/issues/new?labels=bug)
+- 💡 [Request a feature](https://github.com/omkarbhad/graphini/issues/new?labels=enhancement)
+- 🔧 Submit a PR — see open issues for ideas
+- ⭐ Star the repo to help it grow
+
+---
+
+## Contributors
+
+Thanks to everyone who's helped build Graphini.
+
+<!-- ALL-CONTRIBUTORS-LIST:START -->
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/omkarbhad">
+        <img src="https://github.com/omkarbhad.png" width="64" style="border-radius:50%" /><br />
+        <sub><b>Omkar Bhad</b></sub>
+      </a><br />
+      <sub>Creator · Core</sub>
+    </td>
+  </tr>
+</table>
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+> Want to show up here? Open a PR or contribute an issue fix. We use [all-contributors](https://allcontributors.org/) — code isn't the only way to contribute.
+
+---
+
+## Sponsors
+
+Graphini is free and open source. If it saves you time, consider sponsoring development.
+
+**Current sponsors:** _none yet — be the first!_
+
+<a href="https://github.com/sponsors/omkarbhad">
+  <img src="https://img.shields.io/badge/Sponsor-❤️-ea4aaa?style=flat-square&logo=github" alt="Sponsor on GitHub" />
+</a>
+
+### Built with support from
+
+| | |
+|---|---|
+| [Magnova.ai](https://magnova.ai) | AI product studio — builds and ships open-source AI tools |
+| [OpenRouter](https://openrouter.ai) | Multi-model AI gateway powering the chat |
+| [Plait](https://github.com/plait-board/plait) | Open-source whiteboard engine |
+| [Neon](https://neon.tech) | Serverless Postgres _(coming soon)_ |
+
 ---
 
 ## License

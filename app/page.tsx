@@ -177,6 +177,33 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Built with / Sponsors */}
+      <section className="mx-auto w-full max-w-6xl px-4 py-10">
+        <p className="mb-6 text-center text-xs font-medium uppercase tracking-widest text-gray-400">
+          Built with open-source infrastructure
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-8">
+          {[
+            { name: "Next.js", href: "https://nextjs.org" },
+            { name: "Plait", href: "https://github.com/plait-board/plait" },
+            { name: "Mermaid", href: "https://mermaid.js.org" },
+            { name: "OpenRouter", href: "https://openrouter.ai" },
+            { name: "Neon", href: "https://neon.tech" },
+            { name: "Magnova.ai", href: "https://magnova.ai" },
+          ].map((s) => (
+            <a
+              key={s.name}
+              href={s.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-medium text-gray-400 transition-colors hover:text-gray-700"
+            >
+              {s.name}
+            </a>
+          ))}
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="mx-auto w-full max-w-6xl px-4 py-16">
         <div className="relative overflow-hidden rounded-2xl bg-gray-900 px-8 py-14 text-center text-white">
@@ -191,6 +218,62 @@ export default function HomePage() {
               Open Editor <ArrowRight className="h-4 w-4" />
             </Button>
           </Link>
+        </div>
+      </section>
+
+      {/* Contributors */}
+      <section className="mx-auto w-full max-w-6xl px-4 py-12">
+        <div className="rounded-2xl border border-gray-100 bg-white p-8">
+          <div className="flex flex-col items-center gap-8 md:flex-row md:justify-between">
+            {/* Contributors */}
+            <div className="text-center md:text-left">
+              <h3 className="text-sm font-semibold text-gray-900">Contributors</h3>
+              <p className="mt-1 text-xs text-gray-500 max-w-xs">
+                Graphini is open source. Every contribution — code, issues, feedback — makes it better.
+              </p>
+              <div className="mt-4 flex items-center gap-2 justify-center md:justify-start">
+                <a href="https://github.com/omkarbhad" target="_blank" rel="noopener noreferrer">
+                  <img
+                    src="https://github.com/omkarbhad.png"
+                    alt="Omkar Bhad"
+                    className="h-8 w-8 rounded-full border-2 border-white shadow-sm ring-1 ring-gray-100"
+                  />
+                </a>
+                <a
+                  href="https://github.com/omkarbhad/graphini/graphs/contributors"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex h-8 w-8 items-center justify-center rounded-full border border-dashed border-gray-200 text-[10px] text-gray-400 hover:border-primary/40 hover:text-primary transition-colors"
+                >
+                  +
+                </a>
+                <a
+                  href="https://github.com/omkarbhad/graphini"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="ml-2 text-xs text-primary hover:underline underline-offset-2"
+                >
+                  Contribute on GitHub →
+                </a>
+              </div>
+            </div>
+
+            {/* Sponsor */}
+            <div className="text-center md:text-right">
+              <h3 className="text-sm font-semibold text-gray-900">Sponsors</h3>
+              <p className="mt-1 text-xs text-gray-500 max-w-xs">
+                Graphini is free and open source. Sponsor to keep it that way.
+              </p>
+              <a
+                href="https://github.com/sponsors/omkarbhad"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-flex items-center gap-2 rounded-lg border border-pink-200 bg-pink-50 px-4 py-2 text-xs font-medium text-pink-600 hover:bg-pink-100 transition-colors"
+              >
+                ❤️ Sponsor on GitHub
+              </a>
+            </div>
+          </div>
         </div>
       </section>
 
