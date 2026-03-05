@@ -1,4 +1,4 @@
-@import "open-color/open-color.scss";
+@use "open-color/open-color.scss" as oc;
 
 .color-select-item {
   width: var(--default-button-size);
@@ -14,7 +14,7 @@
     border-color: var(--color-primary);
     &.no-color {
       .selected-icon {
-        background-color: $oc-white;
+        background-color: oc.$oc-white;
       }
     }
   }
@@ -30,9 +30,9 @@
     border: none;
     .no-color-icon {
       display: block;
-      width: var(-default-button-size);
-      height: var(-default-button-size);
-      color: rgba($oc-black, 0.4);
+      width: var(--default-button-size);
+      height: var(--default-button-size);
+      color: rgba(oc.$oc-black, 0.4);
     }
   }
 }

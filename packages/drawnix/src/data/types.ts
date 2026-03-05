@@ -9,5 +9,5 @@ export interface DrawnixExportedData {
 }
 
 export enum DrawnixExportedType {
-    drawnix = 'drawnix'
+    drawnix = 'graphini'
 }

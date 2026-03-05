@@ -1,4 +1,4 @@
-@import "open-color/open-color.scss";
+@use "open-color/open-color.scss" as oc;
 
 @mixin isMobile() {
   @at-root .drawnix--mobile#{&} {
@@ -124,7 +124,4 @@
 $theme-filter: "invert(93%) hue-rotate(180deg)";
 $right-sidebar-width: "302px";
 
-:export {
-  themeFilter: unquote($theme-filter);
-  rightSidebarWidth: unquote($right-sidebar-width);
-}
+/* CSS Modules export - moved to variables.module.js for Turbopack compatibility */

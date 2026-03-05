@@ -1,19 +1,10 @@
 import { useBoard } from '@plait-board/react-board';
 import Stack from '../../stack';
 import { ToolButton } from '../../tool-button';
-import {
-  DuplicateIcon,
-  MenuIcon,
-  RedoIcon,
-  TrashIcon,
-  UndoIcon,
-} from '../../icons';
+import { MenuIcon } from '../../icons';
 import { classNames } from '../../../utils/classnames';
 import {
   ATTACHED_ELEMENT_CLASS_NAME,
-  deleteFragment,
-  duplicateElements,
-  getSelectedElements,
   PlaitBoard,
 } from '@plait/core';
 import { Island } from '../../island';
@@ -35,10 +26,7 @@ export const AppToolbar = ({ orientation = 'vertical' }: AppToolbarProps) => {
   const board = useBoard();
   const { t } = useI18n();
   const container = PlaitBoard.getBoardContainer(board);
-  const selectedElements = getSelectedElements(board);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
-  const isUndoDisabled = board.history.undos.length <= 0;
-  const isRedoDisabled = board.history.redos.length <= 0;
   const StackComponent = orientation === 'horizontal' ? Stack.Row : Stack.Col;
 
   return (
@@ -86,58 +74,6 @@ export const AppToolbar = ({ orientation = 'vertical' }: AppToolbarProps) => {
             </Menu>
           </PopoverContent>
         </Popover>
-        <ToolButton
-          key={1}
-          type="icon"
-          icon={UndoIcon}
-          visible={true}
-          title={t('general.undo')}
-          aria-label={t('general.undo')}
-          onPointerUp={() => {
-            board.undo();
-          }}
-          disabled={isUndoDisabled}
-        />
-        <ToolButton
-          key={2}
-          type="icon"
-          icon={RedoIcon}
-          visible={true}
-          title={t('general.redo')}
-          aria-label={t('general.redo')}
-          onPointerUp={() => {
-            board.redo();
-          }}
-          disabled={isRedoDisabled}
-        />
-        {selectedElements.length > 0 && (
-          <ToolButton
-            className="duplicate"
-            key={3}
-            type="icon"
-            icon={DuplicateIcon}
-            visible={true}
-            title={t('general.duplicate')}
-            aria-label={t('general.duplicate')}
-            onPointerUp={() => {
-              duplicateElements(board);
-            }}
-          />
-        )}
-        {selectedElements.length > 0 && (
-          <ToolButton
-            className="trash"
-            key={4}
-            type="icon"
-            icon={TrashIcon}
-            visible={true}
-            title={t('general.delete')}
-            aria-label={t('general.delete')}
-            onPointerUp={() => {
-              deleteFragment(board);
-            }}
-          />
-        )}
 
       </StackComponent>
     </Island>

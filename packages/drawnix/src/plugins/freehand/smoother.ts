@@ -1,4 +1,5 @@
-import { distanceBetweenPointAndPoint, Point } from '@plait/core';
+import { Point } from '@plait/core';
+import { calculateDistanceSync } from '../../../../../lib/performance';
 
 interface StrokePoint {
   point: Point;
@@ -199,7 +200,8 @@ export class FreehandSmoother {
 
   // 工具方法保持不变
   private getDistance(p1: Point, p2: Point): number {
-    return distanceBetweenPointAndPoint(p1[0], p1[1], p2[0], p2[1]);
+    // Use optimized distance calculation from performance.ts
+    return calculateDistanceSync(p1, p2);
   }
 
   private calculateVelocity(point: StrokePoint): number {

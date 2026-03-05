@@ -1,6 +1,7 @@
-@import './../../../../node_modules/@plait/draw/styles/styles.scss';
-@import './../../../../node_modules/@plait/mind/styles/styles.scss';
-@import './theme.scss';
+@use './../../../../node_modules/@plait/draw/styles/styles.scss' as draw;
+@use './../../../../node_modules/@plait/mind/styles/styles.scss' as mind;
+@use './theme.scss' as *;
+@use './variables.module.scss' as *;
 
 .drawnix {
     height: 100%;
@@ -115,6 +116,16 @@
         left: 36px;
         @include isMobile {
             display: none;
+        }
+        .undo-button {
+            color: var(--color-on-surface);
+            border-top-right-radius: 0 !important;
+            border-bottom-right-radius: 0 !important;
+        }
+        .redo-button {
+            color: var(--color-on-surface);
+            border-top-left-radius: 0 !important;
+            border-bottom-left-radius: 0 !important;
         }
         .zoom-out-button {
             border-top-right-radius: 0 !important;

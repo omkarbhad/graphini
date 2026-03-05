@@ -1,90 +1,119 @@
-# Graphini Demo
+# Graphini
 
-A Next.js demo application showcasing the Drawnix drawing component:
+**Turn ideas into diagrams, instantly.**
 
-- **@drawnix/drawnix**: A powerful drawing and diagramming component with mind maps, freehand drawing, and more
+Graphini is an AI-powered diagram workspace. Describe your system in plain English, paste Mermaid syntax, or use the chat sidebar — and watch your diagram render live on an infinite canvas.
+
+→ **Live:** [graphini.magnova.ai](https://graphini.magnova.ai)
+
+---
+
+## Features
+
+- **AI Chat** — Describe diagrams in natural language. The AI generates and places them on canvas automatically.
+- **Mermaid DSL** — Full support for flowcharts, sequence diagrams, class diagrams, mind maps, and more.
+- **Infinite Canvas** — Smooth pan, zoom, and multi-select built on Plait/Drawnix.
+- **Export** — PNG, SVG, JSON — your diagrams, your formats.
+- **Fast Models** — Powered by OpenRouter with streaming support (DeepSeek R1, Qwen3, GLM-4.5 Air).
+
+---
+
+## Stack
+
+| Layer | Tech |
+|-------|------|
+| Framework | Next.js 15 (App Router) |
+| Canvas | Plait / Drawnix |
+| Diagrams | Mermaid.js |
+| AI | OpenRouter (streaming) |
+| Styling | Tailwind CSS + shadcn/ui |
+| Fonts | Geist |
+
+---
 
 ## Getting Started
 
-### Prerequisites
-
-Make sure you have Node.js 18+ and npm/yarn installed.
-
-### Installation
-
-1. Install dependencies:
 ```bash
+# 1. Clone
+git clone https://github.com/omkarbhad/graphini.git
+cd graphini
+
+# 2. Install
 npm install
-```
 
-### Development
+# 3. Configure
+cp .env.example .env.local
+# Add your OPENROUTER_API_KEY
 
-Start the development server:
-
-```bash
+# 4. Run
 npm run dev
+# Open http://localhost:3000
 ```
 
-Open [http://localhost:3001](http://localhost:3001) to view the demo.
+### Environment Variables
 
-### Build for Production
+```env
+# Required — get a key at openrouter.ai/keys
+OPENROUTER_API_KEY=sk-or-...
 
-**Note:** There are currently some TypeScript compilation issues in the packages themselves that need to be resolved before production builds work. The development server runs successfully and demonstrates the packages.
-
-```bash
-npm run build  # May have compilation errors
-npm start
+# Optional
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
 ```
 
-## Fixed Issues
-
-### SSR Compatibility
-- **Problem**: Components were trying to access `window` object during server-side rendering
-- **Solution**: Used Next.js `dynamic` imports with `ssr: false` to load components only on the client side
-
-### Context Provider Issues
-- **Problem**: `useBoard` hook required components to be wrapped in `BoardContext`
-- **Solution**: Properly wrapped `Board` components with `Wrapper` component that provides the required context
-
-### Component Usage
-- **Problem**: Components were being used incorrectly without proper props or context
-- **Solution**: Updated component usage with correct props and proper component hierarchy
-
-## Package Overview
-
-### @drawnix/drawnix
-
-The Drawnix component provides a full-featured drawing board with:
-
-- Mind mapping capabilities
-- Freehand drawing
-- Text editing with links
-- Multiple themes
-- Toolbar with drawing tools
-- Hotkey support
-- Shape tools and connectors
-- Zoom and pan controls
+---
 
 ## Project Structure
 
 ```
-graphinix/
+graphini/
+├── app/
+│   ├── page.tsx          # Homepage (marketing)
+│   ├── editor/           # Canvas editor
+│   ├── dashboard/        # User dashboard (diagrams)
+│   └── api/chat/         # AI streaming endpoint
+├── components/
+│   ├── ui/               # shadcn/ui components
+│   ├── ai-elements/      # Chat UI components
+│   └── chatbox.tsx       # Chat sidebar
 ├── packages/
-│   └── drawnix/          # Drawing component package
-├── app/                  # Next.js app router
-│   ├── layout.tsx        # Root layout
-│   ├── page.tsx          # Full-screen Drawnix demo
-│   └── globals.css       # Global styles
-├── package.json          # Project dependencies
-├── next.config.js        # Next.js configuration
-├── tsconfig.json         # TypeScript configuration
-└── tailwind.config.js    # Tailwind CSS configuration
+│   └── drawnix/          # Canvas engine (Plait-based)
+└── lib/
+    ├── utils.ts
+    └── performance.ts
 ```
 
-## Usage Examples
+---
 
-See `app/page.tsx` for an example of how to use the Drawnix component in a React/Next.js application as a full-screen drawing canvas.
+## Roadmap
+
+- [x] AI chat → canvas generation
+- [x] Mermaid DSL support
+- [x] Streaming responses
+- [x] Homepage + dashboard
+- [ ] Firebase Auth (Google sign-in)
+- [ ] Neon DB (save/load diagrams)
+- [ ] Shareable diagram links
+- [ ] Collaborative editing (real-time)
+
+---
 
 ## Contributing
 
-The Drawnix package is located in the `packages/drawnix/` directory. It has its own build configuration and can be developed independently.
+PRs welcome. Open an issue first for significant changes.
+
+```bash
+# Dev
+npm run dev
+
+# Lint
+npm run lint
+
+# Build (check for TS errors)
+npm run build
+```
+
+---
+
+## License
+
+MIT © [Magnova.ai](https://magnova.ai)

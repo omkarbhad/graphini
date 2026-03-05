@@ -15,7 +15,7 @@ export type MessageProps = HTMLAttributes<HTMLDivElement> & {
 export const Message = ({ className, from, ...props }: MessageProps) => (
   <div
     className={cn(
-      "group flex w-full items-start gap-3 py-3",
+      "group flex w-full items-start gap-3 py-3 px-[3px]",
       from === "user" ? "is-user justify-end" : "is-assistant justify-start",
       className
     )}
@@ -24,17 +24,17 @@ export const Message = ({ className, from, ...props }: MessageProps) => (
 );
 
 const messageContentVariants = cva(
-  "flex flex-col gap-2 overflow-hidden text-sm",
+  "flex flex-col gap-2 overflow-hidden text-sm max-w-full",
   {
     variants: {
       variant: {
         contained: [
-          "group-[.is-user]:max-w-[75%] group-[.is-user]:rounded-lg group-[.is-user]:bg-gray-900 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-white",
-          "group-[.is-assistant]:max-w-[75%] group-[.is-assistant]:rounded-lg group-[.is-assistant]:border group-[.is-assistant]:border-gray-200 group-[.is-assistant]:bg-gray-50 group-[.is-assistant]:px-4 group-[.is-assistant]:py-3 group-[.is-assistant]:text-gray-900",
+          "group-[.is-user]:max-w-[96%] group-[.is-user]:rounded-lg group-[.is-user]:border group-[.is-user]:border-gray-200 group-[.is-user]:bg-gray-50 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-gray-900 lg:group-[.is-user]:max-w-[46rem]",
+          "group-[.is-assistant]:max-w-[96%] group-[.is-assistant]:text-gray-900 lg:group-[.is-assistant]:max-w-[46rem]",
         ],
         flat: [
-          "group-[.is-user]:max-w-[75%] group-[.is-user]:rounded-lg group-[.is-user]:border group-[.is-user]:border-gray-200 group-[.is-user]:bg-white group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-gray-900",
-          "group-[.is-assistant]:max-w-[75%] group-[.is-assistant]:rounded-lg group-[.is-assistant]:px-4 group-[.is-assistant]:py-3 group-[.is-assistant]:text-gray-900",
+          "group-[.is-user]:max-w-[96%] group-[.is-user]:rounded-lg group-[.is-user]:border group-[.is-user]:border-gray-200 group-[.is-user]:bg-gray-50 group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-gray-900 lg:group-[.is-user]:max-w-[46rem]",
+          "group-[.is-assistant]:max-w-[96%] group-[.is-assistant]:text-gray-900 lg:group-[.is-assistant]:max-w-[46rem]",
         ],
       },
     },

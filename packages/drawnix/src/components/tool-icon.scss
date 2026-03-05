@@ -1,5 +1,5 @@
-@import "open-color/open-color.scss";
-@import "../styles/variables.module.scss";
+@use "open-color/open-color.scss" as oc;
+@use "../styles/variables.module.scss" as *;
 
 .drawnix,
 .drawnix-theme {

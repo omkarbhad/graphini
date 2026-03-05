@@ -32,7 +32,7 @@ import {
 import { FreehandPanel , FREEHANDS } from './freehand-panel/freehand-panel';
 import { ShapePicker } from '../shape-picker';
 import { ArrowPicker } from '../arrow-picker';
-import { useState } from 'react';
+import { useState, memo, useCallback, useMemo } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '../popover/popover';
 import { FreehandShape } from '../../plugins/freehand/type';
 import {
@@ -131,12 +131,12 @@ type CreationToolbarProps = {
   orientation?: 'vertical' | 'horizontal';
 };
 
-export const CreationToolbar = ({ orientation = 'vertical' }: CreationToolbarProps) => {
+export const CreationToolbar = memo(({ orientation = 'vertical' }: CreationToolbarProps) => {
   const board = useBoard();
   const { appState } = useDrawnix();
   const { t } = useI18n();
   const setPointer = useSetPointer();
-  const container = PlaitBoard.getBoardContainer(board);
+  const container = useMemo(() => PlaitBoard.getBoardContainer(board), [board]);
 
   const [freehandOpen, setFreehandOpen] = useState(false);
   const [arrowOpen, setArrowOpen] = useState(false);
@@ -146,28 +146,28 @@ export const CreationToolbar = ({ orientation = 'vertical' }: CreationToolbarPro
       BUTTONS.find((button) => button.key === PopupKey.freehand)!
     );
 
-  const onPointerDown = (pointer: DrawnixPointerType) => {
+  const onPointerDown = useCallback((pointer: DrawnixPointerType) => {
     setCreationMode(board, BoardCreationMode.dnd);
     BoardTransforms.updatePointerType(board, pointer);
     setPointer(pointer);
-  };
+  }, [board, setPointer]);
 
-  const onPointerUp = () => {
+  const onPointerUp = useCallback(() => {
     setCreationMode(board, BoardCreationMode.drawing);
-  };
+  }, [board]);
 
-  const isChecked = (button: AppToolButtonProps) => {
+  const isChecked = useCallback((button: AppToolButtonProps) => {
     return (
       PlaitBoard.isPointer(board, button.pointer) && !arrowOpen && !shapeOpen && !freehandOpen
     );
-  };
+  }, [board, arrowOpen, shapeOpen, freehandOpen]);
 
-  const checkCurrentPointerIsFreehand = (board: PlaitBoard) => {
+  const checkCurrentPointerIsFreehand = useCallback((board: PlaitBoard) => {
     return PlaitBoard.isInPointer(board, [
-      FreehandShape.feltTipPen, 
+      FreehandShape.feltTipPen,
       FreehandShape.eraser,
     ]);
-  };
+  }, []);
 
 
   const StackComponent = orientation === 'horizontal' ? Stack.Row : Stack.Col;
@@ -341,4 +341,4 @@ export const CreationToolbar = ({ orientation = 'vertical' }: CreationToolbarPro
       </StackComponent>
     </Island>
   );
-};
+});

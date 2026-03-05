@@ -1,10 +1,9 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import { GeistSans } from 'geist/font/sans'
+import { GeistMono } from 'geist/font/mono'
 import './globals.css'
 import { Toaster } from 'sonner'
 import { cn } from '@/lib/utils'
-
-const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Graphini Demo',
@@ -21,8 +20,13 @@ export default function RootLayout({
       <body
         className={cn(
           'relative min-h-screen overflow-hidden bg-background text-foreground antialiased',
-          inter.className
+          GeistSans.variable,
+          GeistMono.variable
         )}
+        style={{
+          '--font-geist-sans': GeistSans.style.fontFamily,
+          '--font-geist-mono': GeistMono.style.fontFamily,
+        } as React.CSSProperties}
       >
         <div
           aria-hidden="true"
@@ -34,7 +38,7 @@ export default function RootLayout({
         <div className="relative z-10 flex min-h-screen flex-col">
           {children}
         </div>
-        <Toaster position="top-center" richColors />
+        <Toaster position="bottom-center" richColors />
       </body>
     </html>
   )

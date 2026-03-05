@@ -1,4 +1,4 @@
-@import "open-color/open-color.scss";
+@use "open-color/open-color.scss" as oc;
 
 .slider-container {
     padding: 10px 0px;
@@ -22,7 +22,7 @@
         position: absolute;
         width: 12px;
         height: 12px;
-        background-color: $oc-white;
+        background-color: oc.$oc-white;
         border: 2px solid var(--color-primary);
         border-radius: 50%;
         top: 50%;

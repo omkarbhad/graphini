@@ -109,10 +109,36 @@ export default function CustomDrawnix({
         centerY - elementRectangle.height / 2,
       ] as Point
 
+      // Create a text element to display the diagram code
+      const codeTextElement = {
+        id: `diagram-code-${Date.now()}`,
+        type: 'text',
+        points: [
+          [startPoint[0] - 20, startPoint[1] - 40],
+          [startPoint[0] + 300, startPoint[1] - 10]
+        ],
+        text: {
+          children: [
+            {
+              text: `Diagram Code:\n${mermaidCode}`,
+              color: '#666666',
+              fontSize: 12,
+              fontFamily: 'monospace'
+            }
+          ]
+        },
+        strokeColor: '#e0e0e0',
+        strokeWidth: 1,
+        fill: '#f8f8f8'
+      }
+
+      // Add the code text element to the elements array
+      const elementsWithCode = [...elements, codeTextElement]
+
       // Insert into board
       board.insertFragment(
         {
-          elements: JSON.parse(JSON.stringify(elements)),
+          elements: JSON.parse(JSON.stringify(elementsWithCode)),
         },
         startPoint,
         WritableClipboardOperationType.paste

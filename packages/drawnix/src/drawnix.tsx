@@ -159,7 +159,6 @@ export const Drawnix: React.FC<DrawnixProps> = ({
                   <div className="drawnix-header-toolbar flex w-full items-center justify-between gap-2 px-2 md:gap-4 flex-nowrap overflow-x-auto no-scrollbar">
                     <div className="flex items-center gap-2 md:gap-4">
                       <AppToolbar orientation="horizontal" />
-                      <CreationToolbar orientation="horizontal" />
                     </div>
                   </div>,
                   toolbarPortal
@@ -167,10 +166,10 @@ export const Drawnix: React.FC<DrawnixProps> = ({
               : (
                   <div className="header-toolbar-container">
                     <AppToolbar orientation="horizontal"></AppToolbar>
-                    <CreationToolbar orientation="horizontal"></CreationToolbar>
                   </div>
                 )
             )}
+            <CreationToolbar />
             <ZoomToolbar></ZoomToolbar>
             <ThemeToolbar></ThemeToolbar>
             <PopupToolbar></PopupToolbar>

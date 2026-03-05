@@ -206,15 +206,17 @@ export class ImageViewer {
   private bindDragEvents(): void {
     if (!this.imageContainer) return;
 
-    // 使用 requestAnimationFrame 优化的拖动处理器
+    // 使用 requestAnimationFrame 优化的拖动处理器（保持相对初始位置，避免累积误差）
     this.dragHandler = (e: MouseEvent) => {
       if (!this.state.isDragging) return;
 
       const deltaX = e.clientX - this.state.dragStartX;
       const deltaY = e.clientY - this.state.dragStartY;
 
-      this.state.x = this.state.imageStartX + deltaX;
-      this.state.y = this.state.imageStartY + deltaY;
+      const nextX = this.state.imageStartX + deltaX;
+      const nextY = this.state.imageStartY + deltaY;
+      this.state.x = nextX;
+      this.state.y = nextY;
 
       // 使用 requestAnimationFrame 优化渲染
       if (!this.pendingUpdate) {

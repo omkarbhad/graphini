@@ -32,16 +32,13 @@ npm run dev
 
 The chatbox supports multiple AI models through OpenRouter:
 
-**Free Models:**
-- Llama 3.1 8B (Default)
-- Gemini 2.0 Flash
-- Mistral 7B
-
-**Paid Models:**
-- GPT-4o
-- GPT-3.5 Turbo
-- Claude 3.5 Sonnet
-- Gemini Pro 1.5
+**Free Models (Verified Working):**
+- DeepSeek Chat v3.1
+- GLM-4.5 Air
+- Kimi K2
+- DeepSeek R1 Qwen3 8B
+- Llama 3.3 8B
+- Qwen3 30B A3B
 
 ### Mermaid Diagram Support
 

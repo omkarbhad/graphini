@@ -97,6 +97,8 @@ jspm_packages/
 # Nuxt.js build / generate output
 .nuxt
 dist
+# Allow WASM build output
+!wasm/dist/
 
 # Storybook build outputs
 .out

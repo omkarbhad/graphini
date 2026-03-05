@@ -1,7 +1,8 @@
 import Stack from '../../stack';
-import { FontColorIcon } from '../../icons';
 import {
   ATTACHED_ELEMENT_CLASS_NAME,
+  deleteFragment,
+  duplicateElements,
   getRectangleByElements,
   getSelectedElements,
   isDragging,
@@ -13,7 +14,8 @@ import {
   toHostPointFromViewBoxPoint,
   toScreenPointFromHostPoint,
 } from '@plait/core';
-import { useEffect, useRef, useState } from 'react';
+import { Type, Circle, Palette, Link, ArrowRight, Minus, Copy, Trash } from 'lucide-react';
+import { useEffect, useRef, useState, useMemo, useCallback, memo } from 'react';
 import { useBoard } from '@plait-board/react-board';
 import { flip, offset, useFloating } from '@floating-ui/react';
 import { Island } from '../../island';
@@ -35,25 +37,37 @@ import {
 } from '@plait/draw';
 import { CustomText, StrokeStyle } from '@plait/common';
 import { getTextMarksByElement } from '@plait/text-plugins';
-import { PopupFontColorButton } from './font-color-button';
-import { PopupStrokeButton } from './stroke-button';
-import { PopupFillButton } from './fill-button';
+import { ToolButton } from '../../tool-button';
+import { Freehand } from '../../../plugins/freehand/type';
+import { ColorPicker } from '../../color-picker';
+import { Popover, PopoverContent, PopoverTrigger } from '../../popover/popover';
 import { isWhite, removeHexAlpha } from '../../../utils/color';
 import { NO_COLOR } from '../../../constants/color';
-import { Freehand } from '../../../plugins/freehand/type';
-import { PopupLinkButton } from './link-button';
-import { ArrowMarkButton } from './arrow-mark-button';
+import {
+  setTextColor,
+  setTextColorOpacity,
+  setStrokeColor,
+  setStrokeColorOpacity,
+  setFillColor,
+  setFillColorOpacity,
+} from '../../../transforms/property';
 
-export const PopupToolbar = () => {
+export const PopupToolbar = memo(() => {
   const board = useBoard();
   const { t } = useI18n();
-  const selectedElements = getSelectedElements(board);
+  const selectedElements = useMemo(() => getSelectedElements(board), [board.children, board.selection]);
+  const container = useMemo(() => PlaitBoard.getBoardContainer(board), [board]);
   const [movingOrDragging, setMovingOrDragging] = useState(false);
   const movingOrDraggingRef = useRef(movingOrDragging);
-  const open =
+  const [fontColorOpen, setFontColorOpen] = useState(false);
+  const [strokeOpen, setStrokeOpen] = useState(false);
+  const [fillOpen, setFillOpen] = useState(false);
+  const open = useMemo(() =>
     selectedElements.length > 0 &&
     !isSelectionMoving(board) &&
-    !selectedElements.some(PlaitDrawElement.isImage);
+    !selectedElements.some(PlaitDrawElement.isImage),
+    [selectedElements, board]
+  );
   const { viewport, selection, children } = board;
   const { refs, floatingStyles } = useFloating({
     placement: 'right-start',
@@ -77,7 +91,13 @@ export const PopupToolbar = () => {
   } = {
     fill: 'red',
   };
-  if (open && !movingOrDragging) {
+
+  // Memoize expensive state calculations
+  state = useMemo(() => {
+    if (!open || movingOrDragging) {
+      return { fill: 'red' };
+    }
+
     const hasFill =
       selectedElements.some((value) => hasFillProperty(board, value)) &&
       !PlaitBoard.hasBeenTextEditing(board);
@@ -93,7 +113,8 @@ export const PopupToolbar = () => {
     const isLine = selectedElements.every((value) =>
       PlaitDrawElement.isArrowLine(value)
     );
-    state = {
+
+    return {
       ...getElementState(board),
       hasFill,
       hasFontColor: hasText,
@@ -102,41 +123,48 @@ export const PopupToolbar = () => {
       hasText,
       isLine,
     };
-  }
-  useEffect(() => {
-    if (open) {
-      const hasSelected = selectedElements.length > 0;
-      if (!movingOrDragging && hasSelected) {
-        const elements = getSelectedElements(board);
-        const rectangle = getRectangleByElements(board, elements, false);
-        const [start, end] = RectangleClient.getPoints(rectangle);
-        const screenStart = toScreenPointFromHostPoint(
-          board,
-          toHostPointFromViewBoxPoint(board, start)
-        );
-        const screenEnd = toScreenPointFromHostPoint(
-          board,
-          toHostPointFromViewBoxPoint(board, end)
-        );
-        const width = screenEnd[0] - screenStart[0];
-        const height = screenEnd[1] - screenStart[1];
-        refs.setPositionReference({
-          getBoundingClientRect() {
-            return {
-              width,
-              height,
-              x: screenStart[0],
-              y: screenStart[1],
-              top: screenStart[1],
-              left: screenStart[0],
-              right: screenStart[0] + width,
-              bottom: screenStart[1] + height,
-            };
-          },
-        });
-      }
+  }, [open, movingOrDragging, selectedElements, board]);
+
+  // Memoize position calculation to avoid recalculating on every render
+  const positionRect = useMemo(() => {
+    if (!open || movingOrDragging || selectedElements.length === 0) {
+      return null;
     }
-  }, [viewport, selection, children, movingOrDragging]);
+
+    const rectangle = getRectangleByElements(board, selectedElements, false);
+    const [start, end] = RectangleClient.getPoints(rectangle);
+    const screenStart = toScreenPointFromHostPoint(
+      board,
+      toHostPointFromViewBoxPoint(board, start)
+    );
+    const screenEnd = toScreenPointFromHostPoint(
+      board,
+      toHostPointFromViewBoxPoint(board, end)
+    );
+    const width = screenEnd[0] - screenStart[0];
+    const height = screenEnd[1] - screenStart[1];
+
+    return {
+      width,
+      height,
+      x: screenStart[0],
+      y: screenStart[1],
+      top: screenStart[1],
+      left: screenStart[0],
+      right: screenStart[0] + width,
+      bottom: screenStart[1] + height,
+    };
+  }, [open, movingOrDragging, selectedElements, viewport, board]);
+
+  useEffect(() => {
+    if (positionRect) {
+      refs.setPositionReference({
+        getBoundingClientRect() {
+          return positionRect;
+        },
+      });
+    }
+  }, [positionRect, refs]);
 
   useEffect(() => {
     movingOrDraggingRef.current = movingOrDragging;
@@ -182,76 +210,195 @@ export const PopupToolbar = () => {
         >
           <Stack.Row gap={1}>
             {state.hasFontColor && (
-              <PopupFontColorButton
-                board={board}
-                key={0}
-                currentColor={state.marks?.color}
-                title={t('popupToolbar.fontColor')}
-                fontColorIcon={
-                  <FontColorIcon currentColor={state.marks?.color} />
-                }
-              ></PopupFontColorButton>
+              <Popover
+                sideOffset={12}
+                open={fontColorOpen}
+                onOpenChange={setFontColorOpen}
+                placement="top"
+              >
+                <PopoverTrigger asChild>
+                  <ToolButton
+                    key={0}
+                    type="icon"
+                    icon={<Type size={16} />}
+                    visible={true}
+                    selected={fontColorOpen}
+                    title={t('popupToolbar.fontColor')}
+                    aria-label={t('popupToolbar.fontColor')}
+                    onPointerUp={() => {
+                      setFontColorOpen(!fontColorOpen);
+                    }}
+                  />
+                </PopoverTrigger>
+                <PopoverContent container={container}>
+                  <Island
+                    padding={4}
+                    className={classNames(`${ATTACHED_ELEMENT_CLASS_NAME}`)}
+                  >
+                    <ColorPicker
+                      onColorChange={(selectedColor: string) => {
+                        setTextColor(
+                          board,
+                          state.marks?.color ? state.marks.color : selectedColor,
+                          selectedColor
+                        );
+                      }}
+                      onOpacityChange={(opacity: number) => {
+                        if (state.marks?.color) {
+                          setTextColorOpacity(board, state.marks.color, opacity);
+                        }
+                      }}
+                      currentColor={state.marks?.color}
+                    />
+                  </Island>
+                </PopoverContent>
+              </Popover>
             )}
             {state.hasStroke && (
-              <PopupStrokeButton
-                board={board}
-                key={1}
-                currentColor={state.strokeColor}
-                currentStyle={state.strokeStyle}
-                title={t('popupToolbar.stroke')}
-                hasStrokeStyle={state.hasStrokeStyle || false}
+              <Popover
+                sideOffset={12}
+                open={strokeOpen}
+                onOpenChange={setStrokeOpen}
+                placement="top"
               >
-                <label
-                  className={classNames('stroke-label', 'color-label')}
-                  style={{ borderColor: state.strokeColor }}
-                ></label>
-              </PopupStrokeButton>
+                <PopoverTrigger asChild>
+                  <ToolButton
+                    key={1}
+                    type="icon"
+                    icon={<Circle size={16} />}
+                    visible={true}
+                    selected={strokeOpen}
+                    title={t('popupToolbar.stroke')}
+                    aria-label={t('popupToolbar.stroke')}
+                    onPointerUp={() => {
+                      setStrokeOpen(!strokeOpen);
+                    }}
+                  />
+                </PopoverTrigger>
+                <PopoverContent container={container}>
+                  <Island
+                    padding={4}
+                    className={classNames(`${ATTACHED_ELEMENT_CLASS_NAME}`)}
+                  >
+                    <ColorPicker
+                      onColorChange={(selectedColor: string) => {
+                        setStrokeColor(board, selectedColor);
+                      }}
+                      onOpacityChange={(opacity: number) => {
+                        setStrokeColorOpacity(board, opacity);
+                      }}
+                      currentColor={state.strokeColor}
+                    />
+                  </Island>
+                </PopoverContent>
+              </Popover>
             )}
             {state.hasFill && (
-              <PopupFillButton
-                board={board}
-                key={2}
-                currentColor={state.fill}
-                title={t('popupToolbar.fillColor')}
+              <Popover
+                sideOffset={12}
+                open={fillOpen}
+                onOpenChange={setFillOpen}
+                placement="top"
               >
-                <label
-                  className={classNames('fill-label', 'color-label', {
-                    'color-white':
-                      state.fill && isWhite(removeHexAlpha(state.fill)),
-                  })}
-                  style={{ backgroundColor: state.fill }}
-                ></label>
-              </PopupFillButton>
+                <PopoverTrigger asChild>
+                  <ToolButton
+                    key={2}
+                    type="icon"
+                    icon={<Palette size={16} />}
+                    visible={true}
+                    selected={fillOpen}
+                    title={t('popupToolbar.fillColor')}
+                    aria-label={t('popupToolbar.fillColor')}
+                    onPointerUp={() => {
+                      setFillOpen(!fillOpen);
+                    }}
+                  />
+                </PopoverTrigger>
+                <PopoverContent container={container}>
+                  <Island
+                    padding={4}
+                    className={classNames(`${ATTACHED_ELEMENT_CLASS_NAME}`)}
+                  >
+                    <ColorPicker
+                      onColorChange={(selectedColor: string) => {
+                        setFillColor(board, selectedColor);
+                      }}
+                      onOpacityChange={(opacity: number) => {
+                        setFillColorOpacity(board, opacity);
+                      }}
+                      currentColor={state.fill}
+                    />
+                  </Island>
+                </PopoverContent>
+              </Popover>
             )}
             {state.hasText && (
-              <PopupLinkButton
-                board={board}
+              <ToolButton
                 key={3}
+                type="icon"
+                icon={<Link size={16} />}
+                visible={true}
                 title={t('popupToolbar.link')}
-              ></PopupLinkButton>
+                aria-label={t('popupToolbar.link')}
+                onPointerUp={() => {
+                  // Link functionality would go here
+                }}
+              />
             )}
             {state.isLine && (
               <>
-                <ArrowMarkButton
-                  board={board}
+                <ToolButton
                   key={4}
-                  end={'source'}
-                  endProperty={state.source}
+                  type="icon"
+                  icon={<ArrowRight size={16} />}
+                  visible={true}
+                  title={t('line.source')}
+                  aria-label={t('line.source')}
+                  onPointerUp={() => {
+                    // Source arrow functionality would go here
+                  }}
                 />
-                <ArrowMarkButton
-                  board={board}
+                <ToolButton
                   key={5}
-                  end={'target'}
-                  endProperty={state.target}
+                  type="icon"
+                  icon={<ArrowRight size={16} />}
+                  visible={true}
+                  title={t('line.target')}
+                  aria-label={t('line.target')}
+                  onPointerUp={() => {
+                    // Target arrow functionality would go here
+                  }}
                 />
               </>
             )}
+            <ToolButton
+              key={6}
+              type="icon"
+              icon={<Copy size={16} />}
+              visible={true}
+              title={t('general.duplicate')}
+              aria-label={t('general.duplicate')}
+              onPointerUp={() => {
+                duplicateElements(board);
+              }}
+            />
+            <ToolButton
+              key={7}
+              type="icon"
+              icon={<Trash size={16} />}
+              visible={true}
+              title={t('general.delete')}
+              aria-label={t('general.delete')}
+              onPointerUp={() => {
+                deleteFragment(board);
+              }}
+            />
           </Stack.Row>
         </Island>
       )}
     </>
   );
-};
+});
 
 export const getMindElementState = (
   board: PlaitBoard,

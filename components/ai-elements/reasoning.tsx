@@ -11,6 +11,7 @@ import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 import { createContext, memo, useContext, useEffect, useState } from "react";
 import { Response } from "./response";
+import { TextShimmer } from "@/components/ui/text-shimmer";
 
 type ReasoningContextValue = {
   isStreaming: boolean;
@@ -114,12 +115,16 @@ export type ReasoningTriggerProps = ComponentProps<typeof CollapsibleTrigger>;
 
 const getThinkingMessage = (isStreaming: boolean, duration?: number) => {
   if (isStreaming || duration === 0) {
-    return <p>Thinking...</p>;
+    return (
+      <TextShimmer as="p" className="text-sm" duration={2.5} spread={1.8}>
+        🧠 AI is thinking and planning...
+      </TextShimmer>
+    );
   }
   if (duration === undefined) {
-    return <p>Thought for a few seconds</p>;
+    return <p>💭 AI thought process completed</p>;
   }
-  return <p>Thought for {duration} seconds</p>;
+  return <p>⏱️ AI thought for {duration} seconds</p>;
 };
 
 export const ReasoningTrigger = memo(
@@ -153,9 +158,7 @@ export const ReasoningTrigger = memo(
 
 export type ReasoningContentProps = ComponentProps<
   typeof CollapsibleContent
-> & {
-  children: string;
-};
+>;
 
 export const ReasoningContent = memo(
   ({ className, children, ...props }: ReasoningContentProps) => (
@@ -167,7 +170,7 @@ export const ReasoningContent = memo(
       )}
       {...props}
     >
-      <Response className="grid gap-2">{children}</Response>
+      {children}
     </CollapsibleContent>
   )
 );

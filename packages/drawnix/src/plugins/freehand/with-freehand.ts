@@ -38,6 +38,11 @@ export const withFreehand = (board: PlaitBoard) => {
 
   board.getRectangle = (element: PlaitElement) => {
     if (Freehand.isFreehand(element)) {
+      // Safety check: ensure points exist and is an array
+      if (!element.points || !Array.isArray(element.points) || element.points.length === 0) {
+        // Return a default rectangle if points are invalid
+        return { x: 0, y: 0, width: 0, height: 0 };
+      }
       return RectangleClient.getRectangleByPoints(element.points);
     }
     return getRectangle(element);

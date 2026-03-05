@@ -1,9 +1,9 @@
-@import "open-color/open-color.scss";
-@import "./variables.module.scss";
+@use "open-color/open-color.scss" as oc;
+@use "./variables.module.scss" as *;
 
 .drawnix,
 .drawnix-theme {
-  --focus-highlight-color: #{$oc-blue-2};
+  --focus-highlight-color: #{oc.$oc-blue-2};
   --icon-fill-color: var(--color-on-surface);
   --island-bg-color: #ffffff;
   --island-border-color: #eeeeee;
@@ -31,7 +31,7 @@
   --space-factor: 0.25rem;
   --text-primary-color: var(--color-on-surface);
 
-  --color-icon-white: #{$oc-white};
+  --color-icon-white: #{oc.$oc-white};
 
   --color-primary: #6698ff;
   --color-primary-darker: #4a7ee6;    // 降低亮度和饱和度

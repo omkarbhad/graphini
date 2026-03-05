@@ -41,6 +41,11 @@ export const isHitFreehand = (
   element: Freehand,
   point: Point
 ) => {
+  // Safety check: ensure points exist and is an array
+  if (!element.points || !Array.isArray(element.points) || element.points.length === 0) {
+    return false;
+  }
+  
   const antiPoint = rotateAntiPointsByElement(board, point, element) || point;
   const points = element.points;
   if (isClosedPoints(element.points)) {
@@ -57,6 +62,11 @@ export const isRectangleHitFreehand = (
   element: Freehand,
   selection: Selection
 ) => {
+  // Safety check: ensure points exist and is an array
+  if (!element.points || !Array.isArray(element.points) || element.points.length === 0) {
+    return false;
+  }
+  
   const rangeRectangle = RectangleClient.getRectangleByPoints([
     selection.anchor,
     selection.focus,
@@ -104,84 +114,68 @@ export function gaussianWeight(x: number, sigma: number) {
   return Math.exp(-(x * x) / (2 * sigma * sigma));
 }
 
+// Pre-compute Gaussian weights for better performance
+const GAUSSIAN_WEIGHT_CACHE = new Map<string, number>();
+function getCachedGaussianWeight(x: number, sigma: number): number {
+  const key = `${x}_${sigma}`;
+  if (GAUSSIAN_WEIGHT_CACHE.has(key)) {
+    return GAUSSIAN_WEIGHT_CACHE.get(key)!;
+  }
+  const weight = Math.exp(-(x * x) / (2 * sigma * sigma));
+  GAUSSIAN_WEIGHT_CACHE.set(key, weight);
+  return weight;
+}
+
 export function gaussianSmooth(
   points: Point[],
   sigma: number,
   windowSize: number
 ) {
   if (points.length < 2) return points;
+  
+  // For small point counts, skip expensive smoothing
+  if (points.length <= 3) return points;
 
-  const halfWindow = Math.floor(windowSize / 2);
+  // Reduce window size for better performance - max window of 3 instead of dynamic
+  const halfWindow = Math.min(Math.floor(windowSize / 2), 1);
   const smoothedPoints: Point[] = [];
 
-  // 方法1：端点镜像
-  function getMirroredPoint(idx: number): Point {
-    if (idx < 0) {
-      // 左端镜像
-      const mirrorIdx = -idx - 1;
-      if (mirrorIdx < points.length) {
-        // 以第一个点为中心的对称点
-        return [
-          2 * points[0][0] - points[mirrorIdx][0],
-          2 * points[0][1] - points[mirrorIdx][1],
-        ];
-      }
-    } else if (idx >= points.length) {
-      // 右端镜像
-      const mirrorIdx = 2 * points.length - idx - 1;
-      if (mirrorIdx >= 0) {
-        // 以最后一个点为中心的对称点
-        return [
-          2 * points[points.length - 1][0] - points[mirrorIdx][0],
-          2 * points[points.length - 1][1] - points[mirrorIdx][1],
-        ];
-      }
-    }
+  // Simplified mirroring for edge points - just clamp to boundaries
+  const getPoint = (idx: number): Point => {
+    if (idx < 0) return points[0];
+    if (idx >= points.length) return points[points.length - 1];
     return points[idx];
-  }
+  };
 
-  // 方法2：自适应窗口
-  function getAdaptiveWindow(i: number): number {
-    // 端点处使用较小的窗口
-    const distToEdge = Math.min(i, points.length - 1 - i);
-    return Math.min(halfWindow, distToEdge + Math.floor(halfWindow / 2));
+  // Pre-compute weights for the fixed window (only compute once)
+  const weights: number[] = [];
+  for (let j = -halfWindow; j <= halfWindow; j++) {
+    weights.push(getCachedGaussianWeight(j, sigma));
   }
+  
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
 
   for (let i = 0; i < points.length; i++) {
+    // Skip smoothing for endpoints to preserve shape
+    if (i === 0 || i === points.length - 1) {
+      smoothedPoints.push([points[i][0], points[i][1]]);
+      continue;
+    }
+
     let sumX = 0;
     let sumY = 0;
-    let weightSum = 0;
 
-    // 对端点使用自适应窗口
-    const adaptiveWindow = getAdaptiveWindow(i);
-
-    for (let j = -adaptiveWindow; j <= adaptiveWindow; j++) {
-      const idx = i + j;
-      const point = getMirroredPoint(idx);
-
-      // 端点处使用渐变权重
-      let weight = gaussianWeight(j, sigma);
-
-      // 端点权重调整
-      if (i < halfWindow || i >= points.length - halfWindow) {
-        // 增加端点原始值的权重
-        const edgeFactor = 1 + 0.5 * (1 - Math.abs(j) / adaptiveWindow);
-        weight *= j === 0 ? edgeFactor : 1;
-      }
+    // Use pre-computed weights with fixed window
+    for (let j = -halfWindow; j <= halfWindow; j++) {
+      const point = getPoint(i + j);
+      const weight = weights[j + halfWindow];
 
       sumX += point[0] * weight;
       sumY += point[1] * weight;
-      weightSum += weight;
     }
 
-    // 端点处的特殊处理
-    if (i === 0 || i === points.length - 1) {
-      // 保持端点不变
-      smoothedPoints.push([points[i][0], points[i][1]]);
-    } else {
-      // 平滑中间点
-      smoothedPoints.push([sumX / weightSum, sumY / weightSum]);
-    }
+    // Use pre-computed total weight to avoid division in loop
+    smoothedPoints.push([sumX / totalWeight, sumY / totalWeight]);
   }
 
   return smoothedPoints;
