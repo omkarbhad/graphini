@@ -19,7 +19,7 @@ export default function RootLayout({
     <html lang="en">
       <body
         className={cn(
-          'relative min-h-screen overflow-hidden bg-background text-foreground antialiased',
+          'relative min-h-screen overflow-hidden antialiased',
           GeistSans.variable,
           GeistMono.variable
         )}

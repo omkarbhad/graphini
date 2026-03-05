@@ -96,3 +96,30 @@ body {
 /* Utility: hide scrollbars on the header island when overflowing */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ─── Landing page animations (Astrova-inspired) ─── */
+
+@keyframes border-beam {
+  100% { offset-distance: 100%; }
+}
+.animate-border-beam {
+  animation: border-beam calc(var(--duration) * 1s) infinite linear;
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-100% - var(--gap))); }
+}
+@keyframes marquee-vertical {
+  from { transform: translateY(0); }
+  to { transform: translateY(calc(-100% - var(--gap))); }
+}
+.animate-marquee { animation: marquee var(--duration) linear infinite; }
+.animate-marquee-vertical { animation: marquee-vertical var(--duration) linear infinite; }
+
+@keyframes image-glow {
+  0% { opacity: 0; animation-timing-function: cubic-bezier(.74, .25, .76, 1); }
+  10% { opacity: 0.5; animation-timing-function: cubic-bezier(.12, .01, .08, .99); }
+  100% { opacity: 0.7; }
+}
+.animate-image-glow { animation: image-glow 2s ease-out forwards; }
