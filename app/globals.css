@@ -123,3 +123,14 @@ body {
   100% { opacity: 0.7; }
 }
 .animate-image-glow { animation: image-glow 2s ease-out forwards; }
+
+/* ─── Respect prefers-reduced-motion ─── */
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee,
+  .animate-marquee-vertical,
+  .animate-border-beam,
+  .animate-image-glow,
+  .animate-pulse {
+    animation: none !important;
+  }
+}

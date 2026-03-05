@@ -1,24 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
-  Plus,
-  Search,
-  GitBranch,
-  Clock,
-  MoreHorizontal,
-  Share2,
-  Trash2,
-  Edit3,
-  LogIn,
-  Home,
-  Layout,
-  Star,
-  Settings,
+  Plus, Search, GitBranch, Clock, MoreHorizontal,
+  Share2, Trash2, Edit3, LogIn, Home, LayoutGrid,
+  Star, Settings, Menu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { TextShimmer } from "@/components/ui/text-shimmer";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,9 +16,21 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import React from "react";
 
-// Placeholder diagrams — replace with real DB fetch after Firebase + Neon integration
-const MOCK_DIAGRAMS = [
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Diagram {
+  id: string;
+  title: string;
+  updatedAt: string;
+  type: "flowchart" | "sequence" | "mindmap" | "class" | "er" | "gitgraph";
+  preview: string;
+}
+
+// ─── Mock data ─ replace with real DB fetch after Firebase + Neon ─────────────
+
+const MOCK_DIAGRAMS: Diagram[] = [
   {
     id: "1",
     title: "Microservices Architecture",
@@ -55,42 +57,66 @@ const MOCK_DIAGRAMS = [
     title: "DB Schema",
     updatedAt: "Last week",
     type: "class",
-    preview: "users ─ diagrams ─ shares",
+    preview: "users ─< diagrams ─< shares",
   },
 ];
 
+// ─── Sidebar nav ──────────────────────────────────────────────────────────────
+
 const NAV_ITEMS = [
   { icon: Home, label: "Home", href: "/" },
-  { icon: Layout, label: "My Diagrams", href: "/dashboard", active: true },
+  { icon: LayoutGrid, label: "My Diagrams", href: "/dashboard" },
   { icon: Star, label: "Starred", href: "/dashboard/starred" },
   { icon: Share2, label: "Shared with me", href: "/dashboard/shared" },
   { icon: Settings, label: "Settings", href: "/dashboard/settings" },
 ];
 
-function DiagramCard({ diagram }: { diagram: typeof MOCK_DIAGRAMS[0] }) {
+// ─── Diagram type colors ──────────────────────────────────────────────────────
+
+const TYPE_COLORS: Record<Diagram["type"], string> = {
+  flowchart: "text-violet-400 bg-violet-500/10 border-violet-500/20",
+  sequence: "text-indigo-400 bg-indigo-500/10 border-indigo-500/20",
+  mindmap: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+  class: "text-sky-400 bg-sky-500/10 border-sky-500/20",
+  er: "text-orange-400 bg-orange-500/10 border-orange-500/20",
+  gitgraph: "text-pink-400 bg-pink-500/10 border-pink-500/20",
+};
+
+// ─── DiagramCard ──────────────────────────────────────────────────────────────
+
+function DiagramCard({ diagram }: { diagram: Diagram }) {
+  const typeColor = TYPE_COLORS[diagram.type] ?? "text-neutral-400 bg-neutral-500/10 border-neutral-500/20";
+
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white transition-shadow hover:shadow-md">
-      {/* Preview area */}
-      <Link href={`/editor?id=${diagram.id}`} className="block">
-        <div className="flex h-36 items-center justify-center border-b border-gray-100 bg-gradient-to-br from-gray-50 to-white px-4">
-          <div className="text-center">
-            <GitBranch className="mx-auto mb-2 h-8 w-8 text-gray-300" />
-            <p className="text-[11px] text-gray-400 font-mono leading-relaxed">{diagram.preview}</p>
+    <article className="group relative flex flex-col overflow-hidden rounded-xl border border-violet-500/[0.1] bg-[hsl(240,16%,9%)] transition-all duration-200 hover:border-violet-500/25 hover:bg-[hsl(240,18%,11%)] hover:shadow-lg hover:shadow-black/30">
+      {/* Preview */}
+      <Link href={`/editor?id=${diagram.id}`} aria-label={`Open diagram: ${diagram.title}`} className="block">
+        <div className="flex h-36 flex-col items-center justify-center border-b border-violet-500/[0.08] bg-[hsl(240,18%,7%)] px-4 gap-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-violet-500/20 bg-violet-500/[0.08]">
+            <GitBranch className="h-5 w-5 text-violet-400/50" aria-hidden="true" />
           </div>
+          <p className="text-[11px] text-neutral-600 font-mono leading-relaxed text-center line-clamp-2 max-w-[180px]">
+            {diagram.preview}
+          </p>
         </div>
       </Link>
 
       {/* Meta */}
-      <div className="flex items-center justify-between p-3">
-        <div className="min-w-0">
+      <div className="flex items-center justify-between p-3 min-w-0">
+        <div className="min-w-0 flex-1 mr-2">
           <Link href={`/editor?id=${diagram.id}`}>
-            <p className="truncate text-sm font-medium text-gray-900 hover:text-primary">{diagram.title}</p>
+            <p className="truncate text-sm font-medium text-neutral-200 hover:text-violet-300 transition-colors">
+              {diagram.title}
+            </p>
           </Link>
-          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-gray-400">
-            <Clock className="h-3 w-3" />
-            <span>{diagram.updatedAt}</span>
-            <span>·</span>
-            <span className="capitalize">{diagram.type}</span>
+          <div className="mt-1 flex items-center gap-1.5">
+            <Clock className="h-3 w-3 text-neutral-600 flex-shrink-0" aria-hidden="true" />
+            <span className="text-[11px] text-neutral-600 truncate">{diagram.updatedAt}</span>
+            <span
+              className={`ml-1 inline-flex rounded border px-1.5 py-0.5 text-[10px] font-medium capitalize ${typeColor}`}
+            >
+              {diagram.type}
+            </span>
           </div>
         </div>
 
@@ -99,150 +125,224 @@ function DiagramCard({ diagram }: { diagram: typeof MOCK_DIAGRAMS[0] }) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+              aria-label={`More options for ${diagram.title}`}
+              className="h-7 w-7 flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 text-neutral-500 hover:text-neutral-300 hover:bg-violet-500/10 transition-all"
             >
               <MoreHorizontal className="h-3.5 w-3.5" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-40">
-            <DropdownMenuItem>
-              <Edit3 className="mr-2 h-3.5 w-3.5" /> Rename
+          <DropdownMenuContent
+            align="end"
+            className="w-40 bg-[hsl(240,18%,10%)] border border-violet-500/20 text-neutral-200"
+          >
+            <DropdownMenuItem className="hover:bg-violet-500/10 cursor-pointer gap-2">
+              <Edit3 className="h-3.5 w-3.5" /> Rename
             </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Share2 className="mr-2 h-3.5 w-3.5" /> Share
+            <DropdownMenuItem className="hover:bg-violet-500/10 cursor-pointer gap-2">
+              <Share2 className="h-3.5 w-3.5" /> Share
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-red-500 focus:text-red-500">
-              <Trash2 className="mr-2 h-3.5 w-3.5" /> Delete
+            <DropdownMenuSeparator className="bg-violet-500/10" />
+            <DropdownMenuItem className="text-red-400 hover:bg-red-500/10 focus:text-red-400 cursor-pointer gap-2">
+              <Trash2 className="h-3.5 w-3.5" /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-    </div>
+    </article>
   );
 }
 
-export default function DashboardPage() {
-  // Auth state placeholder — replace with Firebase useAuth() hook
-  const isLoggedIn = false;
+// ─── Sidebar ─────────────────────────────────────────────────────────────────
+
+function Sidebar({ onClose }: { onClose?: () => void }) {
+  const pathname = usePathname();
 
   return (
-    <div className="flex min-h-screen">
-      {/* Sidebar */}
-      <aside className="hidden w-56 flex-shrink-0 flex-col border-r border-gray-100 bg-white md:flex">
-        {/* Logo */}
-        <div className="flex h-14 items-center gap-2 border-b border-gray-100 px-4">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
-            <GitBranch className="h-3.5 w-3.5 text-primary" />
+    <aside className="flex h-full w-56 flex-shrink-0 flex-col border-r border-violet-500/[0.1] bg-[hsl(240,18%,6%)]">
+      {/* Logo */}
+      <div className="flex h-14 items-center gap-2.5 border-b border-violet-500/[0.1] px-4">
+        <Link href="/" className="flex items-center gap-2.5" onClick={onClose}>
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/20 border border-violet-500/30">
+            <GitBranch className="h-3.5 w-3.5 text-violet-300" aria-hidden="true" />
           </div>
-          <TextShimmer as="span" className="text-sm font-semibold" duration={3}>
-            Graphini
-          </TextShimmer>
-        </div>
+          <span className="text-sm font-semibold text-white">Graphini</span>
+        </Link>
+      </div>
 
-        {/* Nav */}
-        <nav className="flex flex-1 flex-col gap-0.5 p-3">
-          {NAV_ITEMS.map((item) => (
+      {/* Nav */}
+      <nav className="flex flex-1 flex-col gap-0.5 p-3" aria-label="Dashboard navigation">
+        {NAV_ITEMS.map((item) => {
+          const isActive = pathname === item.href;
+          return (
             <Link
               key={item.label}
               href={item.href}
+              onClick={onClose}
+              aria-current={isActive ? "page" : undefined}
               className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
-                item.active
-                  ? "bg-primary/8 text-primary font-medium"
-                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                isActive
+                  ? "bg-violet-500/15 text-violet-200 font-medium"
+                  : "text-neutral-500 hover:bg-violet-500/[0.08] hover:text-neutral-200"
               }`}
             >
-              <item.icon className="h-4 w-4 flex-shrink-0" />
+              <item.icon className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
               {item.label}
             </Link>
-          ))}
-        </nav>
+          );
+        })}
+      </nav>
 
-        {/* Auth section */}
-        <div className="border-t border-gray-100 p-3">
-          {isLoggedIn ? (
-            <div className="flex items-center gap-2.5 rounded-lg px-3 py-2">
-              <div className="h-7 w-7 rounded-full bg-gradient-to-br from-violet-400 to-sky-400" />
-              <div className="min-w-0">
-                <p className="truncate text-xs font-medium text-gray-900">Omkar Bhad</p>
-                <p className="truncate text-[10px] text-gray-400">omkar@magnova.ai</p>
-              </div>
-            </div>
-          ) : (
-            <Button variant="outline" size="sm" className="w-full gap-2 text-xs">
-              <LogIn className="h-3.5 w-3.5" /> Sign in to save
-            </Button>
-          )}
+      {/* Auth */}
+      <div className="border-t border-violet-500/[0.1] p-3">
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full gap-2 text-xs border-violet-500/20 bg-transparent text-neutral-400 hover:bg-violet-500/10 hover:text-neutral-200 hover:border-violet-500/40"
+        >
+          <LogIn className="h-3.5 w-3.5" aria-hidden="true" />
+          Sign in to save
+        </Button>
+      </div>
+    </aside>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function DashboardPage() {
+  const [mobileSidebarOpen, setMobileSidebarOpen] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState("");
+
+  const filteredDiagrams = MOCK_DIAGRAMS.filter((d) =>
+    d.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  return (
+    <div className="flex min-h-screen bg-[hsl(240,16%,5%)]">
+      {/* Desktop sidebar */}
+      <div className="hidden md:flex h-screen sticky top-0">
+        <Sidebar />
+      </div>
+
+      {/* Mobile sidebar overlay */}
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 md:hidden"
+          onClick={() => setMobileSidebarOpen(false)}
+          aria-hidden="true"
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
         </div>
-      </aside>
+      )}
+      {mobileSidebarOpen && (
+        <div className="fixed inset-y-0 left-0 z-50 md:hidden">
+          <Sidebar onClose={() => setMobileSidebarOpen(false)} />
+        </div>
+      )}
 
-      {/* Main content */}
-      <main className="flex flex-1 flex-col overflow-auto bg-gray-50">
+      {/* Main */}
+      <main className="flex flex-1 flex-col overflow-auto">
         {/* Topbar */}
-        <div className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-gray-100 bg-white px-6">
-          <h1 className="text-sm font-semibold text-gray-900">My Diagrams</h1>
+        <div className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b border-violet-500/[0.1] bg-[hsl(240,18%,6%)]/95 backdrop-blur px-4 sm:px-6">
+          <button
+            aria-label="Open navigation"
+            onClick={() => setMobileSidebarOpen(true)}
+            className="md:hidden p-1.5 text-neutral-500 hover:text-neutral-300 transition-colors"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+
+          <h1 className="text-sm font-semibold text-neutral-200">My Diagrams</h1>
           <div className="flex-1" />
-          <div className="relative w-56">
-            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+
+          {/* Search */}
+          <div className="relative w-48 sm:w-60">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-600"
+              aria-hidden="true"
+            />
             <Input
               placeholder="Search diagrams..."
-              className="h-8 pl-8 text-sm"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              aria-label="Search diagrams"
+              className="h-8 pl-8 text-sm bg-[hsl(240,18%,9%)] border-violet-500/20 text-neutral-200 placeholder:text-neutral-600 focus:border-violet-500/40"
             />
           </div>
+
           <Link href="/editor">
-            <Button size="sm" className="gap-1.5">
-              <Plus className="h-3.5 w-3.5" /> New diagram
+            <Button
+              size="sm"
+              className="gap-1.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white"
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">New diagram</span>
+              <span className="sm:hidden">New</span>
             </Button>
           </Link>
         </div>
 
-        <div className="flex-1 p-6">
+        <div className="flex-1 p-4 sm:p-6">
           {/* Auth banner */}
-          {!isLoggedIn && (
-            <div className="mb-6 flex items-center justify-between rounded-xl border border-dashed border-gray-200 bg-white p-4">
-              <div>
-                <p className="text-sm font-medium text-gray-900">Sign in to save your work</p>
-                <p className="mt-0.5 text-xs text-gray-500">
-                  Create an account to save, share, and sync diagrams across devices.
-                </p>
-              </div>
-              <Button size="sm" variant="outline" className="gap-2 flex-shrink-0">
-                <LogIn className="h-3.5 w-3.5" /> Sign in
-              </Button>
+          <div
+            role="alert"
+            className="mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between rounded-xl border border-dashed border-violet-500/20 bg-violet-500/[0.04] p-4"
+          >
+            <div>
+              <p className="text-sm font-medium text-neutral-200">Sign in to save your work</p>
+              <p className="mt-0.5 text-xs text-neutral-500">
+                Create an account to save, share, and sync diagrams across devices.
+              </p>
             </div>
-          )}
-
-          {/* Recent section */}
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Recent</h2>
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-shrink-0 gap-2 border-violet-500/30 bg-transparent text-neutral-300 hover:bg-violet-500/10 hover:text-neutral-100 hover:border-violet-500/50"
+            >
+              <LogIn className="h-3.5 w-3.5" aria-hidden="true" />
+              Sign in
+            </Button>
           </div>
 
+          {/* Section label */}
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-neutral-600">
+              Recent
+            </h2>
+            <span className="text-xs text-neutral-700">
+              {filteredDiagrams.length} diagram{filteredDiagrams.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          {/* Grid */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {/* New diagram card */}
-            <Link href="/editor" className="group">
-              <div className="flex h-full min-h-[200px] flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-white transition-colors hover:border-primary/40 hover:bg-primary/3">
-                <Plus className="mb-2 h-8 w-8 text-gray-300 transition-colors group-hover:text-primary/60" />
-                <p className="text-sm font-medium text-gray-400 group-hover:text-primary/70">New diagram</p>
+            <Link href="/editor" aria-label="Create a new diagram" className="group">
+              <div className="flex min-h-[220px] h-full flex-col items-center justify-center rounded-xl border border-dashed border-violet-500/[0.15] bg-transparent transition-all hover:border-violet-500/35 hover:bg-violet-500/[0.04]">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-violet-500/20 bg-violet-500/[0.06] group-hover:border-violet-500/40 group-hover:bg-violet-500/10 transition-all mb-2">
+                  <Plus className="h-5 w-5 text-violet-400/50 group-hover:text-violet-300 transition-colors" aria-hidden="true" />
+                </div>
+                <p className="text-sm font-medium text-neutral-600 group-hover:text-violet-300 transition-colors">
+                  New diagram
+                </p>
               </div>
             </Link>
 
-            {/* Diagram cards */}
-            {MOCK_DIAGRAMS.map((d) => (
-              <DiagramCard key={d.id} diagram={d} />
-            ))}
+            {/* Filtered diagram cards */}
+            {filteredDiagrams.length > 0 ? (
+              filteredDiagrams.map((d) => <DiagramCard key={d.id} diagram={d} />)
+            ) : (
+              <div className="col-span-full py-16 text-center">
+                <p className="text-sm text-neutral-600">No diagrams match &ldquo;{searchQuery}&rdquo;</p>
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="mt-2 text-xs text-violet-400 hover:text-violet-300 transition-colors"
+                >
+                  Clear search
+                </button>
+              </div>
+            )}
           </div>
-
-          {/* Empty state (shown when no diagrams and logged in) */}
-          {/* 
-          <div className="flex flex-col items-center justify-center py-24 text-center">
-            <GitBranch className="mb-4 h-12 w-12 text-gray-200" />
-            <h3 className="text-sm font-medium text-gray-900">No diagrams yet</h3>
-            <p className="mt-1.5 text-sm text-gray-500">Create your first diagram to get started.</p>
-            <Link href="/editor" className="mt-4">
-              <Button size="sm" className="gap-2"><Plus className="h-3.5 w-3.5" /> New diagram</Button>
-            </Link>
-          </div>
-          */}
         </div>
       </main>
     </div>
