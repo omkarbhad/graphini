@@ -19,7 +19,7 @@ export default function RootLayout({
     <html lang="en" className="scroll-smooth">
       <body
         className={cn(
-          'relative min-h-screen overflow-hidden antialiased',
+          'relative min-h-screen antialiased',
           GeistSans.variable,
           GeistMono.variable
         )}
