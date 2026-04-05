@@ -24,3 +24,4 @@
 
 # Database files
 *.db
+.grepai/

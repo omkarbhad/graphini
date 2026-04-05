@@ -159,21 +159,43 @@ async function extractFirebaseUid(request: Request): Promise<string | null> {
  * 1. magnova_session cookie (Firebase UID → user lookup)
  * 2. graphini_session cookie (signed email → user lookup, for local/dev auth)
  */
+let _cachedDevUser: User | null = null;
+
 export async function validateSession(request: Request): Promise<User | null> {
   // Method 0: Dev bypass — skip all auth, auto-login
   const bypassEmail = env.DEV_BYPASS_AUTH;
   if (bypassEmail) {
-    const db = getDb();
-    let user: User | null = null;
-    if (bypassEmail === 'true') {
-      // Auto-login as first user in DB
-      const users = await db.listUsers({ limit: 1, offset: 0 });
-      user = users[0] || null;
-    } else {
-      // Auto-login as specific email
-      user = await db.getUserByEmail(bypassEmail);
+    // Return cached dev user to avoid repeated DB calls
+    if (_cachedDevUser) return applyAdminOverrides(_cachedDevUser);
+
+    try {
+      const db = getDb();
+      let user: User | null = null;
+      if (bypassEmail === 'true') {
+        const result = await db.listUsers({ limit: 1, offset: 0 });
+        user = result.users[0] || null;
+      } else {
+        user = await db.getUserByEmail(bypassEmail);
+      }
+      if (user) {
+        _cachedDevUser = user;
+        return applyAdminOverrides(user);
+      }
+    } catch (e) {
+      console.warn('[auth] DEV_BYPASS_AUTH: DB lookup failed, using fallback dev user:', e);
+      // Fallback: return a synthetic dev user so the app doesn't redirect-loop
+      const fallback: User = {
+        avatar_url: null,
+        created_at: new Date().toISOString(),
+        display_name: 'Dev User',
+        email: 'dev@localhost',
+        id: '00000000-0000-0000-0000-000000000000',
+        is_active: true,
+        role: 'admin'
+      } as User;
+      _cachedDevUser = fallback;
+      return applyAdminOverrides(fallback);
     }
-    if (user) return applyAdminOverrides(user);
   }
 
   // Method 1: magnova-auth (Firebase UID)

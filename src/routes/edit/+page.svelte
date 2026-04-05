@@ -17,7 +17,6 @@
   import { ChatPanel, DocumentPanel, PanelResizeHandle } from '$lib/components/panels';
   import RefillGemsModal from '$lib/components/RefillGemsModal.svelte';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
-  import PrimarySidebar from '$lib/components/sidebars/PrimarySidebar.svelte';
   import { Button } from '$lib/components/ui/button';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import Chat from '$lib/features/chat/components/Chat.simple.svelte';
@@ -36,7 +35,6 @@
     Expand,
     FileCode2,
     FileText,
-    FolderOpen,
     Gem,
     GitBranch,
     Grid3x3,
@@ -180,12 +178,11 @@
   }
 
   // Panel icon map for toggle buttons
-  const panelIcons: Record<PanelId, typeof FolderOpen> = {
+  const panelIcons: Record<PanelId, typeof Layers> = {
     canvas: Layers,
     chat: MessageSquare,
     code: Code2,
-    document: FileText,
-    files: FolderOpen
+    document: FileText
   };
 
   // Drag-and-drop panel reordering
@@ -303,8 +300,16 @@
 
   // Auth guard: redirect to login only after fetchMe() has fully completed
   // and confirmed no user. No-op when DEV_BYPASS_AUTH is active (server returns user).
+  // Guard prevents redirect loops — only redirect once per page load.
+  let hasAttemptedRedirect = false;
   $effect(() => {
-    if (authStore.isInitialized && !authStore.isLoading && !authStore.isLoggedIn) {
+    if (
+      authStore.isInitialized &&
+      !authStore.isLoading &&
+      !authStore.isLoggedIn &&
+      !hasAttemptedRedirect
+    ) {
+      hasAttemptedRedirect = true;
       authStore.login(window.location.href);
     }
   });
@@ -651,11 +656,6 @@
     await workspaceStore.updateMeta({ title: navbarRenameValue.trim() });
     isRenamingInNavbar = false;
   }
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleFileOpen = async (_file: unknown) => {
-    // Workspace-based: file switching is handled by workspace navigation
-  };
 </script>
 
 {#if !authStore.isInitialized || authStore.isLoading}
@@ -824,17 +824,7 @@
     <div class="flex flex-1 overflow-hidden" role="main">
       {#each panels.order as panelId (panelId)}
         {#if panels.panels[panelId].visible}
-          {#if panelId === 'files'}
-            <div
-              class="relative flex-shrink-0 overflow-hidden border-r border-border/30"
-              style="width: {panels.panels.files.width}px; min-width: {panels.panels.files
-                .minWidth}px;">
-              <PrimarySidebar onFileOpen={handleFileOpen} />
-              <PanelResizeHandle
-                position="right"
-                onResize={(delta) => handlePanelResize('files', delta)} />
-            </div>
-          {:else if panelId === 'canvas'}
+          {#if panelId === 'canvas'}
             <div class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
               <!-- Floating Vertical Canvas Toolbar -->
               <div

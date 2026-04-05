@@ -1,12 +1,16 @@
 import { validateSession } from '$lib/server/auth';
+import { env } from '$env/dynamic/private';
 import { getDb } from '$lib/server/db';
 import { authLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ request }) => {
-  const rl = authLimiter.check(getClientKey(request));
-  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
+  // Skip rate limiting when dev bypass is active
+  if (!env.DEV_BYPASS_AUTH) {
+    const rl = authLimiter.check(getClientKey(request));
+    if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
+  }
 
   try {
     const user = await validateSession(request);
@@ -35,7 +39,8 @@ export const GET: RequestHandler = async ({ request }) => {
           }
         : null
     });
-  } catch {
+  } catch (e) {
+    console.error('[auth/me] Error:', e);
     return json({ error: 'Internal server error' }, { status: 500 });
   }
 };

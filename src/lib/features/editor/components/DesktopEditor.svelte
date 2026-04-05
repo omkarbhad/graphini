@@ -178,27 +178,23 @@
   };
   let currentText = '';
 
-  const jsonModel = monaco.editor.createModel(
-    '',
-    'json',
-    monaco.Uri.parse('internal://config.json')
-  );
-  const mermaidModel = monaco.editor.createModel(
-    '',
-    'mermaid',
-    monaco.Uri.parse('internal://mermaid.mmd')
-  );
+  self.MonacoEnvironment = {
+    getWorker(_, label) {
+      if (label === 'json') {
+        return new monacoJsonWorker();
+      }
+      return new monacoEditorWorker();
+    }
+  };
+
+  const jsonUri = monaco.Uri.parse('internal://config.json');
+  const mermaidUri = monaco.Uri.parse('internal://mermaid.mmd');
+  const jsonModel =
+    monaco.editor.getModel(jsonUri) ?? monaco.editor.createModel('', 'json', jsonUri);
+  const mermaidModel =
+    monaco.editor.getModel(mermaidUri) ?? monaco.editor.createModel('', 'mermaid', mermaidUri);
 
   onMount(() => {
-    self.MonacoEnvironment = {
-      getWorker(_, label) {
-        if (label === 'json') {
-          return new monacoJsonWorker();
-        }
-        return new monacoEditorWorker();
-      }
-    };
-
     if (!divElement) {
       throw new Error('divEl is undefined');
     }
