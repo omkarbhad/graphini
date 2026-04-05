@@ -23,6 +23,7 @@ const errorDebug = (limit = 1000) => {
 
 export const defaultState: State = {
   code: '',
+  editorMode: 'code',
   grid: true,
   mermaid: formatJSON({
     theme: 'default',
@@ -31,8 +32,7 @@ export const defaultState: State = {
   }),
   panZoom: true,
   rough: false,
-  updateDiagram: true,
-  editorMode: 'code'
+  updateDiagram: true
 };
 
 const urlParseFailedState = `flowchart TD
@@ -62,8 +62,6 @@ export const currentState: ValidatedState = (() => {
     serialized: serializeState(state)
   };
 })();
-
-let lastDiagramType = '';
 
 function sanitizeDiagramCode(code: string): string {
   if (!code) {
@@ -113,11 +111,6 @@ const processState = async (state: State) => {
     processed.serialized = serializeState({ ...state, code: sanitizedCode });
     const { diagramType } = await parse(sanitizedCode);
     processed.diagramType = diagramType;
-    if (lastDiagramType === 'zenuml' && diagramType !== lastDiagramType) {
-      // Temp Hack to refresh page after displaying ZenUML.
-      setTimeout(() => window.location.reload(), 100);
-    }
-    lastDiagramType = diagramType;
     JSON.parse(state.mermaid);
   } catch (error) {
     processed.error = error as Error;
@@ -306,7 +299,7 @@ export const setLayout = (layout: LayoutOption): void => {
     if (typeof config.flowchart !== 'object' || config.flowchart === null) {
       config.flowchart = {} as NonNullable<MermaidConfig['flowchart']>;
     }
-    const fc = config.flowchart!;
+    const fc = config.flowchart as NonNullable<MermaidConfig['flowchart']>;
 
     if (layout === 'elk') {
       fc.defaultRenderer = 'elk';

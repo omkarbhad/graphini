@@ -13,6 +13,7 @@ import { DEFAULT_WORKSPACE_DOCUMENT } from '$lib/types/workspace';
 import { documentMarkdownStore } from '$lib/stores/documentStore.svelte';
 import { get } from 'svelte/store';
 import { inputStateStore } from '$lib/util/state/state';
+import { hmrRestore, hmrPreserve } from '$lib/util/hmr';
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -25,14 +26,17 @@ interface WorkspaceState {
   error: string | null;
 }
 
-const state = $state<WorkspaceState>({
-  dirty: false,
-  error: null,
-  lastSavedAt: null,
-  loading: false,
-  saving: false,
-  workspace: null
-});
+const state = $state<WorkspaceState>(
+  hmrRestore('workspaceState') ?? {
+    dirty: false,
+    error: null,
+    lastSavedAt: null,
+    loading: false,
+    saving: false,
+    workspace: null
+  }
+);
+hmrPreserve('workspaceState', () => ({ ...state }));
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 const SAVE_DEBOUNCE_MS = 5000;
@@ -315,6 +319,7 @@ async function listWorkspaces(options?: {
   search?: string;
 }): Promise<{ workspaces: DiagramWorkspaceSummary[]; total: number }> {
   try {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity -- not reactive, just building a URL
     const params = new URLSearchParams();
     if (options?.limit) params.set('limit', String(options.limit));
     if (options?.offset) params.set('offset', String(options.offset));

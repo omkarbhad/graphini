@@ -3,6 +3,8 @@
  * Manages conversation list, active conversation, and CRUD operations
  */
 
+import { hmrRestore, hmrPreserve } from '$lib/util/hmr';
+
 interface ConversationItem {
   id: string;
   title: string | null;
@@ -19,12 +21,15 @@ interface ConversationsState {
   sidebarOpen: boolean;
 }
 
-let state = $state<ConversationsState>({
-  list: [],
-  activeId: null,
-  loading: false,
-  sidebarOpen: false
-});
+const state = $state<ConversationsState>(
+  hmrRestore('conversationsState') ?? {
+    list: [],
+    activeId: null,
+    loading: false,
+    sidebarOpen: false
+  }
+);
+hmrPreserve('conversationsState', () => ({ ...state }));
 
 async function fetchConversations(): Promise<void> {
   try {
@@ -98,26 +103,26 @@ function closeSidebar(): void {
 }
 
 export const conversationsStore = {
-  get state() {
-    return state;
-  },
-  get list() {
-    return state.list;
-  },
   get activeId() {
     return state.activeId;
   },
+  closeSidebar,
+  create: createConversation,
+  delete: deleteConversation,
+  fetch: fetchConversations,
   get isLoading() {
     return state.loading;
   },
   get isSidebarOpen() {
     return state.sidebarOpen;
   },
-  fetch: fetchConversations,
-  create: createConversation,
-  delete: deleteConversation,
-  setActive,
-  toggleSidebar,
+  get list() {
+    return state.list;
+  },
   openSidebar,
-  closeSidebar
+  setActive,
+  get state() {
+    return state;
+  },
+  toggleSidebar
 };

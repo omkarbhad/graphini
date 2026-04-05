@@ -4,7 +4,10 @@
  * The DocumentPanel subscribes to this store and reflects changes in real-time.
  */
 
-let markdown = $state<string>('');
+import { hmrRestore, hmrPreserve } from '$lib/util/hmr';
+
+let markdown = $state<string>(hmrRestore('docMarkdown') ?? '');
+hmrPreserve('docMarkdown', () => markdown);
 
 export const documentMarkdownStore = {
   get value() {

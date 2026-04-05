@@ -3,6 +3,8 @@
  * Manages AI model providers, favorites, and chat selection.
  */
 
+import { hmrRestore, hmrPreserve } from '$lib/util/hmr';
+
 // Model interface for the chat component
 export interface ModelOption {
   id: string;
@@ -18,10 +20,16 @@ export interface ModelOption {
 
 // ── State ──
 
-let allModels = $state<Record<string, ModelOption[]>>({});
-let favoriteModels = $state<string[]>([]);
-let selectedChatModels = $state<ModelOption[]>([]);
+const _hmrModelStore = hmrRestore<{
+  allModels: Record<string, ModelOption[]>;
+  favoriteModels: string[];
+  selectedChatModels: ModelOption[];
+}>('modelStoreState');
+let allModels = $state<Record<string, ModelOption[]>>(_hmrModelStore?.allModels ?? {});
+let favoriteModels = $state<string[]>(_hmrModelStore?.favoriteModels ?? []);
+let selectedChatModels = $state<ModelOption[]>(_hmrModelStore?.selectedChatModels ?? []);
 let loading = $state(false);
+hmrPreserve('modelStoreState', () => ({ allModels, favoriteModels, selectedChatModels }));
 
 // ── Exported store objects ──
 
@@ -110,6 +118,7 @@ export async function loadModelsFromAPI() {
     const models: Record<string, ModelOption[]> = {};
 
     if (providersData.success && modelsData.success) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       modelsData.data.forEach((m: any) => {
         if (!m.key) return;
         const provider = m.key.split(':')[0];
@@ -118,15 +127,15 @@ export async function loadModelsFromAPI() {
         }
 
         models[provider].push({
-          id: m.value?.id ?? m.key,
-          name: m.value?.label ?? m.key,
-          icon: getModelIcon(provider),
           category: m.value?.category,
-          toolSupport: m.value?.toolSupport,
-          maxTokens: m.value?.maxTokens,
           costPerToken: m.value?.costPerToken,
           description: m.value?.description,
-          provider: provider
+          icon: getModelIcon(provider),
+          id: m.value?.id ?? m.key,
+          maxTokens: m.value?.maxTokens,
+          name: m.value?.label ?? m.key,
+          provider: provider,
+          toolSupport: m.value?.toolSupport
         });
       });
     }
@@ -174,14 +183,14 @@ export function updateChatSelection(models: ModelOption[]) {
 // Helper function to get icon for provider
 function getModelIcon(provider: string): string {
   const icons: Record<string, string> = {
-    openai: '🧠',
     anthropic: '🧬',
-    openrouter: '🌐',
+    gemini: '✨',
     kilo: '⚙️',
-    gemini: '✨'
+    openai: '🧠',
+    openrouter: '🌐'
   };
   return icons[provider] || '🤖';
 }
 
-// Initialize models on import
-loadModelsFromAPI();
+// Initialize models on import (skip if restored from HMR)
+if (!_hmrModelStore) loadModelsFromAPI();

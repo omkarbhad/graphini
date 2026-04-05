@@ -3,21 +3,24 @@
  * Manages diagram color themes and presets.
  */
 
-import {
-  getCurrentTheme,
-  getThemeByMode,
-  getPresetTheme,
-  THEME_PRESETS,
-  type ThemeColors
-} from '$lib/themes';
+import { getThemeByMode, getPresetTheme, THEME_PRESETS, type ThemeColors } from '$lib/themes';
 import { mode } from '$lib/stores/theme.svelte';
 import { get } from 'svelte/store';
+import { hmrRestore, hmrPreserve } from '$lib/util/hmr';
 
 // ── State ──
 
-let currentMode = $state<'light' | 'dark' | undefined>(get(mode));
-let presetName = $state<keyof typeof THEME_PRESETS | 'custom'>('custom');
-let colors = $state<string[]>(['#3b82f6', '#ef4444', '#10b981', '#f59e0b']);
+const _hmrTheme = hmrRestore<{
+  currentMode: 'light' | 'dark' | undefined;
+  presetName: string;
+  colors: string[];
+}>('diagramThemeState');
+let currentMode = $state<'light' | 'dark' | undefined>(_hmrTheme?.currentMode ?? get(mode));
+let presetName = $state<keyof typeof THEME_PRESETS | 'custom'>(
+  (_hmrTheme?.presetName as keyof typeof THEME_PRESETS | 'custom') ?? 'custom'
+);
+let colors = $state<string[]>(_hmrTheme?.colors ?? ['#3b82f6', '#ef4444', '#10b981', '#f59e0b']);
+hmrPreserve('diagramThemeState', () => ({ currentMode, presetName, colors }));
 
 // Subscribe to mode-watcher's mode store to keep currentMode in sync
 if (typeof window !== 'undefined') {
@@ -81,15 +84,6 @@ export const theme = {
 // ── Theme actions ──
 
 export const themeActions = {
-  applyPreset(name: keyof typeof THEME_PRESETS) {
-    presetName = name;
-  },
-
-  setCustomColors(newColors: string[]) {
-    colors = newColors.slice(0, 8);
-    presetName = 'custom';
-  },
-
   addCustomColor(color: string) {
     if (colors.length < 8) {
       colors = [...colors, color];
@@ -97,21 +91,8 @@ export const themeActions = {
     presetName = 'custom';
   },
 
-  removeCustomColor(index: number) {
-    colors = colors.filter((_, i) => i !== index);
-    presetName = 'custom';
-  },
-
-  updateCustomColor(index: number, color: string) {
-    const newColors = [...colors];
-    newColors[index] = color;
-    colors = newColors;
-    presetName = 'custom';
-  },
-
-  reset() {
-    presetName = 'custom';
-    colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b'];
+  applyPreset(name: keyof typeof THEME_PRESETS) {
+    presetName = name;
   },
 
   generateRandomColors() {
@@ -124,6 +105,28 @@ export const themeActions = {
           .padStart(6, '0')
     );
     this.setCustomColors(randomColors);
+  },
+
+  removeCustomColor(index: number) {
+    colors = colors.filter((_, i) => i !== index);
+    presetName = 'custom';
+  },
+
+  reset() {
+    presetName = 'custom';
+    colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b'];
+  },
+
+  setCustomColors(newColors: string[]) {
+    colors = newColors.slice(0, 8);
+    presetName = 'custom';
+  },
+
+  updateCustomColor(index: number, color: string) {
+    const newColors = [...colors];
+    newColors[index] = color;
+    colors = newColors;
+    presetName = 'custom';
   }
 };
 
@@ -133,16 +136,7 @@ export const diagramColors = {
   get value() {
     const $theme = computeTheme();
     return {
-      getNodeColors: (count: number = 12) => {
-        const result: string[] = [];
-        for (let i = 0; i < Math.min(count, 12); i++) {
-          const color = $theme[`cScale${i}` as keyof ThemeColors];
-          if (typeof color === 'string') result.push(color);
-        }
-        return result;
-      },
-
-      getBorderColors: (count: number = 12) => {
+      getBorderColors: (count = 12) => {
         const result: string[] = [];
         for (let i = 0; i < Math.min(count, 12); i++) {
           const color = $theme[`cScalePeer${i}` as keyof ThemeColors];
@@ -151,14 +145,57 @@ export const diagramColors = {
         return result;
       },
 
-      getTextColors: (count: number = 12) => {
+      getFlowchartColors: () => ({
+        clusterBkg: $theme.clusterBkg,
+        clusterBorder: $theme.clusterBorder,
+        defaultLinkColor: $theme.defaultLinkColor,
+        edgeLabelBackground: $theme.edgeLabelBackground,
+        nodeBkg: $theme.nodeBkg,
+        nodeBorder: $theme.nodeBorder,
+        titleColor: $theme.titleColor
+      }),
+
+      getGanttColors: () => ({
+        activeTaskBkgColor: $theme.activeTaskBkgColor,
+        activeTaskBorderColor: $theme.activeTaskBorderColor,
+        altSectionBkgColor: $theme.altSectionBkgColor,
+        critBkgColor: $theme.critBkgColor,
+        critBorderColor: $theme.critBorderColor,
+        doneTaskBkgColor: $theme.doneTaskBkgColor,
+        gridColor: $theme.gridColor,
+        sectionBkgColor: $theme.sectionBkgColor,
+        sectionBkgColor2: $theme.sectionBkgColor2,
+        taskBkgColor: $theme.taskBkgColor,
+        taskBorderColor: $theme.taskBorderColor,
+        taskTextColor: $theme.taskTextColor,
+        todayLineColor: $theme.todayLineColor
+      }),
+
+      getNodeColors: (count = 12) => {
         const result: string[] = [];
         for (let i = 0; i < Math.min(count, 12); i++) {
-          const color = $theme[`cScaleLabel${i}` as keyof ThemeColors];
+          const color = $theme[`cScale${i}` as keyof ThemeColors];
           if (typeof color === 'string') result.push(color);
         }
         return result;
       },
+
+      getSequenceColors: () => ({
+        activationBkgColor: $theme.activationBkgColor,
+        activationBorderColor: $theme.activationBorderColor,
+        actorBkg: $theme.actorBkg,
+        actorBorder: $theme.actorBorder,
+        actorLineColor: $theme.actorLineColor,
+        actorTextColor: $theme.actorTextColor,
+        labelBoxBkgColor: $theme.labelBoxBkgColor,
+        labelBoxBorderColor: $theme.labelBoxBorderColor,
+        labelTextColor: $theme.labelTextColor,
+        noteBkgColor: $theme.noteBkgColor,
+        noteBorderColor: $theme.noteBorderColor,
+        noteTextColor: $theme.noteTextColor,
+        signalColor: $theme.signalColor,
+        signalTextColor: $theme.signalTextColor
+      }),
 
       getSurfaceColors: () => {
         const result: string[] = [];
@@ -169,48 +206,14 @@ export const diagramColors = {
         return result;
       },
 
-      getFlowchartColors: () => ({
-        nodeBkg: $theme.nodeBkg,
-        nodeBorder: $theme.nodeBorder,
-        clusterBkg: $theme.clusterBkg,
-        clusterBorder: $theme.clusterBorder,
-        defaultLinkColor: $theme.defaultLinkColor,
-        titleColor: $theme.titleColor,
-        edgeLabelBackground: $theme.edgeLabelBackground
-      }),
-
-      getSequenceColors: () => ({
-        actorBorder: $theme.actorBorder,
-        actorBkg: $theme.actorBkg,
-        actorTextColor: $theme.actorTextColor,
-        actorLineColor: $theme.actorLineColor,
-        signalColor: $theme.signalColor,
-        signalTextColor: $theme.signalTextColor,
-        labelBoxBkgColor: $theme.labelBoxBkgColor,
-        labelBoxBorderColor: $theme.labelBoxBorderColor,
-        labelTextColor: $theme.labelTextColor,
-        noteBorderColor: $theme.noteBorderColor,
-        noteBkgColor: $theme.noteBkgColor,
-        noteTextColor: $theme.noteTextColor,
-        activationBorderColor: $theme.activationBorderColor,
-        activationBkgColor: $theme.activationBkgColor
-      }),
-
-      getGanttColors: () => ({
-        sectionBkgColor: $theme.sectionBkgColor,
-        altSectionBkgColor: $theme.altSectionBkgColor,
-        sectionBkgColor2: $theme.sectionBkgColor2,
-        taskBorderColor: $theme.taskBorderColor,
-        taskBkgColor: $theme.taskBkgColor,
-        taskTextColor: $theme.taskTextColor,
-        activeTaskBorderColor: $theme.activeTaskBorderColor,
-        activeTaskBkgColor: $theme.activeTaskBkgColor,
-        gridColor: $theme.gridColor,
-        doneTaskBkgColor: $theme.doneTaskBkgColor,
-        critBorderColor: $theme.critBorderColor,
-        critBkgColor: $theme.critBkgColor,
-        todayLineColor: $theme.todayLineColor
-      })
+      getTextColors: (count = 12) => {
+        const result: string[] = [];
+        for (let i = 0; i < Math.min(count, 12); i++) {
+          const color = $theme[`cScaleLabel${i}` as keyof ThemeColors];
+          if (typeof color === 'string') result.push(color);
+        }
+        return result;
+      }
     };
   }
 };

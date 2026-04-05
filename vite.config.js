@@ -9,18 +9,6 @@ import devtoolsJson from 'vite-plugin-devtools-json';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/**
- * HMR creates state inconsistencies, so we always reload the page.
- * @type {import('vite').PluginOption} PluginOption
- */
-const alwaysFullReload = {
-  name: 'always-full-reload',
-  handleHotUpdate({ server }) {
-    server.ws.send({ type: 'full-reload' });
-    return [];
-  }
-};
-
 export default defineConfig({
   plugins: [
     tailwindcss(),
@@ -33,7 +21,6 @@ export default defineConfig({
         custom: FileSystemIconLoader('./static/icons')
       }
     }),
-    alwaysFullReload,
     devtoolsJson()
   ],
   resolve: {

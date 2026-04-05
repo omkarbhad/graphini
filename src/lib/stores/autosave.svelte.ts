@@ -5,6 +5,7 @@
  */
 
 import { workspaceStore } from './workspace.svelte';
+import { hmrRestore, hmrPreserve } from '$lib/util/hmr';
 
 class AutosaveManager {
   // Public $state properties
@@ -65,4 +66,5 @@ class AutosaveManager {
   }
 }
 
-export const autosave = new AutosaveManager();
+export const autosave: AutosaveManager = hmrRestore('autosaveInstance') ?? new AutosaveManager();
+hmrPreserve('autosaveInstance', () => autosave);

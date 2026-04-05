@@ -3,6 +3,7 @@
  * Manages tool configuration for AI chat.
  */
 import { kv } from '$lib/stores/kvStore.svelte';
+import { hmrRestore, hmrPreserve } from '$lib/util/hmr';
 
 export interface ToolConfig {
   id: string;
@@ -14,123 +15,123 @@ export interface ToolConfig {
 
 const DEFAULT_TOOLS: ToolConfig[] = [
   {
-    id: 'diagramRead',
-    label: 'Diagram Read',
+    category: 'diagram',
     description: 'Read current diagram content from the editor',
-    category: 'diagram',
-    enabled: true
+    enabled: true,
+    id: 'diagramRead',
+    label: 'Diagram Read'
   },
   {
-    id: 'diagramWrite',
-    label: 'Diagram Write',
+    category: 'diagram',
     description: 'Write or replace the entire diagram',
-    category: 'diagram',
-    enabled: true
+    enabled: true,
+    id: 'diagramWrite',
+    label: 'Diagram Write'
   },
   {
-    id: 'diagramPatch',
-    label: 'Diagram Patch',
+    category: 'diagram',
     description: 'Apply surgical edits to specific lines',
-    category: 'diagram',
-    enabled: true
+    enabled: true,
+    id: 'diagramPatch',
+    label: 'Diagram Patch'
   },
   {
-    id: 'diagramDelete',
-    label: 'Diagram Delete',
+    category: 'diagram',
     description: 'Clear the entire diagram',
-    category: 'diagram',
-    enabled: true
+    enabled: true,
+    id: 'diagramDelete',
+    label: 'Diagram Delete'
   },
   {
-    id: 'iconifier',
-    label: 'Iconifier',
-    description: 'Add or remove icons on diagram nodes',
     category: 'icons',
-    enabled: true
+    description: 'Add or remove icons on diagram nodes',
+    enabled: true,
+    id: 'iconifier',
+    label: 'Iconifier'
   },
   {
-    id: 'webSearch',
-    label: 'Web Search',
-    description: 'Search the web for information',
     category: 'search',
-    enabled: true
+    description: 'Search the web for information',
+    enabled: true,
+    id: 'webSearch',
+    label: 'Web Search'
   },
   {
-    id: 'askQuestions',
-    label: 'Ask Questions',
-    description: 'Ask clarifying questions before creating diagrams',
     category: 'interaction',
-    enabled: true
+    description: 'Ask clarifying questions before creating diagrams',
+    enabled: true,
+    id: 'askQuestions',
+    label: 'Ask Questions'
   },
   {
-    id: 'markdownRead',
-    label: 'Markdown Read',
+    category: 'diagram',
     description: 'Read content from the markdown editor',
-    category: 'diagram',
-    enabled: true
+    enabled: true,
+    id: 'markdownRead',
+    label: 'Markdown Read'
   },
   {
-    id: 'markdownWrite',
-    label: 'Markdown Write',
+    category: 'diagram',
     description: 'Write content to the markdown editor',
-    category: 'diagram',
-    enabled: true
+    enabled: true,
+    id: 'markdownWrite',
+    label: 'Markdown Write'
   },
   {
-    id: 'errorChecker',
-    label: 'Error Checker',
+    category: 'diagram',
     description: 'Validate diagram syntax and report errors',
-    category: 'diagram',
-    enabled: true
+    enabled: true,
+    id: 'errorChecker',
+    label: 'Error Checker'
   },
   {
-    id: 'autoStyler',
-    label: 'Auto Styler',
+    category: 'diagram',
     description: 'Automatically style nodes and subgraphs with harmonious colors',
-    category: 'diagram',
-    enabled: true
+    enabled: true,
+    id: 'autoStyler',
+    label: 'Auto Styler'
   },
   {
-    id: 'planner',
-    label: 'Planner',
+    category: 'intelligence',
     description: 'Decompose complex tasks into step-by-step plans',
-    category: 'intelligence',
-    enabled: true
+    enabled: true,
+    id: 'planner',
+    label: 'Planner'
   },
   {
-    id: 'actionItemExtractor',
-    label: 'Action Items',
+    category: 'intelligence',
     description: 'Extract action items, risks, KPIs, and entities from documents',
-    category: 'intelligence',
-    enabled: true
+    enabled: true,
+    id: 'actionItemExtractor',
+    label: 'Action Items'
   },
   {
-    id: 'tableAnalytics',
-    label: 'Table Analytics',
+    category: 'intelligence',
     description: 'Analyze CSV/tabular data with statistics and chart suggestions',
-    category: 'intelligence',
-    enabled: true
+    enabled: true,
+    id: 'tableAnalytics',
+    label: 'Table Analytics'
   },
   {
-    id: 'selfCritique',
-    label: 'Self Critique',
+    category: 'intelligence',
     description: 'Evaluate and improve diagrams/documents for quality',
-    category: 'intelligence',
-    enabled: true
+    enabled: true,
+    id: 'selfCritique',
+    label: 'Self Critique'
   },
   {
-    id: 'fileManager',
-    label: 'File Manager',
+    category: 'files',
     description: 'List, read, search, and manage uploaded files and attachments',
-    category: 'files',
-    enabled: true
+    enabled: true,
+    id: 'fileManager',
+    label: 'File Manager'
   },
   {
-    id: 'dataAnalyzer',
-    label: 'Data Analyzer',
-    description: 'Analyze CSV/Excel data: frequency, groupBy, filter, topN, correlations',
     category: 'files',
-    enabled: true
+    description: 'Analyze CSV/Excel data: frequency, groupBy, filter, topN, correlations',
+    enabled: true,
+    id: 'dataAnalyzer',
+    label: 'Data Analyzer'
   }
 ];
 
@@ -158,37 +159,26 @@ function saveToolsConfig(tools: ToolConfig[]) {
       toSave[t.id] = t.enabled;
     }
     kv.set('tools', STORAGE_KEY, toSave);
-  } catch {}
+  } catch {
+    /* silent */
+  }
 }
 
 // ── State ──
 
-let tools = $state<ToolConfig[]>(loadToolsConfig());
+let tools = $state<ToolConfig[]>(hmrRestore('toolsState') ?? loadToolsConfig());
+hmrPreserve('toolsState', () => tools);
 
 // ── Exported store ──
 
 export const toolsStore = {
-  get value() {
-    return tools;
-  },
-
-  toggle(toolId: string) {
-    tools = tools.map((t) => (t.id === toolId ? { ...t, enabled: !t.enabled } : t));
-    saveToolsConfig(tools);
-  },
-
-  setEnabled(toolId: string, enabled: boolean) {
-    tools = tools.map((t) => (t.id === toolId ? { ...t, enabled } : t));
+  disableAll() {
+    tools = tools.map((t) => ({ ...t, enabled: false }));
     saveToolsConfig(tools);
   },
 
   enableAll() {
     tools = tools.map((t) => ({ ...t, enabled: true }));
-    saveToolsConfig(tools);
-  },
-
-  disableAll() {
-    tools = tools.map((t) => ({ ...t, enabled: false }));
     saveToolsConfig(tools);
   },
 
@@ -199,6 +189,20 @@ export const toolsStore = {
   reset() {
     tools = [...DEFAULT_TOOLS];
     saveToolsConfig(tools);
+  },
+
+  setEnabled(toolId: string, enabled: boolean) {
+    tools = tools.map((t) => (t.id === toolId ? { ...t, enabled } : t));
+    saveToolsConfig(tools);
+  },
+
+  toggle(toolId: string) {
+    tools = tools.map((t) => (t.id === toolId ? { ...t, enabled: !t.enabled } : t));
+    saveToolsConfig(tools);
+  },
+
+  get value() {
+    return tools;
   }
 };
 

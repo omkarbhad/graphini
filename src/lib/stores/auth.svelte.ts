@@ -4,6 +4,7 @@
  */
 
 import { syncPreferencesFromServer } from '$lib/stores/panels.svelte';
+import { hmrRestore, hmrPreserve } from '$lib/util/hmr';
 
 interface AuthUser {
   id: string;
@@ -37,7 +38,9 @@ function loadCachedAuth(): { user: AuthUser | null; credits: CreditInfo | null }
       const cached = JSON.parse(raw);
       if (cached?.user) return { user: cached.user, credits: cached.credits || null };
     }
-  } catch {}
+  } catch {
+    /* localStorage unavailable */
+  }
   return { user: null, credits: null };
 }
 
@@ -49,18 +52,23 @@ function saveCachedAuth(user: AuthUser | null, credits: CreditInfo | null): void
     } else {
       localStorage.removeItem(AUTH_CACHE_KEY);
     }
-  } catch {}
+  } catch {
+    /* localStorage unavailable */
+  }
 }
 
 // Hydrate immediately from cache for instant UI
 const cached = loadCachedAuth();
 
-let state = $state<AuthState>({
-  user: cached.user,
-  credits: cached.credits,
-  loading: false,
-  initialized: cached.user !== null
-});
+const state = $state<AuthState>(
+  hmrRestore('authState') ?? {
+    user: cached.user,
+    credits: cached.credits,
+    loading: false,
+    initialized: cached.user !== null
+  }
+);
+hmrPreserve('authState', () => ({ ...state }));
 
 async function fetchMe(): Promise<void> {
   try {
@@ -72,7 +80,10 @@ async function fetchMe(): Promise<void> {
       state.credits = data.credits;
       saveCachedAuth(data.user, data.credits);
       // Sync preferences from server after auth check
-      if (state.user) syncPreferencesFromServer().catch(() => {});
+      if (state.user)
+        syncPreferencesFromServer().catch(() => {
+          /* silent */
+        });
     } else {
       state.user = null;
       state.credits = null;
@@ -92,14 +103,19 @@ async function fetchMe(): Promise<void> {
  * OAuth login — redirect to magnova-auth
  */
 function login(returnTo?: string): void {
-  const url = returnTo ? `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}` : '/api/auth/login';
+  const url = returnTo
+    ? `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`
+    : '/api/auth/login';
   window.location.href = url;
 }
 
 /**
  * Local login — email + password (sets graphini_session cookie)
  */
-async function loginLocal(email: string, password: string): Promise<{ success: boolean; error?: string }> {
+async function loginLocal(
+  email: string,
+  password: string
+): Promise<{ success: boolean; error?: string }> {
   try {
     state.loading = true;
     const res = await fetch('/api/auth/login', {
@@ -128,7 +144,11 @@ async function loginLocal(email: string, password: string): Promise<{ success: b
 /**
  * Local registration — email + password + optional display name
  */
-async function register(email: string, password: string, displayName?: string): Promise<{ success: boolean; error?: string }> {
+async function register(
+  email: string,
+  password: string,
+  displayName?: string
+): Promise<{ success: boolean; error?: string }> {
   try {
     state.loading = true;
     const res = await fetch('/api/auth/register', {
@@ -176,28 +196,28 @@ async function refreshCredits(): Promise<void> {
 }
 
 export const authStore = {
+  get credits() {
+    return state.credits;
+  },
+  init: fetchMe,
+  get isInitialized() {
+    return state.initialized;
+  },
+  get isLoading() {
+    return state.loading;
+  },
+  get isLoggedIn() {
+    return !!state.user;
+  },
+  login,
+  loginLocal,
+  logout,
+  refreshCredits,
+  register,
   get state() {
     return state;
   },
   get user() {
     return state.user;
-  },
-  get credits() {
-    return state.credits;
-  },
-  get isLoggedIn() {
-    return !!state.user;
-  },
-  get isLoading() {
-    return state.loading;
-  },
-  get isInitialized() {
-    return state.initialized;
-  },
-  init: fetchMe,
-  login,
-  loginLocal,
-  logout,
-  register,
-  refreshCredits
+  }
 };

@@ -3,6 +3,8 @@
  * Tracks diagram code changes for undo/redo and named checkpoints
  */
 
+import { hmrRestore, hmrPreserve } from '$lib/util/hmr';
+
 interface HistoryEntry {
   code: string;
   timestamp: number;
@@ -24,12 +26,15 @@ interface DiagramHistoryState {
   maxHistory: number;
 }
 
-let state = $state<DiagramHistoryState>({
-  history: [],
-  currentIndex: -1,
-  checkpoints: [],
-  maxHistory: 1000
-});
+const state = $state<DiagramHistoryState>(
+  hmrRestore('diagramHistoryState') ?? {
+    history: [],
+    currentIndex: -1,
+    checkpoints: [],
+    maxHistory: 1000
+  }
+);
+hmrPreserve('diagramHistoryState', () => ({ ...state }));
 
 function pushState(code: string, source: 'user' | 'ai' = 'user', label?: string): void {
   if (!code) return;
@@ -98,32 +103,32 @@ function clear(): void {
 }
 
 export const diagramHistory = {
-  get state() {
-    return state;
+  get canRedo() {
+    return state.currentIndex < state.history.length - 1;
   },
   get canUndo() {
     return state.currentIndex > 0;
   },
-  get canRedo() {
-    return state.currentIndex < state.history.length - 1;
-  },
-  get currentCode() {
-    return state.currentIndex >= 0 ? state.history[state.currentIndex]?.code : null;
-  },
   get checkpoints() {
     return state.checkpoints;
   },
-  get historyLength() {
-    return state.history.length;
+  clear,
+  createCheckpoint,
+  get currentCode() {
+    return state.currentIndex >= 0 ? state.history[state.currentIndex]?.code : null;
   },
   get currentIndex() {
     return state.currentIndex;
   },
-  push: pushState,
-  undo,
-  redo,
-  createCheckpoint,
-  restoreCheckpoint,
   deleteCheckpoint,
-  clear
+  get historyLength() {
+    return state.history.length;
+  },
+  push: pushState,
+  redo,
+  restoreCheckpoint,
+  get state() {
+    return state;
+  },
+  undo
 };
