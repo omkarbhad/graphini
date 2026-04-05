@@ -88,15 +88,77 @@ async function fetchMe(): Promise<void> {
   }
 }
 
+/**
+ * OAuth login — redirect to magnova-auth
+ */
 function login(returnTo?: string): void {
   const url = returnTo ? `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}` : '/api/auth/login';
   window.location.href = url;
+}
+
+/**
+ * Local login — email + password (sets graphini_session cookie)
+ */
+async function loginLocal(email: string, password: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    state.loading = true;
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (res.ok && data.user) {
+      state.user = data.user;
+      saveCachedAuth(data.user, null);
+      state.initialized = true;
+      // Fetch full user + credits
+      await fetchMe();
+      return { success: true };
+    }
+    return { success: false, error: data.error || 'Login failed' };
+  } catch {
+    return { success: false, error: 'Network error' };
+  } finally {
+    state.loading = false;
+  }
+}
+
+/**
+ * Local registration — email + password + optional display name
+ */
+async function register(email: string, password: string, displayName?: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    state.loading = true;
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email, password, displayName })
+    });
+    const data = await res.json();
+    if (res.ok && data.user) {
+      state.user = data.user;
+      saveCachedAuth(data.user, null);
+      state.initialized = true;
+      await fetchMe();
+      return { success: true };
+    }
+    return { success: false, error: data.error || 'Registration failed' };
+  } catch {
+    return { success: false, error: 'Network error' };
+  } finally {
+    state.loading = false;
+  }
 }
 
 function logout(): void {
   state.user = null;
   state.credits = null;
   saveCachedAuth(null, null);
+  // Clear local session cookie by setting expired
+  document.cookie = 'graphini_session=; Path=/; Max-Age=0';
   window.location.href = '/api/auth/logout';
 }
 
@@ -134,6 +196,8 @@ export const authStore = {
   },
   init: fetchMe,
   login,
+  loginLocal,
   logout,
+  register,
   refreshCredits
 };

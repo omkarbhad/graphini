@@ -94,20 +94,32 @@ const applyAdminOverrides = (user: User): User => {
 };
 
 /**
- * Extract the raw magnova_session cookie value.
+ * Parse all cookies from a request into a key-value map.
  */
-function extractCookieValue(request: Request): string | null {
+function parseCookies(request: Request): Record<string, string> {
   const cookieHeader = request.headers.get('Cookie');
-  if (!cookieHeader) return null;
+  if (!cookieHeader) return {};
 
-  const cookies = Object.fromEntries(
+  return Object.fromEntries(
     cookieHeader.split(';').map((c) => {
       const [key, ...rest] = c.trim().split('=');
       return [key, rest.join('=')];
     })
   );
+}
 
-  return cookies['magnova_session'] || null;
+/**
+ * Extract the raw magnova_session cookie value.
+ */
+function extractCookieValue(request: Request): string | null {
+  return parseCookies(request)['magnova_session'] || null;
+}
+
+/**
+ * Extract the graphini_session cookie value (local/dev auth).
+ */
+function extractLocalSession(request: Request): string | null {
+  return parseCookies(request)['graphini_session'] || null;
 }
 
 /**
@@ -142,34 +154,69 @@ async function extractFirebaseUid(request: Request): Promise<string | null> {
 }
 
 /**
- * Validate the current session by reading the magnova_session cookie.
- * Looks up the user by Firebase UID (does NOT upsert with empty email),
- * applies admin overrides, and caches the result for 5 minutes.
+ * Validate the current session. Tries two methods in order:
+ * 1. magnova_session cookie (Firebase UID → user lookup)
+ * 2. graphini_session cookie (signed email → user lookup, for local/dev auth)
  */
 export async function validateSession(request: Request): Promise<User | null> {
+  // Method 1: magnova-auth (Firebase UID)
   const firebaseUid = await extractFirebaseUid(request);
-  if (!firebaseUid) return null;
+  if (firebaseUid) {
+    const user = await lookupAndCacheUser('firebase', firebaseUid, (db) =>
+      db.getUserByFirebaseUid(firebaseUid)
+    );
+    if (user) return user;
+  }
 
+  // Method 2: Local session (signed email)
+  const localSession = extractLocalSession(request);
+  if (localSession) {
+    const email = await verifySignedValue(localSession);
+    if (email) {
+      const user = await lookupAndCacheUser('local', email, (db) => db.getUserByEmail(email));
+      if (user) return user;
+    }
+  }
+
+  return null;
+}
+
+async function lookupAndCacheUser(
+  method: string,
+  cacheId: string,
+  lookup: (db: ReturnType<typeof getDb>) => Promise<User | null>
+): Promise<User | null> {
   const cache = getCache();
+  const cacheKey = userCacheKeys.session(`${method}:${cacheId}`);
 
-  // Check cache first
-  const cached = await cache.get<User>(userCacheKeys.session(firebaseUid));
+  const cached = await cache.get<User>(cacheKey);
   if (cached) return cached;
 
   const db = getDb();
-
-  // Look up user by Firebase UID — do NOT upsert with empty email
-  // The user record should already exist from the login/dev-login flow
-  const user = await db.getUserByFirebaseUid(firebaseUid);
+  const user = await lookup(db);
 
   if (!user || !user.is_active) return null;
 
   const result = applyAdminOverrides(user);
-
-  // Cache for 5 minutes
-  await cache.set(userCacheKeys.session(firebaseUid), result, { ttlSeconds: 300 });
+  await cache.set(cacheKey, result, { ttlSeconds: 300 });
 
   return result;
+}
+
+/**
+ * Create a signed local session cookie for dev/local login.
+ * Signs the user's email with HMAC and sets graphini_session cookie.
+ */
+export async function createLocalSession(email: string): Promise<string> {
+  return signValue(email);
+}
+
+/**
+ * Build Set-Cookie header for local session.
+ */
+export function localSessionCookie(signedValue: string): string {
+  const maxAge = 7 * 24 * 60 * 60; // 7 days
+  return `graphini_session=${signedValue}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
 }
 
 /**
