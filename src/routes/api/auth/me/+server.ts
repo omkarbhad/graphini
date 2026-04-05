@@ -1,9 +1,13 @@
 import { validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
+import { authLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ request }) => {
+  const rl = authLimiter.check(getClientKey(request));
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
+
   try {
     const user = await validateSession(request);
     if (!user) {
@@ -32,6 +36,6 @@ export const GET: RequestHandler = async ({ request }) => {
         : null
     });
   } catch {
-    return json({ user: null, credits: null });
+    return json({ error: 'Internal server error' }, { status: 500 });
   }
 };

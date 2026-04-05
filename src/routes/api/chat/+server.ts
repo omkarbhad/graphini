@@ -2,6 +2,7 @@ import { validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { deleteFile, getFileById, getSessionFiles } from '$lib/server/file-store';
 import { stateManager } from '$lib/server/state-manager';
+import { chatLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { error, json } from '@sveltejs/kit';
 import { stepCountIs, streamText, tool } from 'ai';
@@ -2294,7 +2295,10 @@ When the user asks for architecture diagrams, create the diagram first WITHOUT i
 When the user asks for grouped/layered diagrams, use subgraphs to organize nodes logically.`;
 }
 
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async ({ request }) => {
+  const rl = chatLimiter.check(getClientKey(request));
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
+
   try {
     const db = getDb();
     const enabledModels = await db.listEnabledModels(true);
@@ -2320,6 +2324,9 @@ export const GET: RequestHandler = async () => {
 };
 
 export const POST: RequestHandler = async ({ request }) => {
+  const rl = chatLimiter.check(getClientKey(request));
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
+
   try {
     const clonedRequest = request.clone();
     const {

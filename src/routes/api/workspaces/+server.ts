@@ -1,5 +1,6 @@
 import { validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
+import { apiLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { json } from '@sveltejs/kit';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
@@ -8,6 +9,9 @@ const MAX_PAGINATION_LIMIT = 100;
 
 /** GET /api/workspaces — list user's diagram workspaces */
 export const GET: RequestHandler = async ({ request, url }) => {
+  const rl = apiLimiter.check(getClientKey(request));
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
+
   const user = await validateSession(request);
   if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -45,6 +49,9 @@ const createWorkspaceSchema = z.object({
 
 /** POST /api/workspaces — create a new diagram workspace */
 export const POST: RequestHandler = async ({ request }) => {
+  const rl = apiLimiter.check(getClientKey(request));
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
+
   const user = await validateSession(request);
   if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 

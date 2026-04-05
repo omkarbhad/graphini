@@ -1,9 +1,13 @@
 import { validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
+import { apiLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
 async function saveDocument(request: Request, id: string) {
+  const rl = apiLimiter.check(getClientKey(request));
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
+
   const user = await validateSession(request);
   if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 

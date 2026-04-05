@@ -1,6 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
+import { apiLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 
 // Python backend service URL (configure via environment variable)
 const PYTHON_BACKEND_URL = env.PYTHON_BACKEND_URL || 'http://localhost:8000';
@@ -16,6 +17,9 @@ interface DiagramGenerationRequest {
 }
 
 export const POST: RequestHandler = async ({ request }) => {
+  const rl = apiLimiter.check(getClientKey(request));
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
+
   // Check if Python backend is configured
   if (!env.PYTHON_BACKEND_URL && PYTHON_BACKEND_URL === 'http://localhost:8000') {
     console.warn('Python backend URL not configured, using default localhost');
