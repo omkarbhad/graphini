@@ -1,92 +1,16 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-  import { supabase } from '$lib/supabase';
-  import { onMount } from 'svelte';
+  import { authStore } from '$lib/stores/auth.svelte';
   import LoginIcon from '~icons/material-symbols/login-rounded';
   import LogoutIcon from '~icons/material-symbols/logout-rounded';
 
-  let user = $state<{ email?: string; name?: string; avatar_url?: string } | null>(null);
-  let loading = $state(true);
-
-  onMount(async () => {
-    try {
-      // Get initial session
-      const {
-        data: { session }
-      } = await supabase.auth.getSession();
-
-      if (session?.user) {
-        user = {
-          email: session.user.email || undefined,
-          name: session.user.user_metadata?.name || session.user.email?.split('@')[0],
-          avatar_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture
-        };
-      }
-
-      // Listen for auth changes
-      const {
-        data: { subscription }
-      } = supabase.auth.onAuthStateChange((event, session) => {
-        if (session?.user) {
-          user = {
-            email: session.user.email || undefined,
-            name: session.user.user_metadata?.name || session.user.email?.split('@')[0],
-            avatar_url:
-              session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture
-          };
-        } else {
-          user = null;
-        }
-        loading = false;
-      });
-
-      loading = false;
-
-      return () => subscription.unsubscribe();
-    } catch (error) {
-      console.error('Auth initialization error:', error);
-      loading = false;
-    }
-  });
-
-  async function signIn() {
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent'
-          }
-        }
-      });
-
-      if (error) {
-        console.error('Error signing in:', error);
-      }
-    } catch (error) {
-      console.error('Sign in error:', error);
-    }
-  }
-
-  async function signOut() {
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error('Error signing out:', error);
-      }
-    } catch (error) {
-      console.error('Sign out error:', error);
-    }
-  }
-
   function getUserInitials() {
-    if (user?.name) {
-      return user.name
+    const user = authStore.user;
+    if (user?.display_name) {
+      return user.display_name
         .split(' ')
-        .map((n) => n[0])
+        .map((n: string) => n[0])
         .join('')
         .toUpperCase()
         .slice(0, 2);
@@ -96,11 +20,20 @@
     }
     return 'U';
   }
+
+  function signIn() {
+    // Login UI is handled by the application's login modal/page
+    window.location.href = '/login';
+  }
+
+  async function signOut() {
+    await authStore.logout();
+  }
 </script>
 
-{#if loading}
+{#if authStore.isLoading && !authStore.isInitialized}
   <div class="h-7 w-7 animate-pulse rounded-full bg-muted"></div>
-{:else if user}
+{:else if authStore.user}
   <DropdownMenu.Root>
     <DropdownMenu.Trigger asChild let:builder>
       <Button
@@ -108,11 +41,11 @@
         size="icon"
         class="relative h-7 w-7 overflow-hidden rounded-full border border-border hover:bg-accent/50"
         builders={[builder]}
-        title={user.name || user.email}>
-        {#if user.avatar_url}
+        title={authStore.user.display_name || authStore.user.email}>
+        {#if authStore.user.avatar_url}
           <img
-            src={user.avatar_url}
-            alt={user.name || 'User avatar'}
+            src={authStore.user.avatar_url}
+            alt={authStore.user.display_name || 'User avatar'}
             class="h-full w-full object-cover" />
         {:else}
           <div
@@ -124,10 +57,10 @@
     </DropdownMenu.Trigger>
     <DropdownMenu.Content class="w-56" align="end">
       <DropdownMenu.Label class="px-2 py-1.5 text-sm font-semibold">
-        {user.name || 'User'}
+        {authStore.user.display_name || 'User'}
       </DropdownMenu.Label>
       <DropdownMenu.Label class="px-2 py-1 text-xs text-muted-foreground">
-        {user.email}
+        {authStore.user.email}
       </DropdownMenu.Label>
       <DropdownMenu.Separator />
       <DropdownMenu.Item class="cursor-pointer" onclick={signOut}>
@@ -142,7 +75,7 @@
     size="icon"
     onclick={signIn}
     class="relative h-7 w-7 rounded-full border border-border hover:bg-accent/50"
-    title="Sign in with Google">
+    title="Sign in">
     <LoginIcon class="h-3.5 w-3.5" />
   </Button>
 {/if}
