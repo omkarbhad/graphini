@@ -1,7 +1,20 @@
 import { validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { json } from '@sveltejs/kit';
+import { z } from 'zod';
 import type { RequestHandler } from './$types';
+
+/** Schema for workspace metadata updates */
+const patchWorkspaceSchema = z.object({
+  title: z.string().max(200, 'Title must be 200 characters or less').optional(),
+  description: z
+    .string()
+    .max(2000, 'Description must be 2000 characters or less')
+    .optional()
+    .nullable(),
+  is_starred: z.boolean().optional(),
+  tags: z.array(z.string()).optional()
+});
 
 /** GET /api/workspaces/[id] — get full workspace with document */
 export const GET: RequestHandler = async ({ request, params }) => {
@@ -28,13 +41,16 @@ export const PATCH: RequestHandler = async ({ request, params }) => {
     return json({ error: 'Not found' }, { status: 404 });
   }
 
-  const body = await request.json();
-  const updated = await db.updateDiagramWorkspace(params.id, {
-    title: body.title,
-    description: body.description,
-    is_starred: body.is_starred,
-    tags: body.tags
-  });
+  const body = await request.json().catch(() => ({}));
+  const parsed = patchWorkspaceSchema.safeParse(body);
+  if (!parsed.success) {
+    return json(
+      { error: 'Invalid input', details: parsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
+  }
+
+  const updated = await db.updateDiagramWorkspace(params.id, parsed.data);
 
   return json(updated);
 };
