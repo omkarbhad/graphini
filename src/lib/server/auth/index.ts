@@ -154,11 +154,28 @@ async function extractFirebaseUid(request: Request): Promise<string | null> {
 }
 
 /**
- * Validate the current session. Tries two methods in order:
+ * Validate the current session. Tries methods in order:
+ * 0. DEV_BYPASS_AUTH — auto-login as first user or by email (local dev only)
  * 1. magnova_session cookie (Firebase UID → user lookup)
  * 2. graphini_session cookie (signed email → user lookup, for local/dev auth)
  */
 export async function validateSession(request: Request): Promise<User | null> {
+  // Method 0: Dev bypass — skip all auth, auto-login
+  const bypassEmail = env.DEV_BYPASS_AUTH;
+  if (bypassEmail) {
+    const db = getDb();
+    let user: User | null = null;
+    if (bypassEmail === 'true') {
+      // Auto-login as first user in DB
+      const users = await db.listUsers({ limit: 1, offset: 0 });
+      user = users[0] || null;
+    } else {
+      // Auto-login as specific email
+      user = await db.getUserByEmail(bypassEmail);
+    }
+    if (user) return applyAdminOverrides(user);
+  }
+
   // Method 1: magnova-auth (Firebase UID)
   const firebaseUid = await extractFirebaseUid(request);
   if (firebaseUid) {
