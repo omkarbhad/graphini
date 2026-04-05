@@ -1,32 +1,27 @@
-import { extractToken, validateSession } from '$lib/server/auth';
+import { validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ request }) => {
   try {
-    const token = extractToken(request);
-    if (!token) {
-      return json({ user: null, credits: null });
-    }
-
-    const result = await validateSession(token);
-    if (!result) {
-      return json({ user: null, credits: null });
+    const user = await validateSession(request);
+    if (!user) {
+      return json({ user: null, credits: null }, { status: 401 });
     }
 
     // Get credit balance
     const db = getDb();
-    const credits = await db.getCreditBalance(result.user.id);
+    const credits = await db.getCreditBalance(user.id);
 
     return json({
       user: {
-        id: result.user.id,
-        email: result.user.email,
-        display_name: result.user.display_name,
-        avatar_url: result.user.avatar_url,
-        role: result.user.role,
-        created_at: result.user.created_at
+        id: user.id,
+        email: user.email,
+        display_name: user.display_name,
+        avatar_url: user.avatar_url,
+        role: user.role,
+        created_at: user.created_at
       },
       credits: credits
         ? {
