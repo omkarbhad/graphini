@@ -1,14 +1,23 @@
 import { json, redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { createLocalSession, getAuthUrl, localSessionCookie } from '$lib/server/auth';
+import { createLocalSession, getAuthUrl, localSessionCookie, validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { authLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 
 /**
- * GET /api/auth/login — redirect to magnova-auth for OAuth login
+ * GET /api/auth/login — redirect to magnova-auth for OAuth login.
+ * If DEV_BYPASS_AUTH is active and user is already authenticated,
+ * redirect back to the app instead of magnova-auth.
  */
-export const GET: RequestHandler = async ({ url }) => {
-  const returnTo = url.searchParams.get('returnTo') || undefined;
+export const GET: RequestHandler = async ({ request, url }) => {
+  const returnTo = url.searchParams.get('returnTo') || '/';
+
+  // If dev bypass is active, user is already "logged in" — just go back
+  const user = await validateSession(request);
+  if (user) {
+    throw redirect(302, returnTo);
+  }
+
   throw redirect(302, getAuthUrl(returnTo));
 };
 

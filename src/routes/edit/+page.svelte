@@ -301,7 +301,8 @@
     };
   };
 
-  // Auth guard: wait for initialization before deciding to redirect
+  // Auth guard: redirect to login only after fetchMe() has fully completed
+  // and confirmed no user. No-op when DEV_BYPASS_AUTH is active (server returns user).
   $effect(() => {
     if (authStore.isInitialized && !authStore.isLoading && !authStore.isLoggedIn) {
       authStore.login(window.location.href);
