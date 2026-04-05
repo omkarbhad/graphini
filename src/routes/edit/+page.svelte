@@ -10,7 +10,6 @@
   } from '$/util/state';
   import { logEvent } from '$/util/stats';
   import { initHandler, parseCanvasURL } from '$/util/util';
-  import AuthModal from '$lib/components/AuthModal.svelte';
   import ColorPanel from '$lib/components/canvas/ColorPanel.svelte';
   import ElementToolbar from '$lib/components/canvas/ElementToolbar.svelte';
   import IconPanel from '$lib/components/canvas/IconPanel.svelte';
@@ -24,13 +23,12 @@
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import Chat from '$lib/features/chat/components/Chat.simple.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { autosaveStore } from '$lib/stores/autosave';
+  import { autosave } from '$lib/stores/autosave.svelte';
   import { conversationsStore } from '$lib/stores/conversations.svelte';
-  import { fileAuxStore, fileSystemStore, type UserFile } from '$lib/stores/fileSystem';
-  import { kvDelete, kvGet, kvOnSyncChange, kvSet, kvSyncStatus } from '$lib/stores/kvStore';
-  import { panelOrderStore, panelStore, type PanelId } from '$lib/stores/panels.svelte';
+  import { fileSystem, type UserFile } from '$lib/stores/fileSystem.svelte';
+  import { kv } from '$lib/stores/kvStore.svelte';
+  import { panels, type PanelId } from '$lib/stores/panels.svelte';
   import { cn } from '$lib/utils';
-  // panelOrderStore: dynamic panel order (drag-to-reorder), panelStore: panel config (visibility, width)
   import {
     Circle,
     Code2,
@@ -155,7 +153,7 @@
 
   function loadUIState<T>(key: string, fallback: T): T {
     try {
-      const v = kvGet<T>('ui', `graphini_ui_${key}`);
+      const v = kv.get<T>('ui', `graphini_ui_${key}`);
       if (v !== null && v !== undefined) {
         const parsed = v;
         // Validate parsed value matches expected type of fallback
@@ -166,14 +164,14 @@
     } catch {
       // Remove corrupted data
       try {
-        kvDelete('ui', `graphini_ui_${key}`);
+        kv.delete('ui', `graphini_ui_${key}`);
       } catch {}
     }
     return fallback;
   }
   function saveUIState(key: string, value: any) {
     try {
-      kvSet('ui', `graphini_ui_${key}`, value);
+      kv.set('ui', `graphini_ui_${key}`, value);
     } catch {}
   }
 
@@ -209,13 +207,13 @@
       dragOverPanelId = null;
       return;
     }
-    const order = [...get(panelOrderStore)];
+    const order = [...panels.order];
     const fromIdx = order.indexOf(dragPanelId);
     const toIdx = order.indexOf(targetId);
     if (fromIdx >= 0 && toIdx >= 0) {
       order.splice(fromIdx, 1);
       order.splice(toIdx, 0, dragPanelId);
-      panelOrderStore.reorder(order);
+      panels.reorder(order);
     }
     dragPanelId = null;
     dragOverPanelId = null;
@@ -227,7 +225,6 @@
 
   // Modal states
   let isSettingsModalOpen = $state(false);
-  let isAuthModalOpen = $state(false);
   let isRefillGemsOpen = $state(false);
   let isShortcutsModalOpen = $state(false);
 
@@ -237,9 +234,8 @@
 
   // Panel resize helper
   function handlePanelResize(panelId: PanelId, delta: number) {
-    const panels = get(panelStore);
-    const currentWidth = panels[panelId].width;
-    panelStore.setWidth(panelId, currentWidth + delta);
+    const currentWidth = panels.panels[panelId].width;
+    panels.setWidth(panelId, currentWidth + delta);
   }
 
   // Toolbar state
@@ -297,21 +293,27 @@
   };
 
   onMount(() => {
+    // Redirect to auth if not logged in
+    if (!authStore.isLoggedIn && authStore.isInitialized) {
+      authStore.login(window.location.href);
+      return;
+    }
+
     setupPanZoomObserver();
-    autosaveStore.init();
+    autosave.init();
 
     const urlParts = parseCanvasURL();
 
-    const savedFile = fileSystemStore.loadCurrentFile();
+    const savedFile = fileSystem.loadCurrentFile();
     if (savedFile && !urlParts.fileId) {
-      fileSystemStore.setCurrentFile(savedFile);
-      autosaveStore.setCurrentFile(savedFile);
-      if (savedFile.content) updateCodeStore({ code: savedFile.content });
+      fileSystem.setCurrentFile(savedFile);
+      autosave.setCurrentFile(savedFile);
+      if (savedFile.mermaid) updateCodeStore({ code: savedFile.mermaid });
       autoFileCreated = true;
       // Push current file to URL
       pushCanvasURL({ folderId: savedFile.parentId, fileId: savedFile.id });
     }
-    fileSystemStore.loadUserFiles();
+    fileSystem.loadUserFiles();
 
     const setup = async () => {
       await initHandler();
@@ -319,12 +321,12 @@
 
       // If URL has a file ID, load that file from the file system store
       if (urlParts.fileId) {
-        await fileSystemStore.loadUserFiles();
-        const file = fileSystemStore.getFileById(urlParts.fileId);
+        await fileSystem.loadUserFiles();
+        const file = fileSystem.getFileById(urlParts.fileId);
         if (file) {
-          fileSystemStore.setCurrentFile(file);
-          autosaveStore.setCurrentFile(file);
-          if (file.content) updateCodeStore({ code: file.content, updateDiagram: true });
+          fileSystem.setCurrentFile(file);
+          autosave.setCurrentFile(file);
+          if (file.mermaid) updateCodeStore({ code: file.mermaid, updateDiagram: true });
           autoFileCreated = true;
         }
       }
@@ -379,7 +381,7 @@
     window.addEventListener('conversation-created', handleConversationCreated as EventListener);
 
     const handleOpenAuthModal = () => {
-      isAuthModalOpen = true;
+      authStore.login(window.location.href);
     };
     window.addEventListener('open-auth-modal', handleOpenAuthModal);
     const handleOpenRefillGems = () => {
@@ -389,12 +391,11 @@
 
     if (!autoFileCreated) {
       const randomName = `Diagram-${Date.now().toString(36).slice(-4).toUpperCase()}.mmd`;
-      fileSystemStore.createFile(randomName).then((file) => {
-        if (file) {
-          autosaveStore.setCurrentFile(file);
-          autoFileCreated = true;
-        }
-      });
+      const file = fileSystem.createFile(randomName);
+      if (file) {
+        autosave.setCurrentFile(file);
+        autoFileCreated = true;
+      }
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -535,7 +536,7 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const currentFile = get(fileSystemStore).currentFile;
+      const currentFile = fileSystem.currentFile;
       a.download = `${currentFile?.name?.replace(/\.[^.]+$/, '') || 'diagram'}.svg`;
       a.click();
       URL.revokeObjectURL(url);
@@ -618,14 +619,13 @@
   let autoFileCreated = false;
   async function ensureFileExists() {
     if (autoFileCreated) return;
-    const fsState = $fileSystemStore;
-    if (!fsState.currentFile) {
+    if (!fileSystem.currentFile) {
       autoFileCreated = true;
       const editorState = get(inputStateStore);
-      const file = await fileSystemStore.createFile('Untitled.mmd');
-      if (editorState.code) await fileSystemStore.updateFile(file.id, editorState.code);
-      autosaveStore.setCurrentFile(file);
-      autosaveStore.markChanged();
+      const file = fileSystem.createFile('Untitled.mmd');
+      if (editorState.code) fileSystem.updateFile(file.id, { mermaid: editorState.code });
+      autosave.setCurrentFile(file);
+      autosave.markChanged();
       pushCanvasURL({ fileId: file.id, folderId: file.parentId });
     }
   }
@@ -652,29 +652,29 @@
     const syncInterval = setInterval(() => {
       syncTick++;
     }, 10000);
-    const unsub = kvOnSyncChange(() => {
-      const s = kvSyncStatus();
-      syncLastSaved = s.lastSavedAt;
-      syncHasPending = s.hasPending;
-    });
     return () => {
       clearInterval(syncInterval);
-      unsub();
     };
   });
 
+  // Sync status is reactive via kv.$state properties
   $effect(() => {
-    const name = $fileSystemStore.currentFile?.name || 'Untitled.mmd';
+    syncLastSaved = kv.lastSavedAt;
+    syncHasPending = kv.hasPending;
+  });
+
+  $effect(() => {
+    const name = fileSystem.currentFile?.name || 'Untitled.mmd';
     document.title = `${name.replace('.mmd', '')} — Graphini`;
   });
 
   function startNavbarRename() {
-    navbarRenameValue = ($fileSystemStore.currentFile?.name || '').replace('.mmd', '');
+    navbarRenameValue = (fileSystem.currentFile?.name || '').replace('.mmd', '');
     isRenamingInNavbar = true;
   }
 
   async function saveNavbarRename() {
-    const currentFile = $fileSystemStore.currentFile;
+    const currentFile = fileSystem.currentFile;
     if (!currentFile || !navbarRenameValue.trim()) {
       isRenamingInNavbar = false;
       return;
@@ -682,44 +682,41 @@
     const newName = navbarRenameValue.trim().endsWith('.mmd')
       ? navbarRenameValue.trim()
       : navbarRenameValue.trim() + '.mmd';
-    await fileSystemStore.renameFile(currentFile.id, newName);
+    await fileSystem.renameFile(currentFile.id, newName);
     isRenamingInNavbar = false;
   }
 
   const handleFileOpen = async (file: UserFile) => {
-    const currentFile = $fileSystemStore.currentFile;
+    const currentFile = fileSystem.currentFile;
     if (currentFile && currentFile.id !== file.id) {
       // Save current file's mermaid code
       const state = get(inputStateStore);
       const currentCode = state.code || '';
-      if (currentCode || currentFile.content)
-        await fileSystemStore.updateFile(currentFile.id, currentCode);
-      // Save current UI state to aux
-      fileAuxStore.save(currentFile.id, {
-        uiState: {
-          activeTool,
-          currentLayout,
-          isGridVisible,
-          isRoughMode,
-          zoomLevel
-        }
+      if (currentCode || currentFile.mermaid)
+        fileSystem.updateFile(currentFile.id, { mermaid: currentCode });
+      // Save current UI state to kv
+      kv.set('ui', `file_uistate_${currentFile.id}`, {
+        activeTool,
+        currentLayout,
+        isGridVisible,
+        isRoughMode,
+        zoomLevel
       });
     }
     // Load new file's code
-    updateCodeStore({ code: file.content || '', updateDiagram: true });
-    fileSystemStore.setCurrentFile(file);
-    autosaveStore.setCurrentFile(file);
+    updateCodeStore({ code: file.mermaid || '', updateDiagram: true });
+    fileSystem.setCurrentFile(file);
+    autosave.setCurrentFile(file);
     autoFileCreated = true;
     pushCanvasURL({ fileId: file.id, folderId: file.parentId });
-    // Restore UI state from aux
-    const aux = fileAuxStore.load(file.id);
-    if (aux.uiState && Object.keys(aux.uiState).length > 0) {
-      const ui = aux.uiState as Record<string, any>;
-      if (ui.activeTool) activeTool = ui.activeTool;
-      if (ui.currentLayout) currentLayout = ui.currentLayout;
-      if (typeof ui.isGridVisible === 'boolean') isGridVisible = ui.isGridVisible;
-      if (typeof ui.isRoughMode === 'boolean') isRoughMode = ui.isRoughMode;
-      if (typeof ui.zoomLevel === 'number') zoomLevel = ui.zoomLevel;
+    // Restore UI state from kv
+    const savedUiState = kv.get<Record<string, any>>('ui', `file_uistate_${file.id}`);
+    if (savedUiState && Object.keys(savedUiState).length > 0) {
+      if (savedUiState.activeTool) activeTool = savedUiState.activeTool;
+      if (savedUiState.currentLayout) currentLayout = savedUiState.currentLayout;
+      if (typeof savedUiState.isGridVisible === 'boolean') isGridVisible = savedUiState.isGridVisible;
+      if (typeof savedUiState.isRoughMode === 'boolean') isRoughMode = savedUiState.isRoughMode;
+      if (typeof savedUiState.zoomLevel === 'number') zoomLevel = savedUiState.zoomLevel;
     }
   };
 </script>
@@ -752,7 +749,7 @@
             onclick={() => startNavbarRename()}
             title="Click to rename">
             <span class="max-w-[200px] truncate"
-              >{$fileSystemStore.currentFile?.name || 'Untitled.mmd'}</span>
+              >{fileSystem.currentFile?.name || 'Untitled.mmd'}</span>
             <Pencil
               class="size-3 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
           </button>
@@ -766,11 +763,11 @@
 
     <!-- Center: Panel toggle buttons (draggable to reorder) -->
     <div class="flex items-center gap-0.5 rounded-lg border border-border/30 bg-muted/20 p-0.5">
-      {#each $panelOrderStore as panelId (panelId)}
+      {#each panels.order as panelId (panelId)}
         {@const Icon = panelIcons[panelId]}
-        {@const panels = $panelStore}
-        {@const isActive = panels[panelId].visible}
-        {@const label = panels[panelId].label}
+        {@const panelConfig = panels.panels}
+        {@const isActive = panelConfig[panelId].visible}
+        {@const label = panelConfig[panelId].label}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="flex items-center rounded-md transition-all duration-150
@@ -788,7 +785,7 @@
               ? 'bg-background text-foreground shadow-sm'
               : 'text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground'}"
             title="{label} (drag to reorder)"
-            onclick={() => panelStore.toggle(panelId)}>
+            onclick={() => panels.toggle(panelId)}>
             <Icon class="size-3.5" />
             <span class="hidden md:inline">{label}</span>
           </button>
@@ -826,7 +823,7 @@
           : 'Sign in to view gems'}
         onclick={() => {
           if (authStore.isLoggedIn) isRefillGemsOpen = true;
-          else isAuthModalOpen = true;
+          else authStore.login(window.location.href);
         }}>
         <Gem
           class="size-3.5 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-12" />
@@ -875,9 +872,7 @@
           type="button"
           class="flex size-8 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground ring-1 ring-border/50 transition-colors hover:bg-muted/80"
           title="Sign in"
-          onclick={() => {
-            isAuthModalOpen = true;
-          }}>
+          onclick={() => authStore.login(window.location.href)}>
           <UserCircle class="size-4" />
         </button>
       {/if}
@@ -886,12 +881,12 @@
 
   <!-- ═══ MAIN CONTENT: DYNAMIC PANEL LAYOUT ═══ -->
   <div class="flex flex-1 overflow-hidden" role="main">
-    {#each $panelOrderStore as panelId, idx (panelId)}
-      {#if $panelStore[panelId].visible}
+    {#each panels.order as panelId, idx (panelId)}
+      {#if panels.panels[panelId].visible}
         {#if panelId === 'files'}
           <div
             class="relative flex-shrink-0 overflow-hidden border-r border-border/30"
-            style="width: {$panelStore.files.width}px; min-width: {$panelStore.files.minWidth}px;">
+            style="width: {panels.panels.files.width}px; min-width: {panels.panels.files.minWidth}px;">
             <PrimarySidebar onFileOpen={handleFileOpen} />
             <PanelResizeHandle
               position="right"
@@ -1174,9 +1169,9 @@
         {:else if panelId === 'document'}
           <div
             class="relative min-w-0 overflow-hidden border-l border-border/30"
-            style="{$panelStore.canvas.visible
-              ? `width: ${$panelStore.document.width}px;`
-              : ''} min-width: {$panelStore.document.minWidth}px; flex: {!$panelStore.canvas.visible
+            style="{panels.panels.canvas.visible
+              ? `width: ${panels.panels.document.width}px;`
+              : ''} min-width: {panels.panels.document.minWidth}px; flex: {!panels.panels.canvas.visible
               ? '1 1 0%'
               : '0 0 auto'};">
             <PanelResizeHandle
@@ -1187,9 +1182,9 @@
         {:else if panelId === 'code'}
           <div
             class="relative min-w-0 overflow-hidden border-l border-border/30"
-            style="{$panelStore.canvas.visible
-              ? `width: ${$panelStore.code.width}px;`
-              : ''} min-width: {$panelStore.code.minWidth}px; flex: {!$panelStore.canvas.visible
+            style="{panels.panels.canvas.visible
+              ? `width: ${panels.panels.code.width}px;`
+              : ''} min-width: {panels.panels.code.minWidth}px; flex: {!panels.panels.canvas.visible
               ? '1 1 0%'
               : '0 0 auto'};">
             <PanelResizeHandle
@@ -1223,7 +1218,7 @@
                   onUpdate={(code) => {
                     updateCodeStore({ code });
                     ensureFileExists();
-                    autosaveStore.markChanged();
+                    autosave.markChanged();
                   }}
                   isMobile={width < 768}
                   sendChatMessage={handleSendChatMessage} />
@@ -1233,9 +1228,9 @@
         {:else if panelId === 'chat'}
           <div
             class="relative min-w-0 overflow-hidden border-l border-border/30"
-            style="{$panelStore.canvas.visible
-              ? `width: ${$panelStore.chat.width}px;`
-              : ''} min-width: {$panelStore.chat.minWidth}px; flex: {!$panelStore.canvas.visible
+            style="{panels.panels.canvas.visible
+              ? `width: ${panels.panels.chat.width}px;`
+              : ''} min-width: {panels.panels.chat.minWidth}px; flex: {!panels.panels.canvas.visible
               ? '1 1 0%'
               : '0 0 auto'};">
             <PanelResizeHandle
@@ -1259,9 +1254,7 @@
 </div>
 
 <!-- Modals -->
-<SettingsModal bind:open={isSettingsModalOpen} onOpenChange={(v) => (isSettingsModalOpen = v)} />
-<AuthModal open={isAuthModalOpen} onClose={() => (isAuthModalOpen = false)} />
-<RefillGemsModal open={isRefillGemsOpen} onClose={() => (isRefillGemsOpen = false)} />
+<SettingsModal bind:open={isSettingsModalOpen} onOpenChange={(v) => (isSettingsModalOpen = v)} /><RefillGemsModal open={isRefillGemsOpen} onClose={() => (isRefillGemsOpen = false)} />
 
 <!-- Keyboard Shortcuts Modal -->
 {#if isShortcutsModalOpen}
