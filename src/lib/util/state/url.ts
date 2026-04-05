@@ -9,8 +9,11 @@ import { replaceState } from '$app/navigation';
 import { derived } from 'svelte/store';
 import { env } from '../env';
 import { pakoSerde } from '../serialization/serde';
-import { MCBaseURL } from '../util';
 import { stateStore } from './state';
+
+const MCBaseURL = env.isEnabledMermaidChartLinks
+  ? 'https://mermaidchart.com'
+  : 'https://example.com';
 
 export const urlsStore = derived([stateStore], ([{ code, serialized }]) => {
   const { krokiRendererUrl, rendererUrl } = env;

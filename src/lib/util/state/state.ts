@@ -9,7 +9,17 @@ import {
 } from '../error/errorHandling';
 import { localStorage, persist } from './persist';
 import { deserializeState, serializeState } from '../serialization/serde';
-import { errorDebug, formatJSON } from '../util';
+// Inlined to break circular dependency: state.ts → util.ts → url.ts → state.ts
+const formatJSON = (data: unknown): string => JSON.stringify(data, undefined, 2);
+let _debugCount = 0;
+const errorDebug = (limit = 1000) => {
+  _debugCount += 1;
+  if (_debugCount > limit) {
+    console.log(_debugCount, limit);
+    // eslint-disable-next-line no-debugger
+    debugger;
+  }
+};
 
 export const defaultState: State = {
   code: '',
