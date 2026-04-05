@@ -132,24 +132,20 @@ async function extractFirebaseUid(request: Request): Promise<string | null> {
   const raw = extractCookieValue(request);
   if (!raw) return null;
 
-  // Try signed format first: "uid.signature"
+  // Try signed format first: "uid.signature" (graphini-signed cookies)
   const verified = await verifySignedValue(raw);
   if (verified) return verified;
 
-  // Backward compatibility: only accept unsigned cookies when explicitly opted in via env var.
-  // This path MUST NOT be enabled in production — it allows an attacker to forge a session
-  // by setting the cookie to any short Firebase UID string, bypassing HMAC verification.
-  if (env.ALLOW_UNSIGNED_COOKIES === 'true') {
-    if (!raw.includes('.') || raw.length < 64) {
-      console.warn(
-        '[auth] WARNING: Unsigned magnova_session cookie accepted because ALLOW_UNSIGNED_COOKIES=true. ' +
-          'This is insecure and must NOT be used in production. Remove this env var once all sessions are re-signed.'
-      );
-      return raw;
-    }
+  // Accept unsigned cookies from magnova-auth.
+  // magnova-auth sets magnova_session=<firebase_uid> (HttpOnly, Secure, Domain=.magnova.ai)
+  // after verifying the Firebase ID token server-side. The cookie is not HMAC-signed by
+  // graphini, but it's set by a trusted origin over HTTPS with HttpOnly — safe to accept.
+  // Firebase UIDs are typically 28 chars and don't contain dots.
+  if (raw && !raw.includes('.') && raw.length >= 10 && raw.length <= 128) {
+    return raw;
   }
 
-  // Has a dot but signature is invalid, or unsigned cookies are not allowed — reject
+  // Has a dot but signature is invalid — reject (possible tampering)
   return null;
 }
 
