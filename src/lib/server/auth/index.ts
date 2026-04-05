@@ -23,7 +23,14 @@ const ADMIN_EMAIL_OVERRIDES = (env.ADMIN_EMAIL_OVERRIDES || '')
 function getCookieSecret(): string {
   const secret = env.COOKIE_SECRET;
   if (!secret) {
-    console.warn('[auth] COOKIE_SECRET not set — using insecure dev default. Set it in production!');
+    if (env.NODE_ENV === 'production') {
+      throw new Error(
+        '[auth] COOKIE_SECRET must be set in production. Refusing to start with an insecure default.'
+      );
+    }
+    console.warn(
+      '[auth] COOKIE_SECRET not set — using insecure dev default. Set it in production!'
+    );
     return 'graphini-dev-secret-do-not-use-in-production';
   }
   return secret;
@@ -117,16 +124,20 @@ async function extractFirebaseUid(request: Request): Promise<string | null> {
   const verified = await verifySignedValue(raw);
   if (verified) return verified;
 
-  // Backward compatibility: accept unsigned cookies but warn
-  // This allows existing sessions to keep working until they rotate
-  if (!raw.includes('.') || raw.length < 64) {
-    console.warn(
-      '[auth] Unsigned magnova_session cookie detected. Sessions should be signed with COOKIE_SECRET.'
-    );
-    return raw;
+  // Backward compatibility: only accept unsigned cookies when explicitly opted in via env var.
+  // This path MUST NOT be enabled in production — it allows an attacker to forge a session
+  // by setting the cookie to any short Firebase UID string, bypassing HMAC verification.
+  if (env.ALLOW_UNSIGNED_COOKIES === 'true') {
+    if (!raw.includes('.') || raw.length < 64) {
+      console.warn(
+        '[auth] WARNING: Unsigned magnova_session cookie accepted because ALLOW_UNSIGNED_COOKIES=true. ' +
+          'This is insecure and must NOT be used in production. Remove this env var once all sessions are re-signed.'
+      );
+      return raw;
+    }
   }
 
-  // Has a dot but signature is invalid — reject
+  // Has a dot but signature is invalid, or unsigned cookies are not allowed — reject
   return null;
 }
 
