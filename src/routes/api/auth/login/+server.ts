@@ -1,6 +1,11 @@
 import { json, redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { createLocalSession, getAuthUrl, localSessionCookie, validateSession } from '$lib/server/auth';
+import {
+  createLocalSession,
+  getAuthUrl,
+  localSessionCookie,
+  validateSession
+} from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { authLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 
@@ -18,7 +23,7 @@ export const GET: RequestHandler = async ({ request, url }) => {
     throw redirect(302, returnTo);
   }
 
-  throw redirect(302, getAuthUrl(returnTo));
+  throw redirect(302, getAuthUrl(returnTo, url));
 };
 
 /**
@@ -43,12 +48,15 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // Verify password
     if (!user.password_hash) {
-      return json({ error: 'This account uses OAuth login. Use Sign in with Google.' }, { status: 401 });
+      return json(
+        { error: 'This account uses OAuth login. Use Sign in with Google.' },
+        { status: 401 }
+      );
     }
 
     const { scrypt, timingSafeEqual } = await import('node:crypto');
     const valid = await new Promise<boolean>((resolve) => {
-      const [hash, salt] = user.password_hash!.split(':');
+      const [hash, salt] = (user.password_hash ?? '').split(':');
       scrypt(password, salt, 64, (err, derived) => {
         if (err) return resolve(false);
         resolve(timingSafeEqual(Buffer.from(hash, 'hex'), derived));

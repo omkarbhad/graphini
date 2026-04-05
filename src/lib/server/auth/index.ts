@@ -261,12 +261,21 @@ export function localSessionCookie(signedValue: string): string {
 /**
  * Get the magnova-auth login URL for graphini-branded login page.
  * magnova-auth reads `?redirect=` to know where to send user after auth.
+ * The redirect must be an absolute URL — relative paths resolve against
+ * auth.magnova.ai, not graphini.magnova.ai.
  */
-export function getAuthUrl(returnTo?: string): string {
+export function getAuthUrl(returnTo?: string, requestUrl?: URL): string {
   const baseUrl = env.MAGNOVA_AUTH_URL || 'https://auth.magnova.ai';
   const loginUrl = `${baseUrl}/graphini`;
   if (returnTo) {
-    return `${loginUrl}?redirect=${encodeURIComponent(returnTo)}`;
+    // Ensure redirect is absolute so magnova-auth sends the user back to graphini
+    const absoluteRedirect =
+      returnTo.startsWith('http://') || returnTo.startsWith('https://')
+        ? returnTo
+        : requestUrl
+          ? `${requestUrl.origin}${returnTo}`
+          : returnTo;
+    return `${loginUrl}?redirect=${encodeURIComponent(absoluteRedirect)}`;
   }
   return loginUrl;
 }
