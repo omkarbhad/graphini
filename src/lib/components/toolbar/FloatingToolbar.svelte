@@ -8,7 +8,7 @@
   import UserLogin from '$lib/components/UserLoginCircle.svelte';
   import { removeIconStylesFromSvg } from '$lib/features/diagram/mermaid';
   import { injectAWSIcons } from '$lib/features/icons/iconInjector';
-  import { documentMarkdownStore } from '$lib/stores/documentStore';
+  import { documentMarkdownStore } from '$lib/stores/documentStore.svelte';
   import {
     ChevronDown,
     Download,
@@ -171,7 +171,7 @@
   };
 
   const downloadMarkdown = () => {
-    const md = get(documentMarkdownStore);
+    const md = documentMarkdownStore.value;
     if (!md?.trim()) return;
     downloadFile('document.md', md, 'text/markdown');
     logEvent('download', { type: 'markdown' });

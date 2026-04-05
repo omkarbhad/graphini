@@ -16,12 +16,12 @@
   import { Response } from '$lib/features/chat/components/ai-elements/response';
   import { parse as mermaidParse } from '$lib/features/diagram/mermaid';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { documentMarkdownStore } from '$lib/stores/documentStore';
+  import { documentMarkdownStore } from '$lib/stores/documentStore.svelte';
   import { workspaceStore } from '$lib/stores/workspace.svelte';
   import { kv } from '$lib/stores/kvStore.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
   // sessionFilesStore removed — workspace handles state
-  import { toolsStore } from '$lib/stores/toolsStore';
+  import { toolsStore } from '$lib/stores/toolsStore.svelte';
   import { svgIdToNodeName } from '$lib/util/diagram/diagramMapper';
   import { inputStateStore, stateStore, updateCodeStore } from '$lib/util/state/state';
   import {
@@ -1387,7 +1387,7 @@
           message: fullMessage,
           model: selectedModelId,
           currentDiagram: $stateStore.code,
-          currentMarkdown: get(documentMarkdownStore),
+          currentMarkdown: documentMarkdownStore.value,
           enabledTools: toolsStore.getEnabledToolIds(),
           sessionId: sessionId,
           isRepair,

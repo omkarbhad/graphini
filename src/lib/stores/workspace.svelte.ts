@@ -10,7 +10,7 @@ import type {
   WorkspaceDocument
 } from '$lib/types/workspace';
 import { DEFAULT_WORKSPACE_DOCUMENT } from '$lib/types/workspace';
-import { documentMarkdownStore } from '$lib/stores/documentStore';
+import { documentMarkdownStore } from '$lib/stores/documentStore.svelte';
 import { get } from 'svelte/store';
 import { inputStateStore } from '$lib/util/state/state';
 
@@ -41,7 +41,7 @@ const SAVE_DEBOUNCE_MS = 5000;
 
 function collectDocument(): WorkspaceDocument {
   const mermaidState = get(inputStateStore);
-  const docMarkdown = get(documentMarkdownStore);
+  const docMarkdown = documentMarkdownStore.value;
 
   return {
     canvas: {

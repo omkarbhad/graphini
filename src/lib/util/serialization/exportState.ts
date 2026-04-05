@@ -3,7 +3,7 @@
  * Includes: UI states, settings, chats, markdown documentation, and mermaid code.
  */
 import { aiSettings, toolsStore } from '$lib/stores';
-import { documentMarkdownStore } from '$lib/stores/documentStore';
+import { documentMarkdownStore } from '$lib/stores/documentStore.svelte';
 import { kv } from '$lib/stores/kvStore.svelte';
 import { panels } from '$lib/stores/panels.svelte';
 import { get } from 'svelte/store';
@@ -27,11 +27,11 @@ export interface AppStateExport {
 
 export function exportAppState(): AppStateExport {
   const state = get(inputStateStore);
-  const markdown = get(documentMarkdownStore);
+  const markdown = documentMarkdownStore.value;
   const panelConfig = panels.panels;
   const panelOrder = panels.order;
   const aiSettingsValue = aiSettings.value;
-  const tools = get(toolsStore);
+  const tools = toolsStore.value;
 
   // Collect chat data from KV store
   const chatData = kv.getCategory('chat');

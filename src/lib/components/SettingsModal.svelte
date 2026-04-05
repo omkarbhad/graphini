@@ -169,7 +169,6 @@
     loadMemories();
 
     return () => {
-      unsubscribeTools();
     };
   });
 

@@ -7,7 +7,7 @@
     TooltipProvider,
     TooltipTrigger
   } from '$lib/components/ui/tooltip';
-  import { customColors, selectedPreset, themeActions } from '$lib/stores/diagram-theme';
+  import { customColors, selectedPreset, themeActions } from '$lib/stores/diagramTheme.svelte';
   import { THEME_PRESETS } from '$lib/themes';
   import { cn } from '$lib/util';
   import {
@@ -167,7 +167,7 @@
             {#each presetEntries as [presetName, presetConfig]}
               <button
                 type="button"
-                class="cursor-pointer rounded-lg border border-border p-3 text-left transition-all hover:border-primary hover:shadow-sm {$selectedPreset ===
+                class="cursor-pointer rounded-lg border border-border p-3 text-left transition-all hover:border-primary hover:shadow-sm {selectedPreset.value ===
                 presetName
                   ? 'border-primary bg-primary/5'
                   : ''}"
@@ -180,7 +180,7 @@
                 }}>
                 <div class="mb-2 flex items-center justify-between">
                   <span class="text-sm font-medium capitalize">{presetName}</span>
-                  {#if $selectedPreset === presetName}
+                  {#if selectedPreset.value === presetName}
                     <div class="h-2 w-2 rounded-full bg-primary"></div>
                   {/if}
                 </div>
@@ -266,7 +266,7 @@
           </div>
 
           <div class="flex flex-wrap gap-2">
-            {#each $customColors as color, index}
+            {#each customColors.value as color, index}
               <div class="group relative">
                 <button
                   type="button"

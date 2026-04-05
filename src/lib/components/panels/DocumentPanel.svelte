@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { documentMarkdownStore } from '$lib/stores/documentStore';
+  import { documentMarkdownStore } from '$lib/stores/documentStore.svelte';
   import { workspaceStore } from '$lib/stores/workspace.svelte';
   import { cn } from '$lib/util';
   import { Code2, Eye, FileText } from 'lucide-svelte';
@@ -63,7 +63,6 @@
   });
 
   onDestroy(() => {
-    unsubDoc();
     if (saveTimeout) clearTimeout(saveTimeout);
     resizeObserver?.disconnect();
     try {
@@ -74,9 +73,10 @@
     } catch {}
   });
 
-  // Subscribe to external markdown updates (from chat markdownWrite tool)
+  // React to external markdown updates (from chat markdownWrite tool)
   let ignoreExternalUpdate = false;
-  const unsubDoc = documentMarkdownStore.subscribe((externalMd) => {
+  $effect(() => {
+    const externalMd = documentMarkdownStore.value;
     if (ignoreExternalUpdate) return;
     if (externalMd && externalMd !== markdownContent) {
       markdownContent = externalMd;

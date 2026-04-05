@@ -46,16 +46,16 @@ function selectModel(id: string): void {
   selectedModelId = id;
   // Persist selection
   try {
-    const kv = (globalThis as any).__kvStoreModule;
-    if (kv) kv.kvSet('models', 'graphini_selected_model', id);
+    const kvMod = (globalThis as any).__kvStoreModule;
+    if (kvMod) kvMod.set('models', 'graphini_selected_model', id);
   } catch {}
 }
 
 function loadSavedSelection(): void {
   try {
-    const kv = (globalThis as any).__kvStoreModule;
-    if (kv) {
-      const saved = kv.kvGet('models', 'graphini_selected_model');
+    const kvMod = (globalThis as any).__kvStoreModule;
+    if (kvMod) {
+      const saved = kvMod.get('models', 'graphini_selected_model');
       if (saved) selectedModelId = saved;
     }
   } catch {}

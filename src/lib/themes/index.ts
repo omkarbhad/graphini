@@ -7,7 +7,7 @@ export type { ThemeColors } from './theme-base';
 export { DarkTheme, getDarkTheme } from './theme-dark';
 export { DefaultTheme, getDefaultTheme } from './theme-default';
 
-import { mode } from '$lib/stores/theme';
+import { mode } from '$lib/stores/theme.svelte';
 import type { ThemeColors } from './theme-base';
 import { getDarkTheme } from './theme-dark';
 import { getDefaultTheme } from './theme-default';

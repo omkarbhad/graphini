@@ -31,10 +31,10 @@ export {
   toggleFavoriteModel,
   updateChatSelection,
   type ModelOption
-} from './modelStore';
+} from './modelStore.svelte';
 
 // Tools configuration store
-export { TOOL_CATEGORIES, toolsStore, type ToolConfig } from './toolsStore';
+export { TOOL_CATEGORIES, toolsStore, type ToolConfig } from './toolsStore.svelte';
 
 // Workspace store (diagram workspace management)
 export { workspaceStore } from './workspace.svelte';
