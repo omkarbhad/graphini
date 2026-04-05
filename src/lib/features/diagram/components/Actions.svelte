@@ -246,6 +246,7 @@ ${svgString}`);
       {@render dualActionButton('PNG', onDownloadPNG, $urlsStore.png)}
       {@render dualActionButton('SVG', onDownloadSVG, $urlsStore.svg)}
       <ExternalLinkWrapper domain={getDomain($urlsStore.kroki)} isVisible={!!$urlsStore.kroki}>
+        <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
         <a target="_blank" rel="noreferrer" class="flex-grow" href={$urlsStore.kroki}>
           <Button class="action-btn flex w-full items-center gap-2">
             <ExternalLinkIcon /> Kroki

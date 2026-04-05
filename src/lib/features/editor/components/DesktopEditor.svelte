@@ -237,7 +237,7 @@
       onUpdate(newText);
 
       // Immediate validation for potential errors (check for common error patterns)
-      const hasPotentialError = /[^\]]*\[[^\]]*$|[^\)]*\([^\)]*$|[^\}]*\{[^\}]*$|"[^"]*$/.test(
+      const hasPotentialError = /[^\]]*\[[^\]]*$|[^)]*\([^)]*$|[^}]*\{[^}]*$|"[^"]*$/.test(
         newText
       );
 
@@ -314,13 +314,19 @@
       resizeObserver.disconnect();
       try {
         jsonModel.dispose();
-      } catch {}
+      } catch {
+        // ignore disposal errors
+      }
       try {
         mermaidModel.dispose();
-      } catch {}
+      } catch {
+        // ignore disposal errors
+      }
       try {
         editor?.dispose();
-      } catch {}
+      } catch {
+        // ignore disposal errors
+      }
       // Remove handler after a delay to catch any lingering rejections
       setTimeout(() => {
         window.removeEventListener('unhandledrejection', handleUnhandledRejection);

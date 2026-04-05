@@ -10,7 +10,7 @@
     modelsLoadingStore,
     selectedChatModelsStore
   } from '$lib/stores/modelStore.svelte';
-  import type { ToolConfig } from '$lib/stores/toolsStore';
+  import type { ToolConfig } from '$lib/stores/toolsStore.svelte';
   import { downloadAppState } from '$lib/util/serialization/exportState';
   import {
     BookOpen,
@@ -83,9 +83,8 @@
 
   // AI Settings — reactive via aiSettings.value from rune-based store
 
-  // Tools config
-  let toolsConfig = $state<ToolConfig[]>([]);
-  const unsubscribeTools = toolsStore.subscribe((v) => (toolsConfig = v));
+  // Tools config (reactive via rune-based store)
+  let toolsConfig = $derived(toolsStore.value);
 
   // Local state for API key input
   let apiKeyInput = $state('');
