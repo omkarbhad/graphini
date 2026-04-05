@@ -4,6 +4,7 @@
 
 export interface User {
   id: string;
+  firebase_uid: string | null;
   email: string;
   display_name: string | null;
   avatar_url: string | null;

@@ -3,7 +3,7 @@
  * Provides endpoints for admin dashboard, settings management, and state viewing
  */
 
-import { extractToken, validateSession } from '$lib/server/auth';
+import { validateSession } from '$lib/server/auth';
 import { getCache } from '$lib/server/cache';
 import { getDb } from '$lib/server/db';
 import {
@@ -16,18 +16,14 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 
 // Admin auth guard - validates session and checks admin role
 async function requireAdmin(request: Request): Promise<{ userId: string } | Response> {
-  const token = extractToken(request);
-  if (!token) {
+  const user = await validateSession(request);
+  if (!user) {
     return json({ success: false, error: 'Authentication required' }, { status: 401 });
   }
-  const session = await validateSession(token);
-  if (!session) {
-    return json({ success: false, error: 'Invalid or expired session' }, { status: 401 });
-  }
-  if (session.user.role !== 'admin' && session.user.role !== 'superadmin') {
+  if (user.role !== 'admin' && user.role !== 'superadmin') {
     return json({ success: false, error: 'Admin privileges required' }, { status: 403 });
   }
-  return { userId: session.user.id };
+  return { userId: user.id };
 }
 
 // ============================================================================

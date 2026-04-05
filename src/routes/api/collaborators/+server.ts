@@ -6,7 +6,7 @@
  * PATCH  - Update collaborator role
  */
 
-import { extractToken, validateSession } from '$lib/server/auth';
+import { validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
@@ -36,17 +36,14 @@ async function resolveWorkspaceId(userId: string, rawId: string | null): Promise
 }
 
 export const GET: RequestHandler = async ({ request, url }) => {
-  const token = extractToken(request);
-  if (!token) return json({ error: 'Unauthorized' }, { status: 401 });
-
-  const session = await validateSession(token);
-  if (!session) return json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await validateSession(request);
+  if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
   const rawWorkspaceId = url.searchParams.get('workspace_id');
   if (!rawWorkspaceId) return json({ error: 'workspace_id required' }, { status: 400 });
 
   try {
-    const workspaceId = await resolveWorkspaceId(session.user.id, rawWorkspaceId);
+    const workspaceId = await resolveWorkspaceId(user.id, rawWorkspaceId);
     const db = getDb();
     const collaborators = await db.listCollaborators(workspaceId);
     return json({ collaborators, workspace_id: workspaceId });
@@ -56,11 +53,8 @@ export const GET: RequestHandler = async ({ request, url }) => {
 };
 
 export const POST: RequestHandler = async ({ request }) => {
-  const token = extractToken(request);
-  if (!token) return json({ error: 'Unauthorized' }, { status: 401 });
-
-  const session = await validateSession(token);
-  if (!session) return json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await validateSession(request);
+  if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const body = await request.json();
@@ -69,7 +63,7 @@ export const POST: RequestHandler = async ({ request }) => {
     if (!rawWsId) return json({ error: 'workspace_id required' }, { status: 400 });
     if (!email) return json({ error: 'email required' }, { status: 400 });
 
-    const workspace_id = await resolveWorkspaceId(session.user.id, rawWsId);
+    const workspace_id = await resolveWorkspaceId(user.id, rawWsId);
     const db = getDb();
 
     // Find user by email
@@ -88,7 +82,7 @@ export const POST: RequestHandler = async ({ request }) => {
       workspace_id,
       user_id: invitee.id,
       role: role as 'viewer' | 'editor' | 'admin',
-      invited_by: session.user.id
+      invited_by: user.id
     });
 
     return json({
@@ -108,11 +102,8 @@ export const POST: RequestHandler = async ({ request }) => {
 };
 
 export const DELETE: RequestHandler = async ({ request }) => {
-  const token = extractToken(request);
-  if (!token) return json({ error: 'Unauthorized' }, { status: 401 });
-
-  const session = await validateSession(token);
-  if (!session) return json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await validateSession(request);
+  if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const body = await request.json();
@@ -122,7 +113,7 @@ export const DELETE: RequestHandler = async ({ request }) => {
       return json({ error: 'workspace_id and user_id required' }, { status: 400 });
     }
 
-    const workspace_id = await resolveWorkspaceId(session.user.id, rawWsId);
+    const workspace_id = await resolveWorkspaceId(user.id, rawWsId);
     const db = getDb();
     await db.removeCollaborator(workspace_id, user_id);
     return json({ success: true });
@@ -132,11 +123,8 @@ export const DELETE: RequestHandler = async ({ request }) => {
 };
 
 export const PATCH: RequestHandler = async ({ request }) => {
-  const token = extractToken(request);
-  if (!token) return json({ error: 'Unauthorized' }, { status: 401 });
-
-  const session = await validateSession(token);
-  if (!session) return json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await validateSession(request);
+  if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const body = await request.json();
@@ -154,7 +142,7 @@ export const PATCH: RequestHandler = async ({ request }) => {
       );
     }
 
-    const workspace_id = await resolveWorkspaceId(session.user.id, rawWsId);
+    const workspace_id = await resolveWorkspaceId(user.id, rawWsId);
     const db = getDb();
     await db.updateCollaboratorRole(workspace_id, user_id, role);
     return json({ success: true });

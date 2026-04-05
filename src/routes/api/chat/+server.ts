@@ -1,4 +1,4 @@
-import { extractToken, validateSession } from '$lib/server/auth';
+import { validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { deleteFile, getFileById, getSessionFiles } from '$lib/server/file-store';
 import { stateManager } from '$lib/server/state-manager';
@@ -2344,15 +2344,11 @@ export const POST: RequestHandler = async ({ request }) => {
     // Require authentication — block unauthenticated users
     let userId: string | null = null;
     try {
-      const token = extractToken(request);
-      if (!token) {
+      const user = await validateSession(request);
+      if (!user) {
         return error(401, 'Authentication required. Please sign in to use the chat.');
       }
-      const session = await validateSession(token);
-      if (!session) {
-        return error(401, 'Invalid or expired session. Please sign in again.');
-      }
-      userId = session.user.id;
+      userId = user.id;
 
       // Deduct gems (skip for repair/error-fix messages)
       if (!isRepair) {

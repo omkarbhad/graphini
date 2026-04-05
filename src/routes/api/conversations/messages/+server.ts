@@ -1,4 +1,4 @@
-import { extractToken, validateSession } from '$lib/server/auth';
+import { validateSession } from '$lib/server/auth';
 import { getDb, type Message } from '$lib/server/db';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
@@ -6,11 +6,8 @@ import type { RequestHandler } from './$types';
 /** List messages for a conversation */
 export const GET: RequestHandler = async ({ request, url }) => {
   try {
-    const token = extractToken(request);
-    if (!token) return json({ error: 'Unauthorized' }, { status: 401 });
-
-    const session = await validateSession(token);
-    if (!session) return json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await validateSession(request);
+    if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
     const conversationId = url.searchParams.get('conversation_id');
     if (!conversationId) return json({ error: 'Missing conversation_id' }, { status: 400 });
@@ -27,11 +24,8 @@ export const GET: RequestHandler = async ({ request, url }) => {
 /** Sync messages (bulk create) for a conversation */
 export const POST: RequestHandler = async ({ request }) => {
   try {
-    const token = extractToken(request);
-    if (!token) return json({ error: 'Unauthorized' }, { status: 401 });
-
-    const session = await validateSession(token);
-    if (!session) return json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await validateSession(request);
+    if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await request.json().catch(() => ({}));
     const { conversation_id, messages } = body;
@@ -45,7 +39,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // Verify conversation belongs to user
     const conv = await db.getConversation(conversation_id);
-    if (!conv || conv.user_id !== session.user.id) {
+    if (!conv || conv.user_id !== user.id) {
       return json({ error: 'Conversation not found' }, { status: 404 });
     }
 

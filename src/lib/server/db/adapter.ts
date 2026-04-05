@@ -28,6 +28,7 @@ export interface DatabaseAdapter {
   createUser(data: { email: string; password_hash: string; display_name?: string }): Promise<User>;
   getUserById(id: string): Promise<User | null>;
   getUserByEmail(email: string): Promise<User | null>;
+  getUserByFirebaseUid(firebase_uid: string): Promise<User | null>;
   updateUser(
     id: string,
     data: Partial<
@@ -201,6 +202,24 @@ export interface DatabaseAdapter {
     user_id: string,
     entries: { category: string; key: string; value: unknown }[]
   ): Promise<void>;
+
+  // ── File Versions ────────────────────────────────────────────────────────
+  createFileVersion(data: {
+    file_id: string;
+    user_id: string;
+    version: number;
+    content_mermaid: string;
+    content_document: string;
+  }): Promise<{ id: string; version: number; created_at: string }>;
+  listFileVersions(file_id: string, limit?: number): Promise<Array<{
+    id: string;
+    file_id: string;
+    version: number;
+    content_mermaid: string;
+    content_document: string;
+    created_at: string;
+  }>>;
+  pruneFileVersions(file_id: string, keepCount: number): Promise<number>;
 
   // ── Health ────────────────────────────────────────────────────────────
   healthCheck(): Promise<boolean>;

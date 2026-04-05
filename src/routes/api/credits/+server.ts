@@ -1,19 +1,16 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { validateSession, extractToken } from '$lib/server/auth';
+import { validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 
 export const GET: RequestHandler = async ({ request }) => {
   try {
-    const token = extractToken(request);
-    if (!token) return json({ error: 'Unauthorized' }, { status: 401 });
-
-    const session = await validateSession(token);
-    if (!session) return json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await validateSession(request);
+    if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
     const db = getDb();
-    const balance = await db.getCreditBalance(session.user.id);
-    const transactions = await db.getCreditTransactions(session.user.id, { limit: 20 });
+    const balance = await db.getCreditBalance(user.id);
+    const transactions = await db.getCreditTransactions(user.id, { limit: 20 });
     const pricing = await db.listModelPricing();
 
     return json({

@@ -1,19 +1,82 @@
 /**
- * Auth utilities - password hashing, session management, token generation
+ * Auth utilities - magnova-auth cookie-based authentication
+ *
+ * magnova-auth sets a `magnova_session` httpOnly cookie containing a signed token.
+ * This module reads that cookie, verifies the HMAC signature, upserts the local user,
+ * and applies admin overrides.
  */
 
 import { env } from '$env/dynamic/private';
 import { getCache, userCacheKeys } from '$lib/server/cache';
-import type { Session, User } from '$lib/server/db';
+import type { User } from '$lib/server/db';
 import { getDb } from '$lib/server/db';
-import { randomBytes, scrypt, timingSafeEqual } from 'crypto';
-
-const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 const ADMIN_EMAIL_OVERRIDES = (env.ADMIN_EMAIL_OVERRIDES || '')
   .split(',')
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
+
+/**
+ * Get the cookie signing secret. Falls back to a dev-only default.
+ * In production, COOKIE_SECRET must be set to a strong random value.
+ */
+function getCookieSecret(): string {
+  const secret = env.COOKIE_SECRET;
+  if (!secret) {
+    console.warn('[auth] COOKIE_SECRET not set — using insecure dev default. Set it in production!');
+    return 'graphini-dev-secret-do-not-use-in-production';
+  }
+  return secret;
+}
+
+/**
+ * Sign a value with HMAC-SHA256 using the cookie secret.
+ */
+export async function signValue(value: string): Promise<string> {
+  const secret = getCookieSecret();
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(value));
+  const sigHex = Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  return `${value}.${sigHex}`;
+}
+
+/**
+ * Verify and extract a signed value. Returns null if signature is invalid.
+ */
+export async function verifySignedValue(signedValue: string): Promise<string | null> {
+  const lastDot = signedValue.lastIndexOf('.');
+  if (lastDot === -1) return null;
+
+  const value = signedValue.substring(0, lastDot);
+  const providedSig = signedValue.substring(lastDot + 1);
+
+  const secret = getCookieSecret();
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['verify']
+  );
+
+  // Convert hex signature back to bytes
+  const sigBytes = new Uint8Array(
+    providedSig.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || []
+  );
+
+  const valid = await crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(value));
+  return valid ? value : null;
+}
 
 const applyAdminOverrides = (user: User): User => {
   if (ADMIN_EMAIL_OVERRIDES.length === 0) return user;
@@ -23,198 +86,99 @@ const applyAdminOverrides = (user: User): User => {
   return user;
 };
 
-// ============================================================================
-// Password Hashing (scrypt - built-in, no deps)
-// ============================================================================
+/**
+ * Extract the raw magnova_session cookie value.
+ */
+function extractCookieValue(request: Request): string | null {
+  const cookieHeader = request.headers.get('Cookie');
+  if (!cookieHeader) return null;
 
-export async function hashPassword(password: string): Promise<string> {
-  const salt = randomBytes(16).toString('hex');
-  return new Promise((resolve, reject) => {
-    scrypt(password, salt, 64, (err, derivedKey) => {
-      if (err) reject(err);
-      resolve(`${salt}:${derivedKey.toString('hex')}`);
-    });
-  });
+  const cookies = Object.fromEntries(
+    cookieHeader.split(';').map((c) => {
+      const [key, ...rest] = c.trim().split('=');
+      return [key, rest.join('=')];
+    })
+  );
+
+  return cookies['magnova_session'] || null;
 }
 
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  const [salt, key] = hash.split(':');
-  if (!salt || !key) return false;
-  return new Promise((resolve, reject) => {
-    scrypt(password, salt, 64, (err, derivedKey) => {
-      if (err) reject(err);
-      const keyBuffer = Buffer.from(key, 'hex');
-      resolve(timingSafeEqual(keyBuffer, derivedKey));
-    });
-  });
-}
+/**
+ * Extract the Firebase UID from the magnova_session cookie.
+ * Verifies the HMAC signature before returning the UID.
+ * Falls back to accepting unsigned cookies for backward compatibility
+ * (logs a warning so operators know to re-sign).
+ */
+async function extractFirebaseUid(request: Request): Promise<string | null> {
+  const raw = extractCookieValue(request);
+  if (!raw) return null;
 
-// ============================================================================
-// Token Generation
-// ============================================================================
+  // Try signed format first: "uid.signature"
+  const verified = await verifySignedValue(raw);
+  if (verified) return verified;
 
-export function generateSessionToken(): string {
-  return randomBytes(32).toString('hex');
-}
-
-// ============================================================================
-// Auth Operations
-// ============================================================================
-
-export async function register(
-  email: string,
-  password: string,
-  displayName?: string
-): Promise<{ user: User; session: Session; token: string }> {
-  const db = getDb();
-
-  // Check if user exists
-  const existing = await db.getUserByEmail(email.toLowerCase().trim());
-  if (existing) {
-    throw new Error('Email already registered');
+  // Backward compatibility: accept unsigned cookies but warn
+  // This allows existing sessions to keep working until they rotate
+  if (!raw.includes('.') || raw.length < 64) {
+    console.warn(
+      '[auth] Unsigned magnova_session cookie detected. Sessions should be signed with COOKIE_SECRET.'
+    );
+    return raw;
   }
 
-  // Validate
-  if (!email || !email.includes('@')) throw new Error('Invalid email');
-  if (!password || password.length < 8) throw new Error('Password must be at least 8 characters');
-  if (!/[A-Z]/.test(password))
-    throw new Error('Password must contain at least one uppercase letter');
-  if (!/[a-z]/.test(password))
-    throw new Error('Password must contain at least one lowercase letter');
-  if (!/[0-9]/.test(password)) throw new Error('Password must contain at least one number');
-
-  const passwordHash = await hashPassword(password);
-  const user = await db.createUser({
-    email: email.toLowerCase().trim(),
-    password_hash: passwordHash,
-    display_name: displayName || email.split('@')[0]
-  });
-
-  // Create session
-  const token = generateSessionToken();
-  const session = await db.createSession({
-    user_id: user.id,
-    token,
-    expires_at: new Date(Date.now() + SESSION_DURATION_MS).toISOString()
-  });
-
-  return { user: applyAdminOverrides(user), session, token };
+  // Has a dot but signature is invalid — reject
+  return null;
 }
 
-export async function login(
-  email: string,
-  password: string,
-  meta?: { ip_address?: string; user_agent?: string }
-): Promise<{ user: User; session: Session; token: string }> {
-  const db = getDb();
-
-  const user = await db.getUserByEmail(email.toLowerCase().trim());
-  if (!user) throw new Error('Invalid email or password');
-  if (!user.is_active) throw new Error('Account is disabled');
-
-  // Verify password - user has password_hash but it's not in the User type since it's excluded from selects
-  // We need to fetch it separately or include it
-  const valid = await verifyPassword(password, (user as any).password_hash);
-  if (!valid) throw new Error('Invalid email or password');
-
-  // Update last login
-  await db.updateUser(user.id, { last_login_at: new Date().toISOString() });
-
-  // Create session
-  const token = generateSessionToken();
-  const session = await db.createSession({
-    user_id: user.id,
-    token,
-    expires_at: new Date(Date.now() + SESSION_DURATION_MS).toISOString(),
-    ip_address: meta?.ip_address,
-    user_agent: meta?.user_agent
-  });
-
-  return { user, session, token };
-}
-
-export async function logout(token: string): Promise<void> {
-  const db = getDb();
-  const session = await db.getSessionByToken(token);
-  if (session) {
-    await db.deleteSession(session.id);
-    // Invalidate cache
-    const cache = getCache();
-    await cache.delete(userCacheKeys.session(token));
-  }
-}
-
-export async function validateSession(
-  token: string
-): Promise<{ user: User; session: Session } | null> {
-  if (!token) return null;
+/**
+ * Validate the current session by reading the magnova_session cookie.
+ * Looks up the user by Firebase UID (does NOT upsert with empty email),
+ * applies admin overrides, and caches the result for 5 minutes.
+ */
+export async function validateSession(request: Request): Promise<User | null> {
+  const firebaseUid = await extractFirebaseUid(request);
+  if (!firebaseUid) return null;
 
   const cache = getCache();
 
   // Check cache first
-  const cached = await cache.get<{ user: User; session: Session }>(userCacheKeys.session(token));
+  const cached = await cache.get<User>(userCacheKeys.session(firebaseUid));
   if (cached) return cached;
 
   const db = getDb();
-  const session = await db.getSessionByToken(token);
-  if (!session) return null;
 
-  // Check expiry
-  if (new Date(session.expires_at) < new Date()) {
-    await db.deleteSession(session.id);
-    return null;
-  }
+  // Look up user by Firebase UID — do NOT upsert with empty email
+  // The user record should already exist from the login/dev-login flow
+  const user = await db.getUserByFirebaseUid(firebaseUid);
 
-  const user = await db.getUserById(session.user_id);
   if (!user || !user.is_active) return null;
 
-  const result = { user: applyAdminOverrides(user), session };
+  const result = applyAdminOverrides(user);
 
   // Cache for 5 minutes
-  await cache.set(userCacheKeys.session(token), result, { ttlSeconds: 300 });
+  await cache.set(userCacheKeys.session(firebaseUid), result, { ttlSeconds: 300 });
 
   return result;
 }
 
 /**
- * Extract session token from request cookies or Authorization header
+ * Get the magnova-auth login URL for graphini-branded login page.
+ * magnova-auth reads `?redirect=` to know where to send user after auth.
  */
-export function extractToken(request: Request): string | null {
-  // Check Authorization header
-  const authHeader = request.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) {
-    return authHeader.slice(7);
+export function getAuthUrl(returnTo?: string): string {
+  const baseUrl = env.MAGNOVA_AUTH_URL || 'https://auth.magnova.ai';
+  const loginUrl = `${baseUrl}/graphini`;
+  if (returnTo) {
+    return `${loginUrl}?redirect=${encodeURIComponent(returnTo)}`;
   }
-
-  // Check cookies
-  const cookieHeader = request.headers.get('Cookie');
-  if (cookieHeader) {
-    const cookies = Object.fromEntries(
-      cookieHeader.split(';').map((c) => {
-        const [key, ...rest] = c.trim().split('=');
-        return [key, rest.join('=')];
-      })
-    );
-    if (cookies['session_token']) return cookies['session_token'];
-  }
-
-  return null;
+  return loginUrl;
 }
 
 /**
- * Create session cookie string
+ * Get the magnova-auth signout URL.
  */
-export function createSessionCookie(token: string, maxAgeDays = 7): string {
-  const isProduction = process.env.NODE_ENV === 'production';
-  const secure = isProduction ? ' Secure;' : '';
-  return `session_token=${token}; Path=/; HttpOnly;${secure} SameSite=Lax; Max-Age=${maxAgeDays * 86400}`;
-}
-
-/**
- * Create expired session cookie (for logout)
- */
-export function clearSessionCookie(): string {
-  const isProduction = process.env.NODE_ENV === 'production';
-  const secure = isProduction ? ' Secure;' : '';
-  return `session_token=; Path=/; HttpOnly;${secure} SameSite=Lax; Max-Age=0`;
+export function getSignoutUrl(redirectTo?: string): string {
+  const baseUrl = env.MAGNOVA_AUTH_URL || 'https://auth.magnova.ai';
+  const redirect = redirectTo || '/';
+  return `${baseUrl}/api/auth/signout?redirect=${encodeURIComponent(redirect)}`;
 }

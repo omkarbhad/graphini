@@ -9,17 +9,15 @@
  * DELETE /api/kv?category=xxx&key=yyy       → delete single value
  */
 
-import { extractToken, validateSession } from '$lib/server/auth';
+import { validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
 async function getUserId(request: Request): Promise<string> {
-  const token = extractToken(request);
-  if (!token) throw error(401, 'Not authenticated');
-  const session = await validateSession(token);
-  if (!session?.user?.id) throw error(401, 'Not authenticated');
-  return session.user.id;
+  const user = await validateSession(request);
+  if (!user?.id) throw error(401, 'Not authenticated');
+  return user.id;
 }
 
 export const GET: RequestHandler = async ({ request, url }) => {

@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { validateSession, extractToken } from '$lib/server/auth';
+import { validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 
 const PLANS: Record<string, { gems: number; price: number }> = {
@@ -11,11 +11,8 @@ const PLANS: Record<string, { gems: number; price: number }> = {
 
 export const POST: RequestHandler = async ({ request }) => {
   try {
-    const token = extractToken(request);
-    if (!token) return json({ error: 'Unauthorized' }, { status: 401 });
-
-    const session = await validateSession(token);
-    if (!session) return json({ error: 'Unauthorized' }, { status: 401 });
+    const user = await validateSession(request);
+    if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
     const body = await request.json();
     const { plan_id } = body;
@@ -27,13 +24,13 @@ export const POST: RequestHandler = async ({ request }) => {
     // For now, directly add gems to the user's balance
     const db = getDb();
     await db.addCredits(
-      session.user.id,
+      user.id,
       plan.gems,
       'purchase',
       `Purchased ${plan.gems} gems (${plan_id} plan)`
     );
 
-    const balance = await db.getCreditBalance(session.user.id);
+    const balance = await db.getCreditBalance(user.id);
 
     return json({
       success: true,

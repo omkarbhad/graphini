@@ -5,7 +5,7 @@
  * PUT  - Save/sync user file list to DB
  */
 
-import { extractToken, validateSession } from '$lib/server/auth';
+import { validateSession } from '$lib/server/auth';
 import { settingsManager } from '$lib/server/state-manager';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
@@ -15,14 +15,11 @@ const KEY = 'file_list';
 
 /** Load user file list from DB */
 export const GET: RequestHandler = async ({ request }) => {
-  const token = extractToken(request);
-  if (!token) return json({ error: 'Unauthorized' }, { status: 401 });
-
-  const session = await validateSession(token);
-  if (!session) return json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await validateSession(request);
+  if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const files = await settingsManager.get<unknown[]>(session.user.id, CATEGORY, KEY, []);
+    const files = await settingsManager.get<unknown[]>(user.id, CATEGORY, KEY, []);
     return json({ files });
   } catch (err: any) {
     return json({ error: err?.message || 'Failed to load files' }, { status: 500 });
@@ -31,11 +28,8 @@ export const GET: RequestHandler = async ({ request }) => {
 
 /** Save/sync user file list to DB */
 export const PUT: RequestHandler = async ({ request }) => {
-  const token = extractToken(request);
-  if (!token) return json({ error: 'Unauthorized' }, { status: 401 });
-
-  const session = await validateSession(token);
-  if (!session) return json({ error: 'Unauthorized' }, { status: 401 });
+  const user = await validateSession(request);
+  if (!user) return json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const body = await request.json();
@@ -45,7 +39,7 @@ export const PUT: RequestHandler = async ({ request }) => {
       return json({ error: 'files must be an array' }, { status: 400 });
     }
 
-    await settingsManager.set(session.user.id, CATEGORY, KEY, files);
+    await settingsManager.set(user.id, CATEGORY, KEY, files);
     return json({ success: true });
   } catch (err: any) {
     return json({ error: err?.message || 'Failed to save files' }, { status: 500 });
