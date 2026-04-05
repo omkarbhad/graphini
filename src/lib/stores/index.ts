@@ -3,30 +3,18 @@
  * Central export for all application stores
  */
 
-// Persistent stores with localStorage support
+// Settings (Svelte 5 runes)
 export {
-  aiSettingsStore,
-  allSettings,
-  createPersistentStore,
-  draftMessagesStore,
-  editorSettingsStore,
-  favoritesStore,
+  aiSettings,
+  editorSettings,
   getSessionId,
   getUserId,
-  isDarkMode,
-  recentConversationsStore,
   setUserId,
-  storeActions,
-  syncAllStores,
-  uiSettingsStore,
+  uiSettings,
   type AISettings,
   type EditorSettings,
-  type PersistentStore,
-  type RecentConversation,
-  type StoreOptions,
-  type SyncStatus,
   type UISettings
-} from './persistentStore';
+} from './settings.svelte';
 
 // Model stores for AI model management
 export {
@@ -48,11 +36,3 @@ export {
 // Tools configuration store
 export { TOOL_CATEGORIES, toolsStore, type ToolConfig } from './toolsStore';
 
-// Legacy AI settings store (for backward compatibility)
-export {
-  aiSettingsStore as legacyAiSettingsStore,
-  maxTokens,
-  promptMode,
-  selectedModelId,
-  temperature
-} from './aiSettings';
