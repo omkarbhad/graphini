@@ -8,12 +8,7 @@
   import DesktopEditor from './DesktopEditor.svelte';
   import MobileEditor from './MobileEditor.svelte';
 
-  interface Props {
-    onUpdate?: (code: string) => void;
-    isMobile?: boolean;
-    sendChatMessage?: (message: string, options?: { isRepair?: boolean }) => Promise<boolean>;
-  }
-
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
   export let onUpdate: (code: string) => void = () => {};
   export let isMobile = false;
   export let sendChatMessage: (
@@ -128,7 +123,7 @@
               $stateStore.validationError}</pre>
           {#if $stateStore.validationSuggestions && $stateStore.validationSuggestions.length > 0}
             <div class="mt-1.5 space-y-0.5">
-              {#each $stateStore.validationSuggestions as suggestion}
+              {#each $stateStore.validationSuggestions as suggestion (suggestion)}
                 <p class="text-[10px] text-muted-foreground">• {suggestion}</p>
               {/each}
             </div>

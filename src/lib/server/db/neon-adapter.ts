@@ -1,10 +1,12 @@
 /**
  * Neon Database Adapter — implements DatabaseAdapter using Drizzle ORM + Neon serverless driver
+ *
+ * All domain logic lives in ./domains/*.ts — this class is a thin delegation layer.
  */
 
 import { neon } from '@neondatabase/serverless';
 import { drizzle, type NeonHttpDatabase } from 'drizzle-orm/neon-http';
-import { and, asc, desc, eq, gt, ilike, inArray, not, or, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import type { DatabaseAdapter } from './adapter';
 import type {
   CacheEntry,
@@ -28,6 +30,14 @@ import type {
 } from './types';
 import * as schema from './schema';
 
+// Domain helpers
+import * as usersDomain from './domains/users';
+import * as workspacesDomain from './domains/workspaces';
+import * as conversationsDomain from './domains/conversations';
+import * as creditsDomain from './domains/credits';
+import * as cacheDomain from './domains/cache';
+import * as modelsDomain from './domains/models';
+
 export class NeonAdapter implements DatabaseAdapter {
   public db: NeonHttpDatabase<typeof schema>;
 
@@ -43,33 +53,19 @@ export class NeonAdapter implements DatabaseAdapter {
     password_hash: string;
     display_name?: string;
   }): Promise<User> {
-    const [user] = await this.db
-      .insert(schema.users)
-      .values({
-        email: data.email,
-        password_hash: data.password_hash,
-        display_name: data.display_name ?? null
-      })
-      .returning();
-    return this.mapUser(user);
+    return usersDomain.createUser(this.db, data);
   }
 
   async getUserById(id: string): Promise<User | null> {
-    const [user] = await this.db.select().from(schema.users).where(eq(schema.users.id, id));
-    return user ? this.mapUser(user) : null;
+    return usersDomain.getUserById(this.db, id);
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
-    const [user] = await this.db.select().from(schema.users).where(eq(schema.users.email, email));
-    return user ? this.mapUser(user) : null;
+    return usersDomain.getUserByEmail(this.db, email);
   }
 
   async getUserByFirebaseUid(firebase_uid: string): Promise<User | null> {
-    const [user] = await this.db
-      .select()
-      .from(schema.users)
-      .where(eq(schema.users.firebase_uid, firebase_uid));
-    return user ? this.mapUser(user) : null;
+    return usersDomain.getUserByFirebaseUid(this.db, firebase_uid);
   }
 
   async updateUser(
@@ -87,54 +83,17 @@ export class NeonAdapter implements DatabaseAdapter {
       >
     >
   ): Promise<User> {
-    const updateData: Record<string, unknown> = {};
-    if (data.display_name !== undefined) updateData.display_name = data.display_name;
-    if (data.avatar_url !== undefined) updateData.avatar_url = data.avatar_url;
-    if (data.role !== undefined) updateData.role = data.role;
-    if (data.is_active !== undefined) updateData.is_active = data.is_active;
-    if (data.email_verified !== undefined) updateData.email_verified = data.email_verified;
-    if (data.last_login_at !== undefined)
-      updateData.last_login_at = new Date(data.last_login_at as string);
-    if (data.metadata !== undefined) updateData.metadata = data.metadata;
-
-    const [user] = await this.db
-      .update(schema.users)
-      .set(updateData)
-      .where(eq(schema.users.id, id))
-      .returning();
-    return this.mapUser(user);
+    return usersDomain.updateUser(this.db, id, data);
   }
 
   async deleteUser(id: string): Promise<void> {
-    await this.db.delete(schema.users).where(eq(schema.users.id, id));
+    return usersDomain.deleteUser(this.db, id);
   }
 
   async listUsers(
     options?: PaginationOptions & { search?: string }
   ): Promise<{ users: User[]; total: number }> {
-    const limit = options?.limit || 50;
-    const offset = options?.offset || 0;
-
-    let where = undefined;
-    if (options?.search) {
-      const pattern = `%${options.search}%`;
-      where = or(ilike(schema.users.email, pattern), ilike(schema.users.display_name, pattern));
-    }
-
-    const rows = await this.db
-      .select()
-      .from(schema.users)
-      .where(where)
-      .orderBy(desc(schema.users.created_at))
-      .limit(limit)
-      .offset(offset);
-
-    const [{ count }] = await this.db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(schema.users)
-      .where(where);
-
-    return { users: rows.map((r) => this.mapUser(r)), total: count };
+    return usersDomain.listUsers(this.db, options);
   }
 
   // ── Sessions ──────────────────────────────────────────────────────────
@@ -146,43 +105,23 @@ export class NeonAdapter implements DatabaseAdapter {
     ip_address?: string;
     user_agent?: string;
   }): Promise<Session> {
-    const [session] = await this.db
-      .insert(schema.sessions)
-      .values({
-        user_id: data.user_id,
-        token: data.token,
-        expires_at: new Date(data.expires_at),
-        ip_address: data.ip_address ?? null,
-        user_agent: data.user_agent ?? null
-      })
-      .returning();
-    return this.mapSession(session);
+    return usersDomain.createSession(this.db, data);
   }
 
   async getSessionByToken(token: string): Promise<Session | null> {
-    const [session] = await this.db
-      .select()
-      .from(schema.sessions)
-      .where(
-        and(eq(schema.sessions.token, token), gt(schema.sessions.expires_at, new Date()))
-      );
-    return session ? this.mapSession(session) : null;
+    return usersDomain.getSessionByToken(this.db, token);
   }
 
   async deleteSession(id: string): Promise<void> {
-    await this.db.delete(schema.sessions).where(eq(schema.sessions.id, id));
+    return usersDomain.deleteSession(this.db, id);
   }
 
   async deleteUserSessions(user_id: string): Promise<void> {
-    await this.db.delete(schema.sessions).where(eq(schema.sessions.user_id, user_id));
+    return usersDomain.deleteUserSessions(this.db, user_id);
   }
 
   async cleanupExpiredSessions(): Promise<number> {
-    const result = await this.db
-      .delete(schema.sessions)
-      .where(sql`${schema.sessions.expires_at} < NOW()`)
-      .returning({ id: schema.sessions.id });
-    return result.length;
+    return usersDomain.cleanupExpiredSessions(this.db);
   }
 
   // ── Workspaces ────────────────────────────────────────────────────────
@@ -193,67 +132,26 @@ export class NeonAdapter implements DatabaseAdapter {
     slug: string;
     description?: string;
   }): Promise<Workspace> {
-    const [ws] = await this.db
-      .insert(schema.workspaces)
-      .values({
-        owner_id: data.owner_id,
-        name: data.name,
-        slug: data.slug,
-        description: data.description ?? null
-      })
-      .returning();
-    return this.mapWorkspace(ws);
+    return workspacesDomain.createWorkspace(this.db, data);
   }
 
   async getWorkspace(id: string): Promise<Workspace | null> {
-    const [ws] = await this.db
-      .select()
-      .from(schema.workspaces)
-      .where(eq(schema.workspaces.id, id));
-    return ws ? this.mapWorkspace(ws) : null;
+    return workspacesDomain.getWorkspace(this.db, id);
   }
 
   async listUserWorkspaces(user_id: string): Promise<Workspace[]> {
-    const owned = await this.db
-      .select()
-      .from(schema.workspaces)
-      .where(eq(schema.workspaces.owner_id, user_id))
-      .orderBy(desc(schema.workspaces.updated_at));
-
-    const collabs = await this.db
-      .select({ workspace_id: schema.collaborationMembers.workspace_id })
-      .from(schema.collaborationMembers)
-      .where(eq(schema.collaborationMembers.user_id, user_id));
-
-    const ownedIds = new Set(owned.map((w) => w.id));
-    const collabIds = collabs.map((c) => c.workspace_id).filter((id) => !ownedIds.has(id));
-
-    if (collabIds.length > 0) {
-      const collabWs = await this.db
-        .select()
-        .from(schema.workspaces)
-        .where(inArray(schema.workspaces.id, collabIds))
-        .orderBy(desc(schema.workspaces.updated_at));
-      return [...owned, ...collabWs].map((w) => this.mapWorkspace(w));
-    }
-
-    return owned.map((w) => this.mapWorkspace(w));
+    return workspacesDomain.listUserWorkspaces(this.db, user_id);
   }
 
   async updateWorkspace(
     id: string,
     data: Partial<Pick<Workspace, 'name' | 'description' | 'is_public' | 'settings'>>
   ): Promise<Workspace> {
-    const [ws] = await this.db
-      .update(schema.workspaces)
-      .set(data)
-      .where(eq(schema.workspaces.id, id))
-      .returning();
-    return this.mapWorkspace(ws);
+    return workspacesDomain.updateWorkspace(this.db, id, data);
   }
 
   async deleteWorkspace(id: string): Promise<void> {
-    await this.db.delete(schema.workspaces).where(eq(schema.workspaces.id, id));
+    return workspacesDomain.deleteWorkspace(this.db, id);
   }
 
   // ── Collaboration ─────────────────────────────────────────────────────
@@ -264,49 +162,17 @@ export class NeonAdapter implements DatabaseAdapter {
     role: CollaborationMember['role'];
     invited_by?: string;
   }): Promise<CollaborationMember> {
-    const [member] = await this.db
-      .insert(schema.collaborationMembers)
-      .values({
-        workspace_id: data.workspace_id,
-        user_id: data.user_id,
-        role: data.role,
-        invited_by: data.invited_by ?? null
-      })
-      .returning();
-    return this.mapCollabMember(member);
+    return workspacesDomain.addCollaborator(this.db, data);
   }
 
   async removeCollaborator(workspace_id: string, user_id: string): Promise<void> {
-    await this.db
-      .delete(schema.collaborationMembers)
-      .where(
-        and(
-          eq(schema.collaborationMembers.workspace_id, workspace_id),
-          eq(schema.collaborationMembers.user_id, user_id)
-        )
-      );
+    return workspacesDomain.removeCollaborator(this.db, workspace_id, user_id);
   }
 
   async listCollaborators(
     workspace_id: string
   ): Promise<(CollaborationMember & { user?: User })[]> {
-    const rows = await this.db
-      .select()
-      .from(schema.collaborationMembers)
-      .leftJoin(schema.users, eq(schema.collaborationMembers.user_id, schema.users.id))
-      .where(eq(schema.collaborationMembers.workspace_id, workspace_id));
-
-    return rows.map((r) => ({
-      ...this.mapCollabMember(r.collaboration_members),
-      user: r.users
-        ? {
-            id: r.users.id,
-            email: r.users.email,
-            display_name: r.users.display_name,
-            avatar_url: r.users.avatar_url
-          }
-        : undefined
-    })) as (CollaborationMember & { user?: User })[];
+    return workspacesDomain.listCollaborators(this.db, workspace_id);
   }
 
   async updateCollaboratorRole(
@@ -314,25 +180,13 @@ export class NeonAdapter implements DatabaseAdapter {
     user_id: string,
     role: CollaborationMember['role']
   ): Promise<void> {
-    await this.db
-      .update(schema.collaborationMembers)
-      .set({ role })
-      .where(
-        and(
-          eq(schema.collaborationMembers.workspace_id, workspace_id),
-          eq(schema.collaborationMembers.user_id, user_id)
-        )
-      );
+    return workspacesDomain.updateCollaboratorRole(this.db, workspace_id, user_id, role);
   }
 
   // ── Credits ───────────────────────────────────────────────────────────
 
   async getCreditBalance(user_id: string): Promise<CreditBalance | null> {
-    const [row] = await this.db
-      .select()
-      .from(schema.creditBalances)
-      .where(eq(schema.creditBalances.user_id, user_id));
-    return row ? this.mapCreditBalance(row) : null;
+    return creditsDomain.getCreditBalance(this.db, user_id);
   }
 
   async deductCredits(
@@ -343,57 +197,15 @@ export class NeonAdapter implements DatabaseAdapter {
     conversation_id?: string,
     message_id?: string
   ): Promise<DeductCreditsResult> {
-    // Use the SQL function if available, otherwise do it in-app
-    try {
-      const [result] = await this.db.execute<{
-        success: boolean;
-        new_balance: number;
-        error_message: string | null;
-      }>(
-        sql`SELECT * FROM deduct_credits(
-          ${user_id}::uuid,
-          ${amount}::int,
-          ${description ?? null}::text,
-          ${model_id ?? null}::text,
-          ${conversation_id ?? null}::uuid,
-          ${message_id ?? null}::uuid
-        )`
-      );
-      return {
-        success: result.success,
-        new_balance: result.new_balance,
-        error_message: result.error_message
-      };
-    } catch {
-      // Fallback: manual deduction
-      const balance = await this.getCreditBalance(user_id);
-      if (!balance) return { success: false, new_balance: 0, error_message: 'Balance not found' };
-      if (balance.balance < amount)
-        return {
-          success: false,
-          new_balance: balance.balance,
-          error_message: 'Insufficient credits'
-        };
-
-      const newBalance = balance.balance - amount;
-      await this.db
-        .update(schema.creditBalances)
-        .set({ balance: newBalance, lifetime_spent: balance.lifetime_spent + amount })
-        .where(eq(schema.creditBalances.user_id, user_id));
-
-      await this.db.insert(schema.creditTransactions).values({
-        user_id,
-        amount: -amount,
-        balance_after: newBalance,
-        type: 'usage',
-        description: description ?? null,
-        model_id: model_id ?? null,
-        conversation_id: conversation_id ?? null,
-        message_id: message_id ?? null
-      });
-
-      return { success: true, new_balance: newBalance, error_message: null };
-    }
+    return creditsDomain.deductCredits(
+      this.db,
+      user_id,
+      amount,
+      description,
+      model_id,
+      conversation_id,
+      message_id
+    );
   }
 
   async addCredits(
@@ -402,94 +214,28 @@ export class NeonAdapter implements DatabaseAdapter {
     type: CreditTransaction['type'],
     description?: string
   ): Promise<CreditBalance> {
-    const balance = await this.getCreditBalance(user_id);
-    if (!balance) throw new Error('User credit balance not found');
-
-    const newBalance = balance.balance + amount;
-    const [updated] = await this.db
-      .update(schema.creditBalances)
-      .set({
-        balance: newBalance,
-        lifetime_earned: balance.lifetime_earned + amount
-      })
-      .where(eq(schema.creditBalances.user_id, user_id))
-      .returning();
-
-    await this.db.insert(schema.creditTransactions).values({
-      user_id,
-      amount,
-      balance_after: newBalance,
-      type,
-      description: description ?? null
-    });
-
-    return this.mapCreditBalance(updated);
+    return creditsDomain.addCredits(this.db, user_id, amount, type, description);
   }
 
   async getCreditTransactions(
     user_id: string,
     options?: PaginationOptions
   ): Promise<CreditTransaction[]> {
-    const limit = options?.limit || 50;
-    const offset = options?.offset || 0;
-    const rows = await this.db
-      .select()
-      .from(schema.creditTransactions)
-      .where(eq(schema.creditTransactions.user_id, user_id))
-      .orderBy(desc(schema.creditTransactions.created_at))
-      .limit(limit)
-      .offset(offset);
-    return rows.map((r) => this.mapCreditTransaction(r));
+    return creditsDomain.getCreditTransactions(this.db, user_id, options);
   }
 
   // ── Model Pricing ─────────────────────────────────────────────────────
 
   async getModelPricing(model_id: string): Promise<ModelPricing | null> {
-    const [row] = await this.db
-      .select()
-      .from(schema.modelPricing)
-      .where(eq(schema.modelPricing.model_id, model_id));
-    return row ? this.mapModelPricing(row) : null;
+    return creditsDomain.getModelPricing(this.db, model_id);
   }
 
   async listModelPricing(): Promise<ModelPricing[]> {
-    const rows = await this.db
-      .select()
-      .from(schema.modelPricing)
-      .where(eq(schema.modelPricing.is_active, true))
-      .orderBy(asc(schema.modelPricing.model_name));
-    return rows.map((r) => this.mapModelPricing(r));
+    return creditsDomain.listModelPricing(this.db);
   }
 
   async upsertModelPricing(data: Omit<ModelPricing, 'id'>): Promise<ModelPricing> {
-    const [row] = await this.db
-      .insert(schema.modelPricing)
-      .values({
-        model_id: data.model_id,
-        model_name: data.model_name,
-        provider: data.provider,
-        credits_per_request: data.credits_per_request,
-        credits_per_1k_input_tokens: String(data.credits_per_1k_input_tokens),
-        credits_per_1k_output_tokens: String(data.credits_per_1k_output_tokens),
-        is_free: data.is_free,
-        is_active: data.is_active,
-        metadata: data.metadata
-      })
-      .onConflictDoUpdate({
-        target: schema.modelPricing.model_id,
-        set: {
-          model_name: data.model_name,
-          provider: data.provider,
-          credits_per_request: data.credits_per_request,
-          credits_per_1k_input_tokens: String(data.credits_per_1k_input_tokens),
-          credits_per_1k_output_tokens: String(data.credits_per_1k_output_tokens),
-          is_free: data.is_free,
-          is_active: data.is_active,
-          metadata: data.metadata
-        }
-      })
-      .returning();
-    return this.mapModelPricing(row);
+    return creditsDomain.upsertModelPricing(this.db, data);
   }
 
   // ── Conversations ─────────────────────────────────────────────────────
@@ -500,24 +246,11 @@ export class NeonAdapter implements DatabaseAdapter {
     title?: string;
     metadata?: Record<string, unknown>;
   }): Promise<Conversation> {
-    const [conv] = await this.db
-      .insert(schema.conversations)
-      .values({
-        user_id: data.user_id ?? null,
-        workspace_id: data.workspace_id ?? null,
-        title: data.title ?? null,
-        metadata: data.metadata ?? {}
-      })
-      .returning();
-    return this.mapConversation(conv);
+    return conversationsDomain.createConversation(this.db, data);
   }
 
   async getConversation(id: string): Promise<Conversation | null> {
-    const [conv] = await this.db
-      .select()
-      .from(schema.conversations)
-      .where(eq(schema.conversations.id, id));
-    return conv ? this.mapConversation(conv) : null;
+    return conversationsDomain.getConversation(this.db, id);
   }
 
   async listConversations(
@@ -527,41 +260,18 @@ export class NeonAdapter implements DatabaseAdapter {
       include_archived?: boolean;
     } & PaginationOptions
   ): Promise<Conversation[]> {
-    const limit = options?.limit || 50;
-    const offset = options?.offset || 0;
-
-    const conditions = [];
-    if (options?.user_id) conditions.push(eq(schema.conversations.user_id, options.user_id));
-    if (options?.workspace_id)
-      conditions.push(eq(schema.conversations.workspace_id, options.workspace_id));
-    if (!options?.include_archived)
-      conditions.push(eq(schema.conversations.is_archived, false));
-
-    const rows = await this.db
-      .select()
-      .from(schema.conversations)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(schema.conversations.updated_at))
-      .limit(limit)
-      .offset(offset);
-
-    return rows.map((r) => this.mapConversation(r));
+    return conversationsDomain.listConversations(this.db, options);
   }
 
   async updateConversation(
     id: string,
     data: Partial<Pick<Conversation, 'title' | 'is_archived' | 'is_pinned' | 'metadata'>>
   ): Promise<Conversation> {
-    const [conv] = await this.db
-      .update(schema.conversations)
-      .set(data)
-      .where(eq(schema.conversations.id, id))
-      .returning();
-    return this.mapConversation(conv);
+    return conversationsDomain.updateConversation(this.db, id, data);
   }
 
   async deleteConversation(id: string): Promise<void> {
-    await this.db.delete(schema.conversations).where(eq(schema.conversations.id, id));
+    return conversationsDomain.deleteConversation(this.db, id);
   }
 
   // ── Messages ──────────────────────────────────────────────────────────
@@ -576,37 +286,15 @@ export class NeonAdapter implements DatabaseAdapter {
     credits_charged?: number;
     metadata?: Record<string, unknown>;
   }): Promise<Message> {
-    const [msg] = await this.db
-      .insert(schema.messages)
-      .values({
-        conversation_id: data.conversation_id,
-        role: data.role,
-        content: data.content,
-        parts: (data.parts as Record<string, unknown>) ?? null,
-        model_used: data.model_used ?? null,
-        tokens_used: data.tokens_used ?? 0,
-        credits_charged: data.credits_charged ?? 0,
-        metadata: (data.metadata as Record<string, unknown>) ?? {}
-      })
-      .returning();
-    return this.mapMessage(msg);
+    return conversationsDomain.createMessage(this.db, data);
   }
 
   async listMessages(conversation_id: string, options?: PaginationOptions): Promise<Message[]> {
-    const limit = options?.limit || 200;
-    const offset = options?.offset || 0;
-    const rows = await this.db
-      .select()
-      .from(schema.messages)
-      .where(eq(schema.messages.conversation_id, conversation_id))
-      .orderBy(asc(schema.messages.created_at))
-      .limit(limit)
-      .offset(offset);
-    return rows.map((r) => this.mapMessage(r));
+    return conversationsDomain.listMessages(this.db, conversation_id, options);
   }
 
   async deleteMessage(id: string): Promise<void> {
-    await this.db.delete(schema.messages).where(eq(schema.messages.id, id));
+    return conversationsDomain.deleteMessage(this.db, id);
   }
 
   // ── Snapshots ─────────────────────────────────────────────────────────
@@ -617,119 +305,49 @@ export class NeonAdapter implements DatabaseAdapter {
     description?: string;
     state: Record<string, unknown>;
   }): Promise<Snapshot> {
-    const [snap] = await this.db
-      .insert(schema.snapshots)
-      .values({
-        conversation_id: data.conversation_id,
-        message_id: data.message_id ?? null,
-        description: data.description ?? null,
-        state: data.state
-      })
-      .returning();
-    return this.mapSnapshot(snap);
+    return conversationsDomain.createSnapshot(this.db, data);
   }
 
   async listSnapshots(conversation_id: string): Promise<Snapshot[]> {
-    const rows = await this.db
-      .select()
-      .from(schema.snapshots)
-      .where(eq(schema.snapshots.conversation_id, conversation_id))
-      .orderBy(desc(schema.snapshots.created_at));
-    return rows.map((r) => this.mapSnapshot(r));
+    return conversationsDomain.listSnapshots(this.db, conversation_id);
   }
 
   async getSnapshot(id: string): Promise<Snapshot | null> {
-    const [snap] = await this.db
-      .select()
-      .from(schema.snapshots)
-      .where(eq(schema.snapshots.id, id));
-    return snap ? this.mapSnapshot(snap) : null;
+    return conversationsDomain.getSnapshot(this.db, id);
   }
 
   async deleteSnapshot(id: string): Promise<void> {
-    await this.db.delete(schema.snapshots).where(eq(schema.snapshots.id, id));
+    return conversationsDomain.deleteSnapshot(this.db, id);
   }
 
   // ── Files ─────────────────────────────────────────────────────────────
 
   async createFileRecord(data: Omit<FileRecord, 'id' | 'created_at'>): Promise<FileRecord> {
-    const [file] = await this.db
-      .insert(schema.files)
-      .values({
-        user_id: data.user_id,
-        conversation_id: data.conversation_id,
-        message_id: data.message_id,
-        filename: data.filename,
-        original_name: data.original_name,
-        mime_type: data.mime_type,
-        size_bytes: data.size_bytes,
-        storage_path: data.storage_path,
-        storage_bucket: data.storage_bucket
-      })
-      .returning();
-    return this.mapFileRecord(file);
+    return conversationsDomain.createFileRecord(this.db, data);
   }
 
   async getFile(id: string): Promise<FileRecord | null> {
-    const [file] = await this.db.select().from(schema.files).where(eq(schema.files.id, id));
-    return file ? this.mapFileRecord(file) : null;
+    return conversationsDomain.getFile(this.db, id);
   }
 
   async listConversationFiles(conversation_id: string): Promise<FileRecord[]> {
-    const rows = await this.db
-      .select()
-      .from(schema.files)
-      .where(eq(schema.files.conversation_id, conversation_id))
-      .orderBy(desc(schema.files.created_at));
-    return rows.map((r) => this.mapFileRecord(r));
+    return conversationsDomain.listConversationFiles(this.db, conversation_id);
   }
 
   async deleteFile(id: string): Promise<void> {
-    await this.db.delete(schema.files).where(eq(schema.files.id, id));
+    return conversationsDomain.deleteFile(this.db, id);
   }
 
   // ── Usage Stats ───────────────────────────────────────────────────────
 
   async createUsageStats(data: Omit<UsageStats, 'id' | 'created_at'>): Promise<UsageStats> {
-    const [stats] = await this.db
-      .insert(schema.usageStats)
-      .values({
-        user_id: data.user_id,
-        conversation_id: data.conversation_id,
-        message_id: data.message_id,
-        model: data.model,
-        prompt_tokens: data.prompt_tokens,
-        completion_tokens: data.completion_tokens,
-        total_tokens: data.total_tokens,
-        credits_charged: data.credits_charged,
-        estimated_cost_usd: String(data.estimated_cost_usd)
-      })
-      .returning();
-    return this.mapUsageStats(stats);
+    return conversationsDomain.createUsageStats(this.db, data);
   }
 
   // ── Cache ─────────────────────────────────────────────────────────────
 
   async cacheGet(key: string): Promise<CacheEntry | null> {
-    const [row] = await this.db
-      .select()
-      .from(schema.cacheEntries)
-      .where(eq(schema.cacheEntries.key, key));
-    if (!row) return null;
-    if (row.expires_at && new Date(row.expires_at) < new Date()) {
-      await this.cacheDelete(key);
-      return null;
-    }
-    // Update hit count in background
-    this.db
-      .update(schema.cacheEntries)
-      .set({
-        hit_count: (row.hit_count ?? 0) + 1,
-        last_accessed_at: new Date()
-      })
-      .where(eq(schema.cacheEntries.key, key))
-      .then(() => {});
-    return this.mapCacheEntry(row);
+    return cacheDomain.cacheGet(this.db, key);
   }
 
   async cacheSet(
@@ -737,202 +355,71 @@ export class NeonAdapter implements DatabaseAdapter {
     value: unknown,
     options?: { ttl_seconds?: number; tags?: string[] }
   ): Promise<void> {
-    const now = new Date();
-    const expiresAt = options?.ttl_seconds
-      ? new Date(now.getTime() + options.ttl_seconds * 1000)
-      : null;
-
-    await this.db
-      .insert(schema.cacheEntries)
-      .values({
-        key,
-        value: value as Record<string, unknown>,
-        tags: options?.tags ?? [],
-        expires_at: expiresAt,
-        hit_count: 0,
-        last_accessed_at: now
-      })
-      .onConflictDoUpdate({
-        target: schema.cacheEntries.key,
-        set: {
-          value: value as Record<string, unknown>,
-          tags: options?.tags ?? [],
-          expires_at: expiresAt,
-          hit_count: 0,
-          last_accessed_at: now
-        }
-      });
+    return cacheDomain.cacheSet(this.db, key, value, options);
   }
 
   async cacheDelete(key: string): Promise<boolean> {
-    const result = await this.db
-      .delete(schema.cacheEntries)
-      .where(eq(schema.cacheEntries.key, key))
-      .returning({ key: schema.cacheEntries.key });
-    return result.length > 0;
+    return cacheDomain.cacheDelete(this.db, key);
   }
 
   async cacheDeleteByTag(tag: string): Promise<number> {
-    const result = await this.db
-      .delete(schema.cacheEntries)
-      .where(sql`${tag} = ANY(${schema.cacheEntries.tags})`)
-      .returning({ key: schema.cacheEntries.key });
-    return result.length;
+    return cacheDomain.cacheDeleteByTag(this.db, tag);
   }
 
   async cacheClear(): Promise<void> {
-    await this.db.delete(schema.cacheEntries).where(not(eq(schema.cacheEntries.key, '')));
+    return cacheDomain.cacheClear(this.db);
   }
 
   async cacheCleanup(): Promise<number> {
-    const result = await this.db
-      .delete(schema.cacheEntries)
-      .where(
-        and(
-          sql`${schema.cacheEntries.expires_at} IS NOT NULL`,
-          sql`${schema.cacheEntries.expires_at} < NOW()`
-        )
-      )
-      .returning({ key: schema.cacheEntries.key });
-    return result.length;
+    return cacheDomain.cacheCleanup(this.db);
   }
 
   // ── Enabled Models ──────────────────────────────────────────────────
 
   async listEnabledModels(onlyEnabled = true): Promise<EnabledModel[]> {
-    const conditions = onlyEnabled ? eq(schema.enabledModels.is_enabled, true) : undefined;
-    const rows = await this.db
-      .select()
-      .from(schema.enabledModels)
-      .where(conditions)
-      .orderBy(asc(schema.enabledModels.sort_order));
-    return rows.map((r) => this.mapEnabledModel(r));
+    return modelsDomain.listEnabledModels(this.db, onlyEnabled);
   }
 
   async getEnabledModel(model_id: string): Promise<EnabledModel | null> {
-    const [row] = await this.db
-      .select()
-      .from(schema.enabledModels)
-      .where(eq(schema.enabledModels.model_id, model_id));
-    return row ? this.mapEnabledModel(row) : null;
+    return modelsDomain.getEnabledModel(this.db, model_id);
   }
 
   async upsertEnabledModel(
     data: Omit<EnabledModel, 'id' | 'created_at' | 'updated_at'>
   ): Promise<EnabledModel> {
-    const [row] = await this.db
-      .insert(schema.enabledModels)
-      .values(data)
-      .onConflictDoUpdate({
-        target: schema.enabledModels.model_id,
-        set: {
-          model_name: data.model_name,
-          provider: data.provider,
-          category: data.category,
-          description: data.description,
-          is_free: data.is_free,
-          gems_per_message: data.gems_per_message,
-          max_tokens: data.max_tokens,
-          tool_support: data.tool_support,
-          is_enabled: data.is_enabled,
-          sort_order: data.sort_order,
-          metadata: data.metadata
-        }
-      })
-      .returning();
-    return this.mapEnabledModel(row);
+    return modelsDomain.upsertEnabledModel(this.db, data);
   }
 
   async deleteEnabledModel(model_id: string): Promise<void> {
-    await this.db
-      .delete(schema.enabledModels)
-      .where(eq(schema.enabledModels.model_id, model_id));
+    return modelsDomain.deleteEnabledModel(this.db, model_id);
   }
 
   // ── App Settings (KV Store) ──────────────────────────────────────────
 
   async kvGet(user_id: string, category: string, key: string): Promise<unknown | null> {
-    const [row] = await this.db
-      .select()
-      .from(schema.appSettings)
-      .where(
-        and(
-          eq(schema.appSettings.user_id, user_id),
-          eq(schema.appSettings.category, category),
-          eq(schema.appSettings.key, key)
-        )
-      );
-    if (!row) return null;
-    const raw = row.value as Record<string, unknown>;
-    if (raw && typeof raw === 'object' && '__kv' in raw) return raw.__kv;
-    return raw ?? null;
+    return cacheDomain.kvGet(this.db, user_id, category, key);
   }
 
   async kvSet(user_id: string, category: string, key: string, value: unknown): Promise<void> {
-    const jsonbValue =
-      value !== null && typeof value === 'object' && !Array.isArray(value)
-        ? value
-        : { __kv: value };
-
-    await this.db
-      .insert(schema.appSettings)
-      .values({
-        user_id,
-        category,
-        key,
-        value: jsonbValue as Record<string, unknown>
-      })
-      .onConflictDoUpdate({
-        target: [schema.appSettings.user_id, schema.appSettings.category, schema.appSettings.key],
-        set: {
-          value: jsonbValue as Record<string, unknown>,
-          updated_at: new Date()
-        }
-      });
+    return cacheDomain.kvSet(this.db, user_id, category, key, value);
   }
 
   async kvDelete(user_id: string, category: string, key: string): Promise<void> {
-    await this.db
-      .delete(schema.appSettings)
-      .where(
-        and(
-          eq(schema.appSettings.user_id, user_id),
-          eq(schema.appSettings.category, category),
-          eq(schema.appSettings.key, key)
-        )
-      );
+    return cacheDomain.kvDelete(this.db, user_id, category, key);
   }
 
   async kvGetAll(
     user_id: string,
     category?: string
   ): Promise<{ category: string; key: string; value: unknown }[]> {
-    const conditions = [eq(schema.appSettings.user_id, user_id)];
-    if (category) conditions.push(eq(schema.appSettings.category, category));
-
-    const rows = await this.db
-      .select({ category: schema.appSettings.category, key: schema.appSettings.key, value: schema.appSettings.value })
-      .from(schema.appSettings)
-      .where(and(...conditions));
-
-    return rows.map((r) => {
-      const raw = r.value as Record<string, unknown>;
-      const unwrapped = raw && typeof raw === 'object' && '__kv' in raw ? raw.__kv : raw;
-      return { category: r.category, key: r.key, value: unwrapped };
-    });
+    return cacheDomain.kvGetAll(this.db, user_id, category);
   }
 
   async kvSetBatch(
     user_id: string,
     entries: { category: string; key: string; value: unknown }[]
   ): Promise<void> {
-    if (entries.length === 0) return;
-    const validEntries = entries.filter((e) => e.value !== undefined);
-    if (validEntries.length === 0) return;
-
-    for (const e of validEntries) {
-      await this.kvSet(user_id, e.category, e.key, e.value);
-    }
+    return cacheDomain.kvSetBatch(this.db, user_id, entries);
   }
 
   // ── File Versions ────────────────────────────────────────────────────
@@ -944,82 +431,72 @@ export class NeonAdapter implements DatabaseAdapter {
     content_mermaid: string;
     content_document: string;
   }): Promise<{ id: string; version: number; created_at: string }> {
-    const [row] = await this.db
-      .insert(schema.fileVersions)
-      .values({
-        file_id: data.file_id,
-        user_id: data.user_id,
-        version: data.version,
-        content_mermaid: data.content_mermaid,
-        content_document: data.content_document
-      })
-      .returning({
-        id: schema.fileVersions.id,
-        version: schema.fileVersions.version,
-        created_at: schema.fileVersions.created_at
-      });
-    return {
-      id: row.id,
-      version: row.version,
-      created_at: row.created_at.toISOString()
-    };
+    return conversationsDomain.createFileVersion(this.db, data);
   }
 
   async listFileVersions(
     file_id: string,
     limit?: number
   ): Promise<
-    Array<{
+    {
       id: string;
       file_id: string;
       version: number;
       content_mermaid: string;
       content_document: string;
       created_at: string;
-    }>
+    }[]
   > {
-    const query = this.db
-      .select()
-      .from(schema.fileVersions)
-      .where(eq(schema.fileVersions.file_id, file_id))
-      .orderBy(desc(schema.fileVersions.version));
-
-    const rows = limit ? await query.limit(limit) : await query;
-
-    return rows.map((r) => ({
-      id: r.id,
-      file_id: r.file_id,
-      version: r.version,
-      content_mermaid: r.content_mermaid,
-      content_document: r.content_document,
-      created_at: r.created_at.toISOString()
-    }));
+    return conversationsDomain.listFileVersions(this.db, file_id, limit);
   }
 
   async pruneFileVersions(file_id: string, keepCount: number): Promise<number> {
-    // Get IDs of versions to keep (top N by version DESC)
-    const keep = await this.db
-      .select({ id: schema.fileVersions.id })
-      .from(schema.fileVersions)
-      .where(eq(schema.fileVersions.file_id, file_id))
-      .orderBy(desc(schema.fileVersions.version))
-      .limit(keepCount);
+    return conversationsDomain.pruneFileVersions(this.db, file_id, keepCount);
+  }
 
-    const keepIds = keep.map((r) => r.id);
+  // ── Diagram Workspaces ──────────────────────────────────────────────
 
-    if (keepIds.length === 0) return 0;
+  async createDiagramWorkspace(data: {
+    user_id: string;
+    title: string;
+    description?: string;
+    document?: Record<string, unknown>;
+  }): Promise<DiagramWorkspaceRow> {
+    return modelsDomain.createDiagramWorkspace(this.db, data);
+  }
 
-    const deleted = await this.db
-      .delete(schema.fileVersions)
-      .where(
-        and(
-          eq(schema.fileVersions.file_id, file_id),
-          not(inArray(schema.fileVersions.id, keepIds))
-        )
-      )
-      .returning({ id: schema.fileVersions.id });
+  async getDiagramWorkspace(id: string): Promise<DiagramWorkspaceRow | null> {
+    return modelsDomain.getDiagramWorkspace(this.db, id);
+  }
 
-    return deleted.length;
+  async listDiagramWorkspaces(
+    user_id: string,
+    options?: { limit?: number; offset?: number; starred_only?: boolean; search?: string }
+  ): Promise<{ workspaces: DiagramWorkspaceSummaryRow[]; total: number }> {
+    return modelsDomain.listDiagramWorkspaces(this.db, user_id, options);
+  }
+
+  async updateDiagramWorkspace(
+    id: string,
+    data: Partial<Pick<DiagramWorkspaceRow, 'title' | 'description' | 'is_starred' | 'tags'>>
+  ): Promise<DiagramWorkspaceRow> {
+    return modelsDomain.updateDiagramWorkspace(this.db, id, data);
+  }
+
+  async deleteDiagramWorkspace(id: string): Promise<void> {
+    return modelsDomain.deleteDiagramWorkspace(this.db, id);
+  }
+
+  async updateDiagramWorkspaceDocument(
+    id: string,
+    document: Record<string, unknown>,
+    meta?: { element_count?: number; diagram_type?: string | null }
+  ): Promise<void> {
+    return modelsDomain.updateDiagramWorkspaceDocument(this.db, id, document, meta);
+  }
+
+  async duplicateDiagramWorkspace(id: string, newTitle: string): Promise<DiagramWorkspaceRow> {
+    return modelsDomain.duplicateDiagramWorkspace(this.db, id, newTitle);
   }
 
   // ── Health ────────────────────────────────────────────────────────────
@@ -1031,383 +508,5 @@ export class NeonAdapter implements DatabaseAdapter {
     } catch {
       return false;
     }
-  }
-
-  // ── Row Mappers (Drizzle row → interface types) ───────────────────────
-
-  private mapUser(row: typeof schema.users.$inferSelect): User {
-    return {
-      id: row.id,
-      firebase_uid: row.firebase_uid,
-      email: row.email,
-      display_name: row.display_name,
-      avatar_url: row.avatar_url,
-      role: row.role as User['role'],
-      is_active: row.is_active,
-      email_verified: row.email_verified,
-      last_login_at: row.last_login_at?.toISOString() ?? null,
-      metadata: (row.metadata as Record<string, unknown>) ?? {},
-      created_at: row.created_at.toISOString(),
-      updated_at: row.updated_at.toISOString()
-    };
-  }
-
-  private mapSession(row: typeof schema.sessions.$inferSelect): Session {
-    return {
-      id: row.id,
-      user_id: row.user_id,
-      token: row.token,
-      ip_address: row.ip_address,
-      user_agent: row.user_agent,
-      expires_at: row.expires_at.toISOString(),
-      created_at: row.created_at.toISOString()
-    };
-  }
-
-  private mapWorkspace(row: typeof schema.workspaces.$inferSelect): Workspace {
-    return {
-      id: row.id,
-      owner_id: row.owner_id,
-      name: row.name,
-      slug: row.slug,
-      description: row.description,
-      is_public: row.is_public,
-      settings: (row.settings as Record<string, unknown>) ?? {},
-      created_at: row.created_at.toISOString(),
-      updated_at: row.updated_at.toISOString()
-    };
-  }
-
-  private mapCollabMember(
-    row: typeof schema.collaborationMembers.$inferSelect
-  ): CollaborationMember {
-    return {
-      id: row.id,
-      workspace_id: row.workspace_id,
-      user_id: row.user_id,
-      role: row.role as CollaborationMember['role'],
-      invited_by: row.invited_by,
-      joined_at: row.joined_at.toISOString()
-    };
-  }
-
-  private mapCreditBalance(row: typeof schema.creditBalances.$inferSelect): CreditBalance {
-    return {
-      id: row.id,
-      user_id: row.user_id,
-      balance: row.balance,
-      lifetime_earned: row.lifetime_earned,
-      lifetime_spent: row.lifetime_spent,
-      updated_at: row.updated_at.toISOString()
-    };
-  }
-
-  private mapCreditTransaction(
-    row: typeof schema.creditTransactions.$inferSelect
-  ): CreditTransaction {
-    return {
-      id: row.id,
-      user_id: row.user_id,
-      amount: row.amount,
-      balance_after: row.balance_after,
-      type: row.type as CreditTransaction['type'],
-      description: row.description,
-      model_id: row.model_id,
-      conversation_id: row.conversation_id,
-      message_id: row.message_id,
-      created_at: row.created_at.toISOString()
-    };
-  }
-
-  private mapModelPricing(row: typeof schema.modelPricing.$inferSelect): ModelPricing {
-    return {
-      id: row.id,
-      model_id: row.model_id,
-      model_name: row.model_name,
-      provider: row.provider,
-      credits_per_request: row.credits_per_request,
-      credits_per_1k_input_tokens: Number(row.credits_per_1k_input_tokens),
-      credits_per_1k_output_tokens: Number(row.credits_per_1k_output_tokens),
-      is_free: row.is_free,
-      is_active: row.is_active,
-      metadata: (row.metadata as Record<string, unknown>) ?? {}
-    };
-  }
-
-  private mapConversation(row: typeof schema.conversations.$inferSelect): Conversation {
-    return {
-      id: row.id,
-      user_id: row.user_id,
-      workspace_id: row.workspace_id,
-      title: row.title,
-      is_archived: row.is_archived,
-      is_pinned: row.is_pinned,
-      metadata: (row.metadata as Record<string, unknown>) ?? {},
-      created_at: row.created_at.toISOString(),
-      updated_at: row.updated_at.toISOString()
-    };
-  }
-
-  private mapMessage(row: typeof schema.messages.$inferSelect): Message {
-    return {
-      id: row.id,
-      conversation_id: row.conversation_id,
-      role: row.role as Message['role'],
-      content: row.content,
-      parts: row.parts,
-      model_used: row.model_used,
-      tokens_used: row.tokens_used ?? 0,
-      credits_charged: row.credits_charged ?? 0,
-      metadata: (row.metadata as Record<string, unknown>) ?? null,
-      created_at: row.created_at.toISOString()
-    };
-  }
-
-  private mapSnapshot(row: typeof schema.snapshots.$inferSelect): Snapshot {
-    return {
-      id: row.id,
-      conversation_id: row.conversation_id,
-      message_id: row.message_id,
-      description: row.description,
-      state: (row.state as Record<string, unknown>) ?? {},
-      created_at: row.created_at.toISOString()
-    };
-  }
-
-  private mapFileRecord(row: typeof schema.files.$inferSelect): FileRecord {
-    return {
-      id: row.id,
-      user_id: row.user_id,
-      conversation_id: row.conversation_id,
-      message_id: row.message_id,
-      filename: row.filename,
-      original_name: row.original_name,
-      mime_type: row.mime_type,
-      size_bytes: row.size_bytes,
-      storage_path: row.storage_path,
-      storage_bucket: row.storage_bucket ?? 'uploads',
-      created_at: row.created_at.toISOString()
-    };
-  }
-
-  private mapUsageStats(row: typeof schema.usageStats.$inferSelect): UsageStats {
-    return {
-      id: row.id,
-      user_id: row.user_id,
-      conversation_id: row.conversation_id,
-      message_id: row.message_id,
-      model: row.model,
-      prompt_tokens: row.prompt_tokens ?? 0,
-      completion_tokens: row.completion_tokens ?? 0,
-      total_tokens: row.total_tokens ?? 0,
-      credits_charged: row.credits_charged ?? 0,
-      estimated_cost_usd: Number(row.estimated_cost_usd),
-      created_at: row.created_at.toISOString()
-    };
-  }
-
-  private mapCacheEntry(row: typeof schema.cacheEntries.$inferSelect): CacheEntry {
-    return {
-      key: row.key,
-      value: row.value,
-      tags: (row.tags as string[]) ?? [],
-      hit_count: row.hit_count ?? 0,
-      expires_at: row.expires_at?.toISOString() ?? null,
-      created_at: row.created_at.toISOString(),
-      last_accessed_at: row.last_accessed_at.toISOString()
-    };
-  }
-
-  private mapEnabledModel(row: typeof schema.enabledModels.$inferSelect): EnabledModel {
-    return {
-      id: row.id,
-      model_id: row.model_id,
-      model_name: row.model_name,
-      provider: row.provider,
-      category: row.category,
-      description: row.description,
-      is_free: row.is_free,
-      gems_per_message: row.gems_per_message,
-      max_tokens: row.max_tokens ?? 4000,
-      tool_support: row.tool_support,
-      is_enabled: row.is_enabled,
-      sort_order: row.sort_order ?? 0,
-      metadata: (row.metadata as Record<string, unknown>) ?? {},
-      created_at: row.created_at.toISOString(),
-      updated_at: row.updated_at.toISOString()
-    };
-  }
-
-  // ── Diagram Workspaces ──────────────────────────────────────────────
-
-  async createDiagramWorkspace(data: {
-    user_id: string;
-    title: string;
-    description?: string;
-    document?: Record<string, unknown>;
-  }): Promise<DiagramWorkspaceRow> {
-    const [row] = await this.db
-      .insert(schema.diagramWorkspaces)
-      .values({
-        user_id: data.user_id,
-        title: data.title,
-        description: data.description ?? null,
-        document: data.document ?? {
-          version: 1,
-          canvas: { elements: [], connections: [], viewport: { x: 0, y: 0, zoom: 1 }, gridEnabled: true, gridSize: 20, snapToGrid: true },
-          mermaidCode: '',
-          chat: { messages: [] },
-          documentMarkdown: ''
-        }
-      })
-      .returning();
-    return this.mapDiagramWorkspace(row);
-  }
-
-  async getDiagramWorkspace(id: string): Promise<DiagramWorkspaceRow | null> {
-    const [row] = await this.db
-      .select()
-      .from(schema.diagramWorkspaces)
-      .where(eq(schema.diagramWorkspaces.id, id));
-    return row ? this.mapDiagramWorkspace(row) : null;
-  }
-
-  async listDiagramWorkspaces(
-    user_id: string,
-    options?: { limit?: number; offset?: number; starred_only?: boolean; search?: string }
-  ): Promise<{ workspaces: DiagramWorkspaceSummaryRow[]; total: number }> {
-    const limit = options?.limit || 50;
-    const offset = options?.offset || 0;
-
-    const conditions = [eq(schema.diagramWorkspaces.user_id, user_id)];
-    if (options?.starred_only) {
-      conditions.push(eq(schema.diagramWorkspaces.is_starred, true));
-    }
-    if (options?.search) {
-      conditions.push(ilike(schema.diagramWorkspaces.title, `%${options.search}%`));
-    }
-
-    const where = and(...conditions);
-
-    // Select summary columns (exclude document blob)
-    const rows = await this.db
-      .select({
-        id: schema.diagramWorkspaces.id,
-        user_id: schema.diagramWorkspaces.user_id,
-        title: schema.diagramWorkspaces.title,
-        description: schema.diagramWorkspaces.description,
-        diagram_type: schema.diagramWorkspaces.diagram_type,
-        is_starred: schema.diagramWorkspaces.is_starred,
-        tags: schema.diagramWorkspaces.tags,
-        element_count: schema.diagramWorkspaces.element_count,
-        thumbnail_url: schema.diagramWorkspaces.thumbnail_url,
-        created_at: schema.diagramWorkspaces.created_at,
-        updated_at: schema.diagramWorkspaces.updated_at
-      })
-      .from(schema.diagramWorkspaces)
-      .where(where)
-      .orderBy(desc(schema.diagramWorkspaces.updated_at))
-      .limit(limit)
-      .offset(offset);
-
-    const [{ count }] = await this.db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(schema.diagramWorkspaces)
-      .where(where);
-
-    return {
-      workspaces: rows.map((r) => ({
-        id: r.id,
-        user_id: r.user_id,
-        title: r.title,
-        description: r.description,
-        diagram_type: r.diagram_type,
-        is_starred: r.is_starred,
-        tags: (r.tags as string[]) ?? [],
-        element_count: r.element_count,
-        thumbnail_url: r.thumbnail_url,
-        created_at: r.created_at.toISOString(),
-        updated_at: r.updated_at.toISOString()
-      })),
-      total: count
-    };
-  }
-
-  async updateDiagramWorkspace(
-    id: string,
-    data: Partial<Pick<DiagramWorkspaceRow, 'title' | 'description' | 'is_starred' | 'tags'>>
-  ): Promise<DiagramWorkspaceRow> {
-    const updateData: Record<string, unknown> = { updated_at: new Date() };
-    if (data.title !== undefined) updateData.title = data.title;
-    if (data.description !== undefined) updateData.description = data.description;
-    if (data.is_starred !== undefined) updateData.is_starred = data.is_starred;
-    if (data.tags !== undefined) updateData.tags = data.tags;
-
-    const [row] = await this.db
-      .update(schema.diagramWorkspaces)
-      .set(updateData)
-      .where(eq(schema.diagramWorkspaces.id, id))
-      .returning();
-    return this.mapDiagramWorkspace(row);
-  }
-
-  async deleteDiagramWorkspace(id: string): Promise<void> {
-    await this.db.delete(schema.diagramWorkspaces).where(eq(schema.diagramWorkspaces.id, id));
-  }
-
-  async updateDiagramWorkspaceDocument(
-    id: string,
-    document: Record<string, unknown>,
-    meta?: { element_count?: number; diagram_type?: string | null }
-  ): Promise<void> {
-    const updateData: Record<string, unknown> = {
-      document,
-      updated_at: new Date()
-    };
-    if (meta?.element_count !== undefined) updateData.element_count = meta.element_count;
-    if (meta?.diagram_type !== undefined) updateData.diagram_type = meta.diagram_type;
-
-    await this.db
-      .update(schema.diagramWorkspaces)
-      .set(updateData)
-      .where(eq(schema.diagramWorkspaces.id, id));
-  }
-
-  async duplicateDiagramWorkspace(id: string, newTitle: string): Promise<DiagramWorkspaceRow> {
-    const original = await this.getDiagramWorkspace(id);
-    if (!original) throw new Error('Workspace not found');
-
-    const [row] = await this.db
-      .insert(schema.diagramWorkspaces)
-      .values({
-        user_id: original.user_id,
-        title: newTitle,
-        description: original.description,
-        diagram_type: original.diagram_type,
-        is_starred: false,
-        tags: original.tags,
-        document: original.document as Record<string, unknown>,
-        element_count: original.element_count,
-        thumbnail_url: null
-      })
-      .returning();
-    return this.mapDiagramWorkspace(row);
-  }
-
-  private mapDiagramWorkspace(row: typeof schema.diagramWorkspaces.$inferSelect): DiagramWorkspaceRow {
-    return {
-      id: row.id,
-      user_id: row.user_id,
-      title: row.title,
-      description: row.description,
-      diagram_type: row.diagram_type,
-      is_starred: row.is_starred,
-      tags: (row.tags as string[]) ?? [],
-      document: (row.document as Record<string, unknown>) ?? {},
-      element_count: row.element_count,
-      thumbnail_url: row.thumbnail_url,
-      created_at: row.created_at.toISOString(),
-      updated_at: row.updated_at.toISOString()
-    };
   }
 }

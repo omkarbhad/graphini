@@ -122,59 +122,59 @@
     }
   }
   let editorOptions = {
+    acceptSuggestionOnEnter: 'on' as const,
+    bracketPairColorization: {
+      enabled: true
+    },
+    codeLens: false,
+    // Modern appearance
+    cursorBlinking: 'smooth' as const,
+    cursorSmoothCaretAnimation: 'on' as const,
+    folding: true,
+    fontFamily:
+      'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+    fontSize: 13,
+    glyphMargin: false,
+    guides: {
+      indentation: true,
+      bracketPairs: true
+    },
+    // Enhanced error display
+    hover: {
+      enabled: true,
+      delay: 200
+    },
+    lineDecorationsWidth: 0,
+    lineHeight: 20,
+    lineNumbers: 'on' as const,
+    lineNumbersMinChars: 3,
     minimap: {
       enabled: false
     },
+    occurrencesHighlight: 'singleFile' as const,
     overviewRulerLanes: 0,
-    fontSize: 13,
-    lineHeight: 20,
-    fontFamily:
-      'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
     padding: { top: 16, bottom: 16 },
-    scrollBeyondLastLine: false,
-    renderLineHighlight: 'gutter' as const,
-    lineNumbers: 'on' as const,
-    glyphMargin: false,
-    folding: true,
-    lineDecorationsWidth: 0,
-    lineNumbersMinChars: 3,
     // Enhanced validation indicators
     quickSuggestions: {
       other: true,
       comments: false,
       strings: false
     },
-    suggestOnTriggerCharacters: true,
-    acceptSuggestionOnEnter: 'on' as const,
-    tabCompletion: 'on' as const,
-    wordBasedSuggestions: 'allDocuments' as const,
-    // Enhanced error display
-    hover: {
-      enabled: true,
-      delay: 200
-    },
-    // Modern appearance
-    cursorBlinking: 'smooth' as const,
-    cursorSmoothCaretAnimation: 'on' as const,
-    smoothScrolling: true,
-    bracketPairColorization: {
-      enabled: true
-    },
-    guides: {
-      indentation: true,
-      bracketPairs: true
+    renderLineHighlight: 'gutter' as const,
+    scrollBeyondLastLine: false,
+    scrollbar: {
+      horizontal: 'visible' as const,
+      horizontalHasArrows: false,
+      useShadows: false,
+      vertical: 'visible' as const,
+      verticalHasArrows: false
     },
     // Better selection and highlighting
     selectionHighlight: true,
-    occurrencesHighlight: 'singleFile' as const,
-    codeLens: false,
-    scrollbar: {
-      vertical: 'visible' as const,
-      horizontal: 'visible' as const,
-      useShadows: false,
-      verticalHasArrows: false,
-      horizontalHasArrows: false
-    }
+    smoothScrolling: true,
+    suggestOnTriggerCharacters: true,
+    tabCompletion: 'on' as const,
+    wordBasedSuggestions: 'allDocuments' as const
   };
   let currentText = '';
 
@@ -237,9 +237,7 @@
       onUpdate(newText);
 
       // Immediate validation for potential errors (check for common error patterns)
-      const hasPotentialError = /[^\]]*\[[^\]]*$|[^)]*\([^)]*$|[^}]*\{[^}]*$|"[^"]*$/.test(
-        newText
-      );
+      const hasPotentialError = /[^\]]*\[[^\]]*$|[^)]*\([^)]*$|[^}]*\{[^}]*$|"[^"]*$/.test(newText);
 
       // Trigger immediate validation if potential error detected, otherwise use debounce
       triggerValidation(newText, hasPotentialError);
