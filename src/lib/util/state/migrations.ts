@@ -1,7 +1,7 @@
 import { writable, get, type Writable } from 'svelte/store';
-import { persist, localStorage } from '$lib/util/persist';
+import { persist, localStorage } from './persist';
 import { injectHistoryIDs } from '$lib/features/history/History/history';
-import { logEvent } from './stats';
+import { logEvent } from '../stats';
 
 interface MigrationState {
   version: number;

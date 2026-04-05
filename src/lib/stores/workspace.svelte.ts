@@ -12,7 +12,7 @@ import type {
 import { DEFAULT_WORKSPACE_DOCUMENT } from '$lib/types/workspace';
 import { documentMarkdownStore } from '$lib/stores/documentStore';
 import { get } from 'svelte/store';
-import { inputStateStore } from '$lib/util/state';
+import { inputStateStore } from '$lib/util/state/state';
 
 // ── State ──────────────────────────────────────────────────────────────────
 

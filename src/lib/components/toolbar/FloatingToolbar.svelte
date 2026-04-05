@@ -1,6 +1,6 @@
 <script lang="ts">
   import { TID } from '$/constants';
-  import { inputStateStore } from '$/util/state';
+  import { inputStateStore } from '$/util/state/state';
   import { logEvent } from '$/util/stats';
   import { Button } from '$lib/components/ui/button';
   import { Separator } from '$lib/components/ui/separator';

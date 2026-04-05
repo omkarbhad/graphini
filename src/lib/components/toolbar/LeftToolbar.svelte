@@ -1,7 +1,7 @@
 <script lang="ts">
   import { workspaceStore } from '$lib/stores/workspace.svelte';
   import { Button } from '$lib/components/ui/button';
-  import { stateStore } from '$lib/util/state';
+  import { stateStore } from '$lib/util/state/state';
   import type { Snippet } from 'svelte';
   import FileIcon from '~icons/material-symbols/description-rounded';
   import FolderIcon from '~icons/material-symbols/folder-rounded';

@@ -1,5 +1,5 @@
 import type { HistoryEntry } from '$lib/types';
-import { defaultState } from '$lib/util/state';
+import { defaultState } from '$lib/util/state/state';
 import { get } from 'svelte/store';
 import { describe, expect, it } from 'vitest';
 import {

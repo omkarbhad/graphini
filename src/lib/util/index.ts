@@ -2,16 +2,16 @@
 export * from './autoSync';
 export * from './color';
 export * from './env';
-export * from './errorHandling';
-export * from './errorToString';
+export * from './error/errorHandling';
+export * from './error/errorToString';
 export * from './loading';
-export * from './migrations';
-export * from './monacoExtra';
+export * from './state/migrations';
+export * from './editor/monacoExtra';
 export * from './notify';
-export * from './persist';
+export * from './state/persist';
 
-export * from './serde';
-export * from './state';
+export * from './serialization/serde';
+export * from './state/state';
 export * from './stats';
 export * from './util';
 

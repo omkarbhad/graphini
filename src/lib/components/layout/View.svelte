@@ -7,8 +7,8 @@
   import { PanZoomState } from '$/features/diagram/panZoom';
   import type { State, ValidatedState } from '$/types';
   import { recordRenderTime, shouldRefreshView } from '$/util/autoSync';
-  import { findNodeDefinition, svgIdToNodeName } from '$/util/diagramMapper';
-  import { inputStateStore, stateStore, updateCodeStore } from '$/util/state';
+  import { findNodeDefinition, svgIdToNodeName } from '$/util/diagram/diagramMapper';
+  import { inputStateStore, stateStore, updateCodeStore } from '$/util/state/state';
   import { logEvent, saveStatistics } from '$/util/stats';
   import FontAwesome, { mayContainFontAwesome } from '$lib/components/common/FontAwesome.svelte';
   import type { MermaidConfig } from 'mermaid';

@@ -233,15 +233,15 @@ export function localStorage<T>(_listenExternalChanges = false): StorageInterfac
     return noopStorage();
   }
 
-  // Lazy import to avoid circular deps
-  const getKv = () => import('$lib/stores/kvStore');
+  // Use the rune-based kv store singleton directly
+  const getKv = async () => (await import('$lib/stores/kvStore.svelte')).kv;
 
   return {
     getValue(key: string): T | null {
       try {
         const mod = (globalThis as any).__kvStoreModule;
         if (mod) {
-          const val = mod.kvGet('persist', key);
+          const val = mod.get('persist', key);
           if (val !== null && val !== undefined) return val as T;
         }
       } catch {}
@@ -251,13 +251,13 @@ export function localStorage<T>(_listenExternalChanges = false): StorageInterfac
       try {
         const mod = (globalThis as any).__kvStoreModule;
         if (mod) {
-          mod.kvSet('persist', key, value);
+          mod.set('persist', key, value);
           return;
         }
         // Module not loaded yet — load and set
         getKv().then((m) => {
           (globalThis as any).__kvStoreModule = m;
-          m.kvSet('persist', key, value);
+          m.set('persist', key, value);
         });
       } catch {}
     },
@@ -265,12 +265,12 @@ export function localStorage<T>(_listenExternalChanges = false): StorageInterfac
       try {
         const mod = (globalThis as any).__kvStoreModule;
         if (mod) {
-          mod.kvDelete('persist', key);
+          mod.delete('persist', key);
           return;
         }
         getKv().then((m) => {
           (globalThis as any).__kvStoreModule = m;
-          m.kvDelete('persist', key);
+          m.delete('persist', key);
         });
       } catch {}
     }

@@ -61,15 +61,15 @@ export default defineConfig({
     environment: 'jsdom',
     // in-source testing
     includeSource: ['src/**/*.{js,ts,svelte}'],
-    // Ignore E2E tests
+    include: ['src/**/*.{test,spec}.{js,ts}', 'tests/unit/**/*.{test,spec}.{js,ts}'],
     exclude: [
-      'tests/**/*',
+      'tests/e2e/**/*',
       '**/node_modules/**',
       '**/dist/**',
       '**/.{idea,git,cache,output,temp}/**',
       '**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*'
     ],
-    setupFiles: ['./src/tests/setup.ts'],
+    setupFiles: './tests/unit/setup.ts',
     coverage: {
       exclude: ['src/mocks', '.svelte-kit', 'src/**/*.test.ts'],
       reporter: ['text', 'json', 'html', 'lcov']

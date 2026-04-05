@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { inputStateStore, updateCodeStore } from '$/util/state';
+  import { inputStateStore, updateCodeStore } from '$/util/state/state';
   import { Button } from '$lib/components/ui/button';
-  import { injectEdgeStyle, injectNodeStyle, svgIdToNodeName } from '$lib/util/diagramMapper';
+  import { injectEdgeStyle, injectNodeStyle, svgIdToNodeName } from '$lib/util/diagram/diagramMapper';
   import { Image, Loader2, Pipette, X } from 'lucide-svelte';
   import { mode } from 'mode-watcher';
   import { onDestroy, onMount } from 'svelte';

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { stateStore } from '$/util/state';
+  import { stateStore } from '$/util/state/state';
   import * as Tooltip from '$lib/components/ui/tooltip';
   import type { ComponentProps, Snippet } from 'svelte';
   import ExternalLinkIcon from '~icons/material-symbols/open-in-new-rounded';

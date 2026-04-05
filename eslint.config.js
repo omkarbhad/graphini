@@ -59,6 +59,7 @@ export default defineConfig(
       }
     },
     rules: {
+      'svelte/no-navigation-without-resolve': 'off',
       'svelte/no-unused-props': 'off'
     }
   },

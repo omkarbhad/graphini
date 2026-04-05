@@ -2,12 +2,12 @@
  * Export all application state as a JSON file.
  * Includes: UI states, settings, chats, markdown documentation, and mermaid code.
  */
-import { aiSettingsStore, toolsStore } from '$lib/stores';
+import { aiSettings, toolsStore } from '$lib/stores';
 import { documentMarkdownStore } from '$lib/stores/documentStore';
-import { kvGetAll, kvGetCategory } from '$lib/stores/kvStore';
-import { panelOrderStore, panelStore } from '$lib/stores/panels.svelte';
+import { kv } from '$lib/stores/kvStore.svelte';
+import { panels } from '$lib/stores/panels.svelte';
 import { get } from 'svelte/store';
-import { inputStateStore } from './state';
+import { inputStateStore } from '../state/state';
 
 export interface AppStateExport {
   exportedAt: string;
@@ -28,17 +28,17 @@ export interface AppStateExport {
 export function exportAppState(): AppStateExport {
   const state = get(inputStateStore);
   const markdown = get(documentMarkdownStore);
-  const panels = get(panelStore);
-  const panelOrder = get(panelOrderStore);
-  const aiSettings = get(aiSettingsStore as any);
+  const panelConfig = panels.panels;
+  const panelOrder = panels.order;
+  const aiSettingsValue = aiSettings.value;
   const tools = get(toolsStore);
 
   // Collect chat data from KV store
-  const chatData = kvGetCategory('chat');
+  const chatData = kv.getCategory('chat');
   const chatMessages = Object.entries(chatData).map(([key, value]) => ({ key, value }));
 
   // Collect all KV data
-  const kvData = kvGetAll();
+  const kvData = kv.getAll();
 
   return {
     exportedAt: new Date().toISOString(),
@@ -47,10 +47,10 @@ export function exportAppState(): AppStateExport {
     mermaidConfig: state.mermaid || '',
     markdown: markdown || '',
     panels: {
-      config: panels,
+      config: panelConfig,
       order: panelOrder
     },
-    aiSettings,
+    aiSettings: aiSettingsValue,
     tools,
     chatMessages,
     kvData

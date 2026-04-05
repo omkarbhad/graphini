@@ -1,17 +1,17 @@
 <script lang="ts">
   import { Button } from '$lib/components/ui/button';
   import * as Dialog from '$lib/components/ui/dialog';
-  import { aiSettingsStore, TOOL_CATEGORIES, toolsStore } from '$lib/stores';
-  import { kvGet, kvSet } from '$lib/stores/kvStore';
+  import { aiSettings, TOOL_CATEGORIES, toolsStore } from '$lib/stores';
+  import { kv } from '$lib/stores/kvStore.svelte';
   import {
     allModelsStore,
     favoriteModelsStore,
     loadModelsFromAPI,
     modelsLoadingStore,
     selectedChatModelsStore
-  } from '$lib/stores/modelStore';
+  } from '$lib/stores/modelStore.svelte';
   import type { ToolConfig } from '$lib/stores/toolsStore';
-  import { downloadAppState } from '$lib/util/exportState';
+  import { downloadAppState } from '$lib/util/serialization/exportState';
   import {
     BookOpen,
     Download,
@@ -36,7 +36,7 @@
   async function loadMemories() {
     memoryLoading = true;
     try {
-      const data = await kvGet('memories', 'all');
+      const data = await kv.get('memories', 'all');
       if (data && typeof data === 'object' && !Array.isArray(data)) {
         memories = Object.entries(data as Record<string, any>).map(([k, v]: [string, any]) => ({
           key: k,
@@ -53,12 +53,12 @@
   }
 
   async function saveMemory(key: string, value: string) {
-    const current = (await kvGet('memories', 'all')) || {};
+    const current = (await kv.get('memories', 'all')) || {};
     const updated = {
       ...(current as Record<string, any>),
       [key]: { value, savedAt: new Date().toISOString() }
     };
-    await kvSet('memories', 'all', updated);
+    await kv.set('memories', 'all', updated);
     await loadMemories();
     editingKey = null;
     editingValue = '';
@@ -67,10 +67,10 @@
   }
 
   async function deleteMemory(key: string) {
-    const current = (await kvGet('memories', 'all')) || {};
+    const current = (await kv.get('memories', 'all')) || {};
     const updated = { ...(current as Record<string, any>) };
     delete updated[key];
-    await kvSet('memories', 'all', updated);
+    await kv.set('memories', 'all', updated);
     await loadMemories();
   }
 
@@ -81,8 +81,7 @@
 
   let { open = $bindable(false), onOpenChange }: Props = $props();
 
-  // AI Settings
-  let aiSettings = $state({} as any);
+  // AI Settings — reactive via aiSettings.value from rune-based store
 
   // Tools config
   let toolsConfig = $state<ToolConfig[]>([]);
@@ -92,10 +91,7 @@
   let apiKeyInput = $state('');
 
   // Use new three-tier model system
-  let allModels: Record<string, any[]> = $state({});
-  let favoriteModels: string[] = $state([]);
-  let selectedChatModels: any[] = $state([]);
-  let loadingProviders = $state(false);
+  // allModels, favoriteModels, selectedChatModels, loadingProviders are derived from stores below
   let providers = $state<
     Array<{
       id: string;
@@ -108,9 +104,9 @@
 
   // Critical fix: Sync API key input when provider changes
   $effect(() => {
-    if (aiSettings?.provider) {
-      const keyField = `${aiSettings.provider}ApiKey`;
-      apiKeyInput = (aiSettings as any)[keyField] ?? '';
+    if (aiSettings.value?.provider) {
+      const keyField = `${aiSettings.value.provider}ApiKey`;
+      apiKeyInput = (aiSettings.value as any)[keyField] ?? '';
     }
   });
 
@@ -128,22 +124,11 @@
     );
   }
 
-  // Subscribe to model store updates
-  const unsubscribeAllModels = allModelsStore.subscribe((value) => {
-    allModels = value;
-  });
-
-  const unsubscribeFavoriteModels = favoriteModelsStore.subscribe((value) => {
-    favoriteModels = value;
-  });
-
-  const unsubscribeSelectedChatModels = selectedChatModelsStore.subscribe((value) => {
-    selectedChatModels = value;
-  });
-
-  const unsubscribeLoading = modelsLoadingStore.subscribe((value) => {
-    loadingProviders = value;
-  });
+  // Reactive bindings to model stores (Svelte 5 runes)
+  let allModels = $derived(allModelsStore.value);
+  let favoriteModels = $derived(favoriteModelsStore.value);
+  let selectedChatModels = $derived(selectedChatModelsStore.value);
+  let loadingProviders = $derived(modelsLoadingStore.value);
 
   async function loadProvidersAndModels() {
     // Load all models from admin
@@ -179,36 +164,23 @@
   }
 
   onMount(() => {
-    const unsubscribe = (aiSettingsStore as any).subscribe((s: any) => {
-      aiSettings = s;
-      // Sync local input with store value
-      const keyField = `${s.provider}ApiKey`;
-      apiKeyInput = s[keyField] ?? '';
-    });
-
     // Load providers and models
     loadProvidersAndModels();
     // Load memories
     loadMemories();
 
     return () => {
-      unsubscribe();
-      unsubscribeAllModels();
-      unsubscribeFavoriteModels();
-      unsubscribeSelectedChatModels();
-      unsubscribeLoading();
       unsubscribeTools();
     };
   });
 
   function setProvider(nextProvider: string) {
-    const aiSettingsStoreWritable = aiSettingsStore as any;
-    const currentModel = aiSettings.providerModel || '';
+    const currentModel = aiSettings.value.providerModel || '';
     const normalizedModel = normalizeModelId(nextProvider, currentModel);
 
     const provider = providers.find((p) => p.id === nextProvider);
 
-    aiSettingsStoreWritable.update((s: any) => ({
+    aiSettings.update((s: any) => ({
       ...s,
       provider: nextProvider,
       providerModel: normalizedModel,
@@ -218,9 +190,8 @@
   }
 
   function setProviderModel(nextModel: string) {
-    const aiSettingsStoreWritable = aiSettingsStore as any;
-    const fullModelId = normalizeModelId(aiSettings.provider, nextModel);
-    aiSettingsStoreWritable.update((s: any) => ({
+    const fullModelId = normalizeModelId(aiSettings.value.provider, nextModel);
+    aiSettings.update((s: any) => ({
       ...s,
       providerModel: fullModelId,
       model: fullModelId
@@ -228,9 +199,8 @@
   }
 
   function updateApiKey(provider: string, value: string) {
-    const aiSettingsStoreWritable = aiSettingsStore as any;
     const keyField = `${provider}ApiKey` as const;
-    aiSettingsStoreWritable.update((s: any) => ({
+    aiSettings.update((s: any) => ({
       ...s,
       [keyField]: value
     }));
@@ -238,9 +208,9 @@
 
   // Add missing function with proper limit checking
   function addToChatSelection(model: any) {
-    selectedChatModelsStore.update((list) => {
+    selectedChatModelsStore.update((list: any[]) => {
       if (list.length >= 10) return list; // Enforce max-10 limit
-      if (list.some((m) => m.id === model.id)) return list; // Avoid duplicates
+      if (list.some((m: any) => m.id === model.id)) return list; // Avoid duplicates
       return [...list, model];
     });
   }

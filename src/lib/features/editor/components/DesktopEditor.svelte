@@ -74,8 +74,8 @@
         if (!line || line.startsWith('%%')) continue;
 
         // Check for unclosed brackets
-        const openBrackets = (line.match(/[\[\(\{]/g) || []).length;
-        const closeBrackets = (line.match(/[\]\)\}]/g) || []).length;
+        const openBrackets = (line.match(/[[({}]/g) || []).length;
+        const closeBrackets = (line.match(/[\])}]/g) || []).length;
         if (openBrackets !== closeBrackets) {
           hasError = true;
           errorMessage = `Unclosed bracket on line ${i + 1}`;
@@ -96,7 +96,9 @@
         // Suppress console to prevent "Syntax error in text" / "mermaid version" messages
         const _origError = console.error;
         const _origWarn = console.warn;
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
         console.error = () => {};
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
         console.warn = () => {};
         try {
           await mermaid.parse(code);
@@ -112,10 +114,11 @@
         lastValidationResult = { valid: false, error: errorMessage };
         kv.set('editor', 'editorValidationError', errorMessage);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       lastValidatedCode = code;
-      lastValidationResult = { valid: false, error: e?.message || 'Invalid diagram syntax' };
-      kv.set('editor', 'editorValidationError', e?.message || 'Invalid diagram syntax');
+      const errMsg = e instanceof Error ? e.message : 'Invalid diagram syntax';
+      lastValidationResult = { valid: false, error: errMsg };
+      kv.set('editor', 'editorValidationError', errMsg);
     }
   }
   let editorOptions = {

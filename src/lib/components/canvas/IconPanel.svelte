@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { inputStateStore, updateCodeStore } from '$/util/state';
+  import { inputStateStore, updateCodeStore } from '$/util/state/state';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
-  import { injectNodeImg, svgIdToNodeName } from '$lib/util/diagramMapper';
+  import { injectNodeImg, svgIdToNodeName } from '$lib/util/diagram/diagramMapper';
   import {
     ChevronDown,
     ChevronRight,

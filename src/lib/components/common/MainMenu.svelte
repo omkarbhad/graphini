@@ -2,7 +2,7 @@
   import McWrapper from '$lib/components/McWrapper.svelte';
   import * as Popover from '$lib/components/ui/popover';
   import { Switch } from '$lib/components/ui/switch';
-  import { urlsStore } from '$/util/state';
+  import { urlsStore } from '$/util/state/state';
   import { cn } from '$/utils';
   import { mode, setMode } from 'mode-watcher';
   import type { Component, Snippet } from 'svelte';

@@ -4,15 +4,15 @@ import { replaceState } from '$app/navigation';
 import { parse } from '$lib/features/diagram/mermaid';
 import type { MermaidConfig } from 'mermaid';
 import { derived, get, writable, type Readable } from 'svelte/store';
-import { env } from './env';
+import { env } from '../env';
 import {
   extractErrorLineText,
   findMostRelevantLineNumber,
   replaceLineNumberInErrorMessage
-} from './errorHandling';
+} from '../error/errorHandling';
 import { localStorage, persist } from './persist';
-import { deserializeState, pakoSerde, serializeState } from './serde';
-import { errorDebug, formatJSON, MCBaseURL } from './util';
+import { deserializeState, pakoSerde, serializeState } from '../serialization/serde';
+import { errorDebug, formatJSON, MCBaseURL } from '../util';
 
 export const defaultState: State = {
   code: '',
@@ -162,7 +162,7 @@ const processState = async (state: State) => {
           // Only try LLM if local analysis failed
           (async () => {
             try {
-              const { analyzeErrorWithLLM } = await import('./errorHandling');
+              const { analyzeErrorWithLLM } = await import('../error/errorHandling');
               const llmResult = await analyzeErrorWithLLM(errorString, sanitizedCode);
               if (llmResult && llmResult.line_number && llmResult.problematic_line) {
                 // Update marker with LLM result if better

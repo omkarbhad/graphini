@@ -1,7 +1,7 @@
 import type { State } from '$lib/types';
 import { describe, expect, it } from 'vitest';
 import { deserializeState, serializeState, type SerdeType } from './serde';
-import { defaultState } from './state';
+import { defaultState } from '../state/state';
 
 const verifySerde = (state: State, serde?: SerdeType): string => {
   const serialized = serializeState(state, serde);

@@ -16,8 +16,8 @@
     injectSubgraphStyle,
     svgIdToNodeName,
     TEXT_SIZE_MAP
-  } from '$lib/util/diagramMapper';
-  import { inputStateStore, updateCodeStore } from '$lib/util/state';
+  } from '$lib/util/diagram/diagramMapper';
+  import { inputStateStore, updateCodeStore } from '$lib/util/state/state';
   import {
     ArrowDown,
     ArrowLeftRight,

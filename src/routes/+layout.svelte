@@ -1,20 +1,20 @@
 <script lang="ts">
   import { loadingStateStore } from '$/util/loading';
-  import { getLastProgrammaticHash, toggleDarkTheme } from '$/util/state';
+  import { getLastProgrammaticHash, toggleDarkTheme } from '$/util/state/state';
   import { initHandler } from '$/util/util';
   import { Toaster } from '$lib/components/ui/sonner/index.js';
   import { authStore } from '$lib/stores/auth.svelte.js';
-  import * as kvModule from '$lib/stores/kvStore';
+  import { kv } from '$lib/stores/kvStore.svelte';
   import { mode, ModeWatcher } from 'mode-watcher';
   import { onMount, type Snippet } from 'svelte';
   import '../app.css';
 
   let { children }: { children: Snippet } = $props();
 
-  // Register KV store module globally for synchronous access from .svelte.ts files
-  (globalThis as any).__kvStoreModule = kvModule;
+  // Register KV store instance globally for synchronous access from .svelte.ts files
+  (globalThis as any).__kvStoreModule = kv;
   // Initialize KV store (loads all user settings from Supabase)
-  kvModule.kvInit();
+  kv.init();
 
   // This can be removed once https://github.com/sveltejs/kit/issues/1612 is fixed.
   onMount(() => {

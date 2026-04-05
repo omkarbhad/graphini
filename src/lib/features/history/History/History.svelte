@@ -2,7 +2,7 @@
   import Card from '$lib/components/cards/Card.svelte';
   import type { HistoryEntry, HistoryType, State, Tab } from '$lib/types';
   import { notify, prompt } from '$lib/util/notify';
-  import { getStateString, inputStateStore } from '$lib/util/state';
+  import { getStateString, inputStateStore } from '$lib/util/state/state';
   import { logEvent } from '$lib/util/stats';
   import dayjs from 'dayjs';
   import dayjsRelativeTime from 'dayjs/plugin/relativeTime';

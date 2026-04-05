@@ -23,39 +23,5 @@
 # Snyk Security Extension - AI Rules (auto-generated)
 .windsurf/rules/snyk_rules.md
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-env/
-ENV/
-.venv
-*.egg-info/
-dist/
-build/
-*.egg
-
-# Python Backend
-python-backend/venv/
-python-backend/__pycache__/
-python-backend/*.pyc
-python-backend/.env
-
-# C++ Backend
-cpp-backend/build/
-cpp-backend/*.o
-cpp-backend/*.a
-cpp-backend/*.so
-cpp-backend/*.dylib
-cpp-backend/*.exe
-cpp-backend/CMakeCache.txt
-cpp-backend/CMakeFiles/
-cpp-backend/cmake-build-*/
-cpp-backend/.vscode/
-cpp-backend/.idea/
-cpp-backend/*.swp
-cpp-backend/*.swo
-cpp-backend/*~
+# Database files
+*.db

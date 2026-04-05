@@ -22,8 +22,8 @@
   import { modelsStore } from '$lib/stores/models.svelte';
   // sessionFilesStore removed — workspace handles state
   import { toolsStore } from '$lib/stores/toolsStore';
-  import { svgIdToNodeName } from '$lib/util/diagramMapper';
-  import { inputStateStore, stateStore, updateCodeStore } from '$lib/util/state';
+  import { svgIdToNodeName } from '$lib/util/diagram/diagramMapper';
+  import { inputStateStore, stateStore, updateCodeStore } from '$lib/util/state/state';
   import {
     AlertCircle,
     ArrowDown,

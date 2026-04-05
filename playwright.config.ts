@@ -11,7 +11,7 @@ export default defineConfig({
   ],
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
   retries: process.env.CI ? 2 : 0,
-  testDir: './tests',
+  testDir: './tests/e2e',
   use: {
     baseURL: 'http://localhost:3000',
     browserName: 'chromium',
