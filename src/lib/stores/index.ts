@@ -36,3 +36,6 @@ export {
 // Tools configuration store
 export { TOOL_CATEGORIES, toolsStore, type ToolConfig } from './toolsStore';
 
+// Workspace store (diagram workspace management)
+export { workspaceStore } from './workspace.svelte';
+
