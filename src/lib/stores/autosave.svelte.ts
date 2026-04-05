@@ -21,18 +21,32 @@ class AutosaveManager {
   }
 
   /** No-op — workspace store tracks current workspace. */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   setCurrentFile(_file: unknown): void {
     // No-op: workspace store manages current workspace
   }
 
   /** Flag that the editor content has changed since the last save. */
   markChanged(): void {
+    this.pendingChanges = true;
     workspaceStore.markDirty();
   }
 
   /** Force an immediate save. */
   async saveNow(): Promise<void> {
-    await workspaceStore.save();
+    this.isSaving = true;
+    this.saveStatus = 'saving';
+    try {
+      await workspaceStore.save();
+      this.lastSaved = new Date().toISOString();
+      this.saveStatus = 'saved';
+      this.pendingChanges = false;
+    } catch (err) {
+      this.saveStatus = 'error';
+      this.errorMessage = err instanceof Error ? err.message : 'Save failed';
+    } finally {
+      this.isSaving = false;
+    }
   }
 
   /** Enable or disable autosave. */

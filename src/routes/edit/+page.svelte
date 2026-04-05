@@ -64,6 +64,7 @@
   } from 'lucide-svelte';
   import { mode, setMode } from 'mode-watcher';
   import { onMount } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
   import { get } from 'svelte/store';
   import RoughIcon from '~icons/material-symbols/draw-outline-rounded';
   import GearIcon from '~icons/material-symbols/settings-outline-rounded';
@@ -72,36 +73,36 @@
 
   function standardizeDiagramType(type: string): string {
     const typeMap: Record<string, string> = {
-      flowchart: 'flowchart',
-      'flow-chart': 'flowchart',
-      sequence: 'sequenceDiagram',
-      'sequence-diagram': 'sequenceDiagram',
+      block: 'block',
+      c4: 'c4',
       class: 'classDiagram',
       'class-diagram': 'classDiagram',
-      state: 'stateDiagram',
-      'state-diagram': 'stateDiagram',
-      er: 'erDiagram',
       'entity-relationship': 'erDiagram',
+      er: 'erDiagram',
+      'flow-chart': 'flowchart',
+      flowchart: 'flowchart',
       gantt: 'gantt',
-      pie: 'pie',
-      journey: 'journey',
-      'user-journey': 'journey',
-      mindmap: 'mindmap',
-      timeline: 'timeline',
-      kanban: 'kanban',
-      gitgraph: 'gitGraph',
       'git-graph': 'gitGraph',
+      gitgraph: 'gitGraph',
+      journey: 'journey',
+      kanban: 'kanban',
+      mindmap: 'mindmap',
+      packet: 'packet',
+      pie: 'pie',
       quadrant: 'quadrantChart',
       'quadrant-chart': 'quadrantChart',
+      requirement: 'requirement',
+      sankey: 'sankey',
+      sequence: 'sequenceDiagram',
+      'sequence-diagram': 'sequenceDiagram',
+      state: 'stateDiagram',
+      'state-diagram': 'stateDiagram',
+      timeline: 'timeline',
+      treemap: 'treemap',
+      'user-journey': 'journey',
       xy: 'xyChart',
       'xy-chart': 'xyChart',
-      zenuml: 'zenuml',
-      c4: 'c4',
-      block: 'block',
-      sankey: 'sankey',
-      packet: 'packet',
-      requirement: 'requirement',
-      treemap: 'treemap'
+      zenuml: 'zenuml'
     };
     return typeMap[type] || type;
   }
@@ -164,23 +165,27 @@
       // Remove corrupted data
       try {
         kv.delete('ui', `graphini_ui_${key}`);
-      } catch {}
+      } catch {
+        // ignore
+      }
     }
     return fallback;
   }
-  function saveUIState(key: string, value: any) {
+  function saveUIState(key: string, value: unknown) {
     try {
       kv.set('ui', `graphini_ui_${key}`, value);
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   // Panel icon map for toggle buttons
   const panelIcons: Record<PanelId, typeof FolderOpen> = {
-    files: FolderOpen,
     canvas: Layers,
-    document: FileText,
+    chat: MessageSquare,
     code: Code2,
-    chat: MessageSquare
+    document: FileText,
+    files: FolderOpen
   };
 
   // Drag-and-drop panel reordering
@@ -238,7 +243,7 @@
   }
 
   // Toolbar state
-  let currentState: any = $state(undefined);
+  let currentState: unknown = $state(undefined);
   let currentLayout: LayoutOption = $state('dagre');
   let activeTool = $state<'select' | 'pan' | 'draw'>(loadUIState('activeTool', 'select'));
   let isGridVisible = $state(loadUIState('gridVisible', false));
@@ -246,8 +251,11 @@
   let zoomLevel = $state(100);
   let isViewRendering = $state(false);
   let viewRenderError = $state('');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let selectedElementLabel = $state<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let selectedElementNodeName = $state<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   let selectedElementType = $state<'node' | 'edge' | null>(null);
 
   // Persist toolbar UI state
@@ -273,7 +281,9 @@
     return { key, url };
   });
 
-  const unsubscribe = (inputStateStore as any).subscribe((state: any) => {
+  const unsubscribe = (
+    inputStateStore as unknown as { subscribe: (cb: (s: unknown) => void) => () => void }
+  ).subscribe((state: unknown) => {
     currentState = state;
     try {
       const config = JSON.parse(state.mermaid);
@@ -291,13 +301,14 @@
     };
   };
 
-  onMount(() => {
-    // Redirect to auth if not logged in
-    if (!authStore.isLoggedIn && authStore.isInitialized) {
+  // Auth guard: wait for initialization before deciding to redirect
+  $effect(() => {
+    if (authStore.isInitialized && !authStore.isLoading && !authStore.isLoggedIn) {
       authStore.login(window.location.href);
-      return;
     }
+  });
 
+  onMount(() => {
     setupPanZoomObserver();
 
     const setup = async () => {
@@ -466,9 +477,9 @@
     const code = get(inputStateStore).code || '';
     const lines = code.split('\n');
     // Generate a unique node ID
-    const existingIds = new Set<string>();
+    const existingIds = new SvelteSet<string>();
     for (const line of lines) {
-      const m = line.match(/^\s*([A-Za-z_]\w*)\s*[\[\(\{<>@]/);
+      const m = line.match(/^\s*([A-Za-z_]\w*)\s*[([{<>@]/);
       if (m) existingIds.add(m[1]);
     }
     let nodeId = 'NewNode';
@@ -593,7 +604,9 @@
   // Sync status indicator
   let syncLastSaved = $state<number | null>(null);
   let syncHasPending = $state(false);
+  let syncTick = $state(0);
   let syncLabel = $derived.by(() => {
+    void syncTick; // read to trigger re-derivation on interval tick
     if (syncHasPending) return 'Saving...';
     if (!syncLastSaved) return '';
     const secs = Math.floor((Date.now() - syncLastSaved) / 1000);
@@ -604,7 +617,6 @@
   });
 
   // Refresh sync label every 10s
-  let syncTick = $state(0);
   onMount(() => {
     const syncInterval = setInterval(() => {
       syncTick++;
@@ -639,629 +651,647 @@
     isRenamingInNavbar = false;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleFileOpen = async (_file: unknown) => {
     // Workspace-based: file switching is handled by workspace navigation
   };
 </script>
 
-<div class="flex h-screen flex-col overflow-hidden bg-background" bind:clientWidth={width}>
-  <!-- ═══ TOP HEADER BAR ═══ -->
-  <header class="glass flex h-12 items-center justify-between border-b border-border/40 px-4">
-    <!-- Left: Logo + file name -->
-    <div class="flex items-center gap-4">
-      <div class="flex items-center gap-2.5">
-        <img src="/brand/logo.png" alt="Graphini" class="size-7" />
+{#if !authStore.isInitialized || authStore.isLoading}
+  <!-- Waiting for auth initialization — render nothing to avoid flash -->
+{:else if authStore.isLoggedIn}
+  <div class="flex h-screen flex-col overflow-hidden bg-background" bind:clientWidth={width}>
+    <!-- ═══ TOP HEADER BAR ═══ -->
+    <header class="glass flex h-12 items-center justify-between border-b border-border/40 px-4">
+      <!-- Left: Logo + file name -->
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2.5">
+          <img src="/brand/logo.png" alt="Graphini" class="size-7" />
+        </div>
+        <div class="divider-v mx-1 hidden sm:block"></div>
+        <div class="hidden items-center gap-2 sm:flex">
+          <FileCode2 class="size-4 text-muted-foreground" />
+          {#if isRenamingInNavbar}
+            <input
+              type="text"
+              bind:value={navbarRenameValue}
+              class="h-7 w-40 rounded-md border border-border bg-background px-2 text-[13px] text-foreground focus:border-primary focus:ring-1 focus:ring-primary/30 focus:outline-none"
+              onkeydown={(e) => {
+                if (e.key === 'Enter') saveNavbarRename();
+                if (e.key === 'Escape') isRenamingInNavbar = false;
+              }}
+              onblur={() => saveNavbarRename()} />
+          {:else}
+            <button
+              type="button"
+              class="group flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[13px] text-foreground transition-colors hover:bg-muted/60"
+              onclick={() => startNavbarRename()}
+              title="Click to rename">
+              <span class="max-w-[200px] truncate"
+                >{workspaceStore.workspace?.title || 'Untitled'}</span>
+              <Pencil
+                class="size-3 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
+            </button>
+          {/if}
+          {#if syncLabel}
+            <span class="hidden text-[10px] text-muted-foreground/60 sm:inline"
+              >{syncHasPending ? '⟳' : '✓'} {syncLabel}</span>
+          {/if}
+        </div>
       </div>
-      <div class="divider-v mx-1 hidden sm:block"></div>
-      <div class="hidden items-center gap-2 sm:flex">
-        <FileCode2 class="size-4 text-muted-foreground" />
-        {#if isRenamingInNavbar}
-          <input
-            type="text"
-            bind:value={navbarRenameValue}
-            class="h-7 w-40 rounded-md border border-border bg-background px-2 text-[13px] text-foreground focus:border-primary focus:ring-1 focus:ring-primary/30 focus:outline-none"
-            onkeydown={(e) => {
-              if (e.key === 'Enter') saveNavbarRename();
-              if (e.key === 'Escape') isRenamingInNavbar = false;
-            }}
-            onblur={() => saveNavbarRename()} />
+
+      <!-- Center: Panel toggle buttons (draggable to reorder) -->
+      <div class="flex items-center gap-0.5 rounded-lg border border-border/30 bg-muted/20 p-0.5">
+        {#each panels.order as panelId (panelId)}
+          {@const Icon = panelIcons[panelId]}
+          {@const panelConfig = panels.panels}
+          {@const isActive = panelConfig[panelId].visible}
+          {@const label = panelConfig[panelId].label}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="flex items-center rounded-md transition-all duration-150
+            {dragOverPanelId === panelId && dragPanelId !== panelId ? 'ring-2 ring-primary/40' : ''}
+            {dragPanelId === panelId ? 'opacity-40' : ''}"
+            draggable="true"
+            ondragstart={(e) => handlePanelDragStart(e, panelId)}
+            ondragover={(e) => handlePanelDragOver(e, panelId)}
+            ondrop={(e) => handlePanelDrop(e, panelId)}
+            ondragend={handlePanelDragEnd}>
+            <button
+              type="button"
+              class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all duration-150
+              {isActive
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground'}"
+              title="{label} (drag to reorder)"
+              onclick={() => panels.toggle(panelId)}>
+              <Icon class="size-3.5" />
+              <span class="hidden md:inline">{label}</span>
+            </button>
+          </div>
+        {/each}
+      </div>
+
+      <!-- Right: Actions -->
+      <div class="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          class="icon-btn size-9"
+          title="Toggle theme"
+          onclick={toggleTheme}>
+          {#if $mode === 'dark'}<Sun class="size-4" />{:else}<Moon class="size-4" />{/if}
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          class="icon-btn size-9"
+          title="Settings"
+          onclick={() => {
+            isSettingsModalOpen = true;
+          }}>
+          <GearIcon class="size-4" />
+        </Button>
+
+        <!-- Gems -->
+        <button
+          type="button"
+          class="group flex h-8 items-center gap-1.5 rounded-full border border-purple-500/25 bg-gradient-to-r from-purple-500/[0.08] to-indigo-500/[0.08] px-3.5 text-purple-600 transition-all duration-200 hover:border-purple-500/40 hover:from-purple-500/[0.14] hover:to-indigo-500/[0.14] hover:shadow-sm dark:border-purple-400/20 dark:from-purple-500/[0.1] dark:to-indigo-500/[0.1] dark:text-purple-400 dark:hover:border-purple-400/35 dark:hover:from-purple-500/[0.16] dark:hover:to-indigo-500/[0.16]"
+          title={authStore.isLoggedIn
+            ? `Gems: ${authStore.credits?.balance ?? 0}`
+            : 'Sign in to view gems'}
+          onclick={() => {
+            if (authStore.isLoggedIn) isRefillGemsOpen = true;
+            else authStore.login(window.location.href);
+          }}>
+          <Gem
+            class="size-3.5 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-12" />
+          <span class="text-[11px] font-bold tracking-wide tabular-nums">
+            {#if authStore.isLoggedIn && authStore.credits}{authStore.credits.balance}{:else}0{/if}
+          </span>
+        </button>
+
+        <!-- User Auth -->
+        {#if authStore.isLoggedIn}
+          {@const initials = (authStore.user?.display_name || authStore.user?.email || 'U')
+            .split(' ')
+            .map((w) => w[0])
+            .join('')
+            .toUpperCase()
+            .slice(0, 2)}
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger
+              class="flex size-8 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground ring-1 ring-border/50 transition-colors hover:ring-border focus:outline-none">
+              {initials}
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Content align="end" class="w-56">
+              <DropdownMenu.Label class="flex flex-col gap-0.5">
+                <span class="text-sm font-medium">{authStore.user?.display_name || 'User'}</span>
+                <span class="text-xs font-normal text-muted-foreground"
+                  >{authStore.user?.email}</span>
+              </DropdownMenu.Label>
+              <DropdownMenu.Separator />
+              <DropdownMenu.Item
+                class="gap-2"
+                onclick={() => {
+                  isRefillGemsOpen = true;
+                }}>
+                <Gem class="size-4 text-purple-500" />
+                <span>Gems: {authStore.credits?.balance ?? 0}</span>
+              </DropdownMenu.Item>
+              <DropdownMenu.Separator />
+              <DropdownMenu.Item
+                class="gap-2 text-red-500 focus:text-red-500"
+                onclick={() => authStore.logout()}>
+                <LogOut class="size-4" /><span>Sign out</span>
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Root>
         {:else}
           <button
             type="button"
-            class="group flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[13px] text-foreground transition-colors hover:bg-muted/60"
-            onclick={() => startNavbarRename()}
-            title="Click to rename">
-            <span class="max-w-[200px] truncate"
-              >{workspaceStore.workspace?.title || 'Untitled'}</span>
-            <Pencil
-              class="size-3 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
+            class="flex size-8 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground ring-1 ring-border/50 transition-colors hover:bg-muted/80"
+            title="Sign in"
+            onclick={() => authStore.login(window.location.href)}>
+            <UserCircle class="size-4" />
           </button>
-        {/if}
-        {#if syncLabel}
-          <span class="hidden text-[10px] text-muted-foreground/60 sm:inline"
-            >{syncHasPending ? '⟳' : '✓'} {syncLabel}</span>
         {/if}
       </div>
-    </div>
+    </header>
 
-    <!-- Center: Panel toggle buttons (draggable to reorder) -->
-    <div class="flex items-center gap-0.5 rounded-lg border border-border/30 bg-muted/20 p-0.5">
+    <!-- ═══ MAIN CONTENT: DYNAMIC PANEL LAYOUT ═══ -->
+    <div class="flex flex-1 overflow-hidden" role="main">
       {#each panels.order as panelId (panelId)}
-        {@const Icon = panelIcons[panelId]}
-        {@const panelConfig = panels.panels}
-        {@const isActive = panelConfig[panelId].visible}
-        {@const label = panelConfig[panelId].label}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-          class="flex items-center rounded-md transition-all duration-150
-            {dragOverPanelId === panelId && dragPanelId !== panelId ? 'ring-2 ring-primary/40' : ''}
-            {dragPanelId === panelId ? 'opacity-40' : ''}"
-          draggable="true"
-          ondragstart={(e) => handlePanelDragStart(e, panelId)}
-          ondragover={(e) => handlePanelDragOver(e, panelId)}
-          ondrop={(e) => handlePanelDrop(e, panelId)}
-          ondragend={handlePanelDragEnd}>
-          <button
-            type="button"
-            class="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[11px] font-medium transition-all duration-150
-              {isActive
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground/60 hover:bg-muted/40 hover:text-foreground'}"
-            title="{label} (drag to reorder)"
-            onclick={() => panels.toggle(panelId)}>
-            <Icon class="size-3.5" />
-            <span class="hidden md:inline">{label}</span>
-          </button>
-        </div>
-      {/each}
-    </div>
-
-    <!-- Right: Actions -->
-    <div class="flex items-center gap-1">
-      <Button
-        variant="ghost"
-        size="icon"
-        class="icon-btn size-9"
-        title="Toggle theme"
-        onclick={toggleTheme}>
-        {#if $mode === 'dark'}<Sun class="size-4" />{:else}<Moon class="size-4" />{/if}
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon"
-        class="icon-btn size-9"
-        title="Settings"
-        onclick={() => {
-          isSettingsModalOpen = true;
-        }}>
-        <GearIcon class="size-4" />
-      </Button>
-
-      <!-- Gems -->
-      <button
-        type="button"
-        class="group flex h-8 items-center gap-1.5 rounded-full border border-purple-500/25 bg-gradient-to-r from-purple-500/[0.08] to-indigo-500/[0.08] px-3.5 text-purple-600 transition-all duration-200 hover:border-purple-500/40 hover:from-purple-500/[0.14] hover:to-indigo-500/[0.14] hover:shadow-sm dark:border-purple-400/20 dark:from-purple-500/[0.1] dark:to-indigo-500/[0.1] dark:text-purple-400 dark:hover:border-purple-400/35 dark:hover:from-purple-500/[0.16] dark:hover:to-indigo-500/[0.16]"
-        title={authStore.isLoggedIn
-          ? `Gems: ${authStore.credits?.balance ?? 0}`
-          : 'Sign in to view gems'}
-        onclick={() => {
-          if (authStore.isLoggedIn) isRefillGemsOpen = true;
-          else authStore.login(window.location.href);
-        }}>
-        <Gem
-          class="size-3.5 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-12" />
-        <span class="text-[11px] font-bold tracking-wide tabular-nums">
-          {#if authStore.isLoggedIn && authStore.credits}{authStore.credits.balance}{:else}0{/if}
-        </span>
-      </button>
-
-      <!-- User Auth -->
-      {#if authStore.isLoggedIn}
-        {@const initials = (authStore.user?.display_name || authStore.user?.email || 'U')
-          .split(' ')
-          .map((w) => w[0])
-          .join('')
-          .toUpperCase()
-          .slice(0, 2)}
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger
-            class="flex size-8 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground ring-1 ring-border/50 transition-colors hover:ring-border focus:outline-none">
-            {initials}
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Content align="end" class="w-56">
-            <DropdownMenu.Label class="flex flex-col gap-0.5">
-              <span class="text-sm font-medium">{authStore.user?.display_name || 'User'}</span>
-              <span class="text-xs font-normal text-muted-foreground">{authStore.user?.email}</span>
-            </DropdownMenu.Label>
-            <DropdownMenu.Separator />
-            <DropdownMenu.Item
-              class="gap-2"
-              onclick={() => {
-                isRefillGemsOpen = true;
-              }}>
-              <Gem class="size-4 text-purple-500" />
-              <span>Gems: {authStore.credits?.balance ?? 0}</span>
-            </DropdownMenu.Item>
-            <DropdownMenu.Separator />
-            <DropdownMenu.Item
-              class="gap-2 text-red-500 focus:text-red-500"
-              onclick={() => authStore.logout()}>
-              <LogOut class="size-4" /><span>Sign out</span>
-            </DropdownMenu.Item>
-          </DropdownMenu.Content>
-        </DropdownMenu.Root>
-      {:else}
-        <button
-          type="button"
-          class="flex size-8 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground ring-1 ring-border/50 transition-colors hover:bg-muted/80"
-          title="Sign in"
-          onclick={() => authStore.login(window.location.href)}>
-          <UserCircle class="size-4" />
-        </button>
-      {/if}
-    </div>
-  </header>
-
-  <!-- ═══ MAIN CONTENT: DYNAMIC PANEL LAYOUT ═══ -->
-  <div class="flex flex-1 overflow-hidden" role="main">
-    {#each panels.order as panelId, idx (panelId)}
-      {#if panels.panels[panelId].visible}
-        {#if panelId === 'files'}
-          <div
-            class="relative flex-shrink-0 overflow-hidden border-r border-border/30"
-            style="width: {panels.panels.files.width}px; min-width: {panels.panels.files.minWidth}px;">
-            <PrimarySidebar onFileOpen={handleFileOpen} />
-            <PanelResizeHandle
-              position="right"
-              onResize={(delta) => handlePanelResize('files', delta)} />
-          </div>
-        {:else if panelId === 'canvas'}
-          <div class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-            <!-- Floating Vertical Canvas Toolbar -->
+        {#if panels.panels[panelId].visible}
+          {#if panelId === 'files'}
             <div
-              class="absolute top-3 left-3 z-30 flex flex-col gap-1 rounded-xl border border-border/40 bg-card/95 p-1.5 shadow-lg backdrop-blur-sm dark:border-border/25 dark:bg-card/95">
-              <!-- Plus button with shape dropdown -->
-              <div class="relative">
+              class="relative flex-shrink-0 overflow-hidden border-r border-border/30"
+              style="width: {panels.panels.files.width}px; min-width: {panels.panels.files
+                .minWidth}px;">
+              <PrimarySidebar onFileOpen={handleFileOpen} />
+              <PanelResizeHandle
+                position="right"
+                onResize={(delta) => handlePanelResize('files', delta)} />
+            </div>
+          {:else if panelId === 'canvas'}
+            <div class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+              <!-- Floating Vertical Canvas Toolbar -->
+              <div
+                class="absolute top-3 left-3 z-30 flex flex-col gap-1 rounded-xl border border-border/40 bg-card/95 p-1.5 shadow-lg backdrop-blur-sm dark:border-border/25 dark:bg-card/95">
+                <!-- Plus button with shape dropdown -->
+                <div class="relative">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="toolbar-btn size-8"
+                    title="Add Node (N)"
+                    onclick={() => {
+                      showShapeDropdown = !showShapeDropdown;
+                      showLayoutDropdown = false;
+                    }}><Plus class="size-4" /></Button>
+                  {#if showShapeDropdown}
+                    <div
+                      class="absolute top-0 left-full z-50 ml-1.5 w-[220px] rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-xl">
+                      <div class="mb-1.5 flex items-center justify-between px-1">
+                        <span
+                          class="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase"
+                          >Add Node</span>
+                        <button
+                          type="button"
+                          class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                          onclick={() => (showShapeDropdown = false)}>
+                          <X class="size-3" />
+                        </button>
+                      </div>
+                      <div class="grid grid-cols-5 gap-1">
+                        {#each shapeOptions as shape (shape.label)}
+                          <button
+                            type="button"
+                            class="flex flex-col items-center justify-center gap-0.5 rounded-lg p-1.5 transition-colors hover:bg-accent"
+                            title={shape.label}
+                            onclick={() => handleAddNode(shape.syntax)}>
+                            {#if shape.id === 'rect'}
+                              <RectangleHorizontal class="size-4 text-muted-foreground" />
+                            {:else if shape.id === 'rounded'}
+                              <Square class="size-4 text-muted-foreground" />
+                            {:else if shape.id === 'circle'}
+                              <Circle class="size-4 text-muted-foreground" />
+                            {:else if shape.id === 'rhombus'}
+                              <Diamond class="size-4 text-muted-foreground" />
+                            {:else if shape.id === 'hexagon'}
+                              <Hexagon class="size-4 text-muted-foreground" />
+                            {:else if shape.id === 'trapezoid'}
+                              <Triangle class="size-4 text-muted-foreground" />
+                            {:else}
+                              <span class="font-mono text-[9px] leading-none text-muted-foreground"
+                                >{shape.syntax[0]}{shape.syntax[1]}</span>
+                            {/if}
+                            <span class="text-[7px] leading-none font-medium text-muted-foreground"
+                              >{shape.label}</span>
+                          </button>
+                        {/each}
+                      </div>
+                    </div>
+                  {/if}
+                </div>
+                <div class="mx-1 h-px bg-border/30"></div>
+
+                {#if documentationURL.key}
+                  <a
+                    href={documentationURL.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="flex items-center justify-center rounded-lg bg-primary/8 p-2 text-primary transition-colors hover:bg-primary/15"
+                    title="View {documentationURL.key} docs">
+                    <FileCode2 class="size-4" />
+                  </a>
+                  <div class="mx-1 h-px bg-border/30"></div>
+                {/if}
+
+                <!-- Tool selection buttons -->
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="toolbar-btn size-8 {activeTool === 'select' ? 'active' : ''}"
+                  title="Select (V)"
+                  onclick={() => handleToolSelect('select')}
+                  ><MousePointer2 class="size-4" /></Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="toolbar-btn size-8 {activeTool === 'pan' ? 'active' : ''}"
+                  title="Pan (H)"
+                  onclick={() => handleToolSelect('pan')}><Hand class="size-4" /></Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="toolbar-btn size-8 {activeTool === 'draw' ? 'active' : ''}"
+                  title="Draw (D)"
+                  onclick={() => handleToolSelect('draw')}><Pencil class="size-4" /></Button>
+                <div class="mx-1 h-px bg-border/30"></div>
+
+                <!-- History controls -->
                 <Button
                   variant="ghost"
                   size="icon"
                   class="toolbar-btn size-8"
-                  title="Add Node (N)"
-                  onclick={() => {
-                    showShapeDropdown = !showShapeDropdown;
-                    showLayoutDropdown = false;
-                  }}><Plus class="size-4" /></Button>
-                {#if showShapeDropdown}
-                  <div
-                    class="absolute top-0 left-full z-50 ml-1.5 w-[220px] rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-xl">
-                    <div class="mb-1.5 flex items-center justify-between px-1">
-                      <span
-                        class="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase"
-                        >Add Node</span>
-                      <button
-                        type="button"
-                        class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                        onclick={() => (showShapeDropdown = false)}>
-                        <X class="size-3" />
-                      </button>
-                    </div>
-                    <div class="grid grid-cols-5 gap-1">
-                      {#each shapeOptions as shape}
-                        <button
-                          type="button"
-                          class="flex flex-col items-center justify-center gap-0.5 rounded-lg p-1.5 transition-colors hover:bg-accent"
-                          title={shape.label}
-                          onclick={() => handleAddNode(shape.syntax)}>
-                          {#if shape.id === 'rect'}
-                            <RectangleHorizontal class="size-4 text-muted-foreground" />
-                          {:else if shape.id === 'rounded'}
-                            <Square class="size-4 text-muted-foreground" />
-                          {:else if shape.id === 'circle'}
-                            <Circle class="size-4 text-muted-foreground" />
-                          {:else if shape.id === 'rhombus'}
-                            <Diamond class="size-4 text-muted-foreground" />
-                          {:else if shape.id === 'hexagon'}
-                            <Hexagon class="size-4 text-muted-foreground" />
-                          {:else if shape.id === 'trapezoid'}
-                            <Triangle class="size-4 text-muted-foreground" />
-                          {:else}
-                            <span class="font-mono text-[9px] leading-none text-muted-foreground"
-                              >{shape.syntax[0]}{shape.syntax[1]}</span>
-                          {/if}
-                          <span class="text-[7px] leading-none font-medium text-muted-foreground"
-                            >{shape.label}</span>
-                        </button>
-                      {/each}
-                    </div>
-                  </div>
-                {/if}
-              </div>
-              <div class="mx-1 h-px bg-border/30"></div>
-
-              {#if documentationURL.key}
-                <a
-                  href={documentationURL.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="flex items-center justify-center rounded-lg bg-primary/8 p-2 text-primary transition-colors hover:bg-primary/15"
-                  title="View {documentationURL.key} docs">
-                  <FileCode2 class="size-4" />
-                </a>
-                <div class="mx-1 h-px bg-border/30"></div>
-              {/if}
-
-              <!-- Tool selection buttons -->
-              <Button
-                variant="ghost"
-                size="icon"
-                class="toolbar-btn size-8 {activeTool === 'select' ? 'active' : ''}"
-                title="Select (V)"
-                onclick={() => handleToolSelect('select')}><MousePointer2 class="size-4" /></Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                class="toolbar-btn size-8 {activeTool === 'pan' ? 'active' : ''}"
-                title="Pan (H)"
-                onclick={() => handleToolSelect('pan')}><Hand class="size-4" /></Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                class="toolbar-btn size-8 {activeTool === 'draw' ? 'active' : ''}"
-                title="Draw (D)"
-                onclick={() => handleToolSelect('draw')}><Pencil class="size-4" /></Button>
-              <div class="mx-1 h-px bg-border/30"></div>
-
-              <!-- History controls -->
-              <Button
-                variant="ghost"
-                size="icon"
-                class="toolbar-btn size-8"
-                title="Undo (Ctrl+Z)"
-                onclick={handleUndo}><Undo class="size-4" /></Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                class="toolbar-btn size-8"
-                title="Redo (Ctrl+Y)"
-                onclick={handleRedo}><Redo class="size-4" /></Button>
-              <div class="mx-1 h-px bg-border/30"></div>
-
-              <!-- Style and display options -->
-              <Button
-                variant="ghost"
-                size="icon"
-                class="toolbar-btn size-8 {isRoughMode ? 'active' : ''}"
-                title="Hand-Drawn (R)"
-                onclick={toggleRoughMode}><RoughIcon class="size-4" /></Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                class="toolbar-btn size-8 {isGridVisible ? 'active' : ''}"
-                title="Grid (G)"
-                onclick={toggleGrid}><Grid3x3 class="size-4" /></Button>
-              <div class="mx-1 h-px bg-border/30"></div>
-
-              <!-- Layout dropdown -->
-              <div class="relative">
+                  title="Undo (Ctrl+Z)"
+                  onclick={handleUndo}><Undo class="size-4" /></Button>
                 <Button
                   variant="ghost"
                   size="icon"
-                  class="toolbar-btn size-8 {currentLayout === 'dagre' || currentLayout === 'elk'
-                    ? 'active'
-                    : ''}"
-                  title="Layout Options"
-                  onclick={() => {
-                    showLayoutDropdown = !showLayoutDropdown;
-                    showShapeDropdown = false;
-                  }}>
-                  <Network class="size-4" />
-                </Button>
-                {#if showLayoutDropdown}
-                  <div
-                    class="absolute top-0 left-full z-50 ml-1.5 w-36 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl">
-                    <div class="mb-1 flex items-center justify-between px-1">
-                      <span
-                        class="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase"
-                        >Layout</span>
+                  class="toolbar-btn size-8"
+                  title="Redo (Ctrl+Y)"
+                  onclick={handleRedo}><Redo class="size-4" /></Button>
+                <div class="mx-1 h-px bg-border/30"></div>
+
+                <!-- Style and display options -->
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="toolbar-btn size-8 {isRoughMode ? 'active' : ''}"
+                  title="Hand-Drawn (R)"
+                  onclick={toggleRoughMode}><RoughIcon class="size-4" /></Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="toolbar-btn size-8 {isGridVisible ? 'active' : ''}"
+                  title="Grid (G)"
+                  onclick={toggleGrid}><Grid3x3 class="size-4" /></Button>
+                <div class="mx-1 h-px bg-border/30"></div>
+
+                <!-- Layout dropdown -->
+                <div class="relative">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="toolbar-btn size-8 {currentLayout === 'dagre' || currentLayout === 'elk'
+                      ? 'active'
+                      : ''}"
+                    title="Layout Options"
+                    onclick={() => {
+                      showLayoutDropdown = !showLayoutDropdown;
+                      showShapeDropdown = false;
+                    }}>
+                    <Network class="size-4" />
+                  </Button>
+                  {#if showLayoutDropdown}
+                    <div
+                      class="absolute top-0 left-full z-50 ml-1.5 w-36 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl">
+                      <div class="mb-1 flex items-center justify-between px-1">
+                        <span
+                          class="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase"
+                          >Layout</span>
+                        <button
+                          type="button"
+                          class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                          onclick={() => (showLayoutDropdown = false)}>
+                          <X class="size-3" />
+                        </button>
+                      </div>
                       <button
                         type="button"
-                        class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                        onclick={() => (showLayoutDropdown = false)}>
-                        <X class="size-3" />
+                        class={cn(
+                          'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] transition-colors',
+                          currentLayout === 'dagre'
+                            ? 'bg-primary/15 font-semibold text-primary'
+                            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        )}
+                        onclick={() => handleLayoutChange('dagre')}>
+                        <GitBranch class="size-3.5" />
+                        Dagre
+                      </button>
+                      <button
+                        type="button"
+                        class={cn(
+                          'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] transition-colors',
+                          currentLayout === 'elk'
+                            ? 'bg-primary/15 font-semibold text-primary'
+                            : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                        )}
+                        onclick={() => handleLayoutChange('elk')}>
+                        <Network class="size-3.5" />
+                        ELK
                       </button>
                     </div>
-                    <button
-                      type="button"
-                      class={cn(
-                        'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] transition-colors',
-                        currentLayout === 'dagre'
-                          ? 'bg-primary/15 font-semibold text-primary'
-                          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                      )}
-                      onclick={() => handleLayoutChange('dagre')}>
-                      <GitBranch class="size-3.5" />
-                      Dagre
-                    </button>
-                    <button
-                      type="button"
-                      class={cn(
-                        'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] transition-colors',
-                        currentLayout === 'elk'
-                          ? 'bg-primary/15 font-semibold text-primary'
-                          : 'text-muted-foreground hover:bg-accent hover:text-foreground'
-                      )}
-                      onclick={() => handleLayoutChange('elk')}>
-                      <Network class="size-3.5" />
-                      ELK
-                    </button>
-                  </div>
-                {/if}
-              </div>
-              <div class="mx-1 h-px bg-border/30"></div>
-
-              <!-- Export -->
-              <Button
-                variant="ghost"
-                size="icon"
-                class="toolbar-btn size-8"
-                title="Export SVG (Ctrl+S)"
-                onclick={handleExport}><Download class="size-4" /></Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                class="toolbar-btn size-8"
-                title="Fullscreen"
-                onclick={() => {
-                  if (document.fullscreenElement) document.exitFullscreen();
-                  else document.documentElement.requestFullscreen();
-                }}><Expand class="size-4" /></Button>
-              <div class="mx-1 h-px bg-border/30"></div>
-
-              <!-- Zoom controls at bottom -->
-              <Button
-                variant="ghost"
-                size="icon"
-                class="toolbar-btn size-8"
-                title="Zoom In"
-                onclick={() => {
-                  panZoomState.zoomIn();
-                  zoomLevel = Math.min(400, zoomLevel + 10);
-                }}><ZoomIn class="size-4" /></Button>
-              <div class="text-center font-mono text-[9px] font-medium text-muted-foreground">
-                {zoomLevel}%
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                class="toolbar-btn size-8"
-                title="Zoom Out"
-                onclick={() => {
-                  panZoomState.zoomOut();
-                  zoomLevel = Math.max(25, zoomLevel - 10);
-                }}><ZoomOut class="size-4" /></Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                class="toolbar-btn size-8"
-                title="Reset View"
-                onclick={() => {
-                  panZoomState.reset();
-                  zoomLevel = 100;
-                }}><RotateCcw class="size-4" /></Button>
-            </div>
-
-            <!-- Diagram View -->
-            <div class="relative flex-1 overflow-hidden">
-              <View
-                {panZoomState}
-                shouldShowGrid={$stateStore.grid}
-                bind:isRendering={isViewRendering}
-                bind:renderError={viewRenderError} />
-              <ColorPanel bind:open={isColorPanelOpen} />
-              <IconPanel bind:open={isIconPanelOpen} />
-              <ElementToolbar />
-
-              <!-- Minimal render status indicator (top-right) -->
-              <div class="absolute top-3 right-3 z-20">
-                {#if viewRenderError}
-                  <button
-                    type="button"
-                    class="flex cursor-pointer items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-1 transition-colors hover:bg-red-500/25"
-                    title="Click to auto-fix: {viewRenderError}"
-                    onclick={async () => {
-                      const msg = `Please fix this Mermaid error: "${viewRenderError}"`;
-                      await handleSendChatMessage(msg, { isRepair: true });
-                    }}>
-                    <span class="size-2 rounded-full bg-red-500"></span>
-                    <span
-                      class="max-w-[120px] truncate text-[10px] font-medium text-red-600 dark:text-red-400"
-                      >Error</span>
-                  </button>
-                {:else if isViewRendering}
-                  <div class="rounded-full bg-amber-500/15 p-1.5" title="Rendering…">
-                    <span class="block size-2 animate-pulse rounded-full bg-amber-500"></span>
-                  </div>
-                {:else}
-                  <div class="rounded-full bg-emerald-500/15 p-1.5" title="Ready">
-                    <span class="block size-2 rounded-full bg-emerald-500"></span>
-                  </div>
-                {/if}
-              </div>
-            </div>
-          </div>
-        {:else if panelId === 'document'}
-          <div
-            class="relative min-w-0 overflow-hidden border-l border-border/30"
-            style="{panels.panels.canvas.visible
-              ? `width: ${panels.panels.document.width}px;`
-              : ''} min-width: {panels.panels.document.minWidth}px; flex: {!panels.panels.canvas.visible
-              ? '1 1 0%'
-              : '0 0 auto'};">
-            <PanelResizeHandle
-              position="left"
-              onResize={(delta) => handlePanelResize('document', delta)} />
-            <DocumentPanel />
-          </div>
-        {:else if panelId === 'code'}
-          <div
-            class="relative min-w-0 overflow-hidden border-l border-border/30"
-            style="{panels.panels.canvas.visible
-              ? `width: ${panels.panels.code.width}px;`
-              : ''} min-width: {panels.panels.code.minWidth}px; flex: {!panels.panels.canvas.visible
-              ? '1 1 0%'
-              : '0 0 auto'};">
-            <PanelResizeHandle
-              position="left"
-              onResize={(delta) => handlePanelResize('code', delta)} />
-            <div class="flex h-full flex-col bg-card">
-              <div
-                class="flex h-10 items-center justify-between gap-1.5 border-b border-border/30 px-3">
-                <div class="flex items-center gap-1.5">
-                  <Code2 class="size-4 text-muted-foreground" />
-                  <span class="text-xs font-semibold text-foreground">Code</span>
-                  <span class="text-[10px] text-muted-foreground"
-                    >{$stateStore.editorMode === 'config' ? 'config' : 'mermaid'}</span>
+                  {/if}
                 </div>
-                <div class="flex items-center gap-1">
-                  <button
-                    type="button"
-                    class="flex h-6 items-center gap-1 rounded-md border border-border/30 bg-background px-2 text-[10px] font-medium transition-colors hover:bg-muted/50"
-                    onclick={() => {
-                      const currentMode = $stateStore.editorMode;
-                      const newMode = currentMode === 'code' ? 'config' : 'code';
-                      updateCodeStore({ editorMode: newMode });
+                <div class="mx-1 h-px bg-border/30"></div>
+
+                <!-- Export -->
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="toolbar-btn size-8"
+                  title="Export SVG (Ctrl+S)"
+                  onclick={handleExport}><Download class="size-4" /></Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="toolbar-btn size-8"
+                  title="Fullscreen"
+                  onclick={() => {
+                    if (document.fullscreenElement) document.exitFullscreen();
+                    else document.documentElement.requestFullscreen();
+                  }}><Expand class="size-4" /></Button>
+                <div class="mx-1 h-px bg-border/30"></div>
+
+                <!-- Zoom controls at bottom -->
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="toolbar-btn size-8"
+                  title="Zoom In"
+                  onclick={() => {
+                    panZoomState.zoomIn();
+                    zoomLevel = Math.min(400, zoomLevel + 10);
+                  }}><ZoomIn class="size-4" /></Button>
+                <div class="text-center font-mono text-[9px] font-medium text-muted-foreground">
+                  {zoomLevel}%
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="toolbar-btn size-8"
+                  title="Zoom Out"
+                  onclick={() => {
+                    panZoomState.zoomOut();
+                    zoomLevel = Math.max(25, zoomLevel - 10);
+                  }}><ZoomOut class="size-4" /></Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="toolbar-btn size-8"
+                  title="Reset View"
+                  onclick={() => {
+                    panZoomState.reset();
+                    zoomLevel = 100;
+                  }}><RotateCcw class="size-4" /></Button>
+              </div>
+
+              <!-- Diagram View -->
+              <div class="relative flex-1 overflow-hidden">
+                <View
+                  {panZoomState}
+                  shouldShowGrid={$stateStore.grid}
+                  bind:isRendering={isViewRendering}
+                  bind:renderError={viewRenderError} />
+                <ColorPanel bind:open={isColorPanelOpen} />
+                <IconPanel bind:open={isIconPanelOpen} />
+                <ElementToolbar />
+
+                <!-- Minimal render status indicator (top-right) -->
+                <div class="absolute top-3 right-3 z-20">
+                  {#if viewRenderError}
+                    <button
+                      type="button"
+                      class="flex cursor-pointer items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-1 transition-colors hover:bg-red-500/25"
+                      title="Click to auto-fix: {viewRenderError}"
+                      onclick={async () => {
+                        const msg = `Please fix this Mermaid error: "${viewRenderError}"`;
+                        await handleSendChatMessage(msg, { isRepair: true });
+                      }}>
+                      <span class="size-2 rounded-full bg-red-500"></span>
+                      <span
+                        class="max-w-[120px] truncate text-[10px] font-medium text-red-600 dark:text-red-400"
+                        >Error</span>
+                    </button>
+                  {:else if isViewRendering}
+                    <div class="rounded-full bg-amber-500/15 p-1.5" title="Rendering…">
+                      <span class="block size-2 animate-pulse rounded-full bg-amber-500"></span>
+                    </div>
+                  {:else}
+                    <div class="rounded-full bg-emerald-500/15 p-1.5" title="Ready">
+                      <span class="block size-2 rounded-full bg-emerald-500"></span>
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            </div>
+          {:else if panelId === 'document'}
+            <div
+              class="relative min-w-0 overflow-hidden border-l border-border/30"
+              style="{panels.panels.canvas.visible
+                ? `width: ${panels.panels.document.width}px;`
+                : ''} min-width: {panels.panels.document.minWidth}px; flex: {!panels.panels.canvas
+                .visible
+                ? '1 1 0%'
+                : '0 0 auto'};">
+              <PanelResizeHandle
+                position="left"
+                onResize={(delta) => handlePanelResize('document', delta)} />
+              <DocumentPanel />
+            </div>
+          {:else if panelId === 'code'}
+            <div
+              class="relative min-w-0 overflow-hidden border-l border-border/30"
+              style="{panels.panels.canvas.visible
+                ? `width: ${panels.panels.code.width}px;`
+                : ''} min-width: {panels.panels.code.minWidth}px; flex: {!panels.panels.canvas
+                .visible
+                ? '1 1 0%'
+                : '0 0 auto'};">
+              <PanelResizeHandle
+                position="left"
+                onResize={(delta) => handlePanelResize('code', delta)} />
+              <div class="flex h-full flex-col bg-card">
+                <div
+                  class="flex h-10 items-center justify-between gap-1.5 border-b border-border/30 px-3">
+                  <div class="flex items-center gap-1.5">
+                    <Code2 class="size-4 text-muted-foreground" />
+                    <span class="text-xs font-semibold text-foreground">Code</span>
+                    <span class="text-[10px] text-muted-foreground"
+                      >{$stateStore.editorMode === 'config' ? 'config' : 'mermaid'}</span>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <button
+                      type="button"
+                      class="flex h-6 items-center gap-1 rounded-md border border-border/30 bg-background px-2 text-[10px] font-medium transition-colors hover:bg-muted/50"
+                      onclick={() => {
+                        const currentMode = $stateStore.editorMode;
+                        const newMode = currentMode === 'code' ? 'config' : 'code';
+                        updateCodeStore({ editorMode: newMode });
+                      }}
+                      title="Switch between mermaid code and configuration">
+                      {$stateStore.editorMode === 'code' ? 'Config' : 'Code'}
+                    </button>
+                  </div>
+                </div>
+                <div class="flex-1 overflow-hidden text-[12px]">
+                  <Editor
+                    onUpdate={(code) => {
+                      updateCodeStore({ code });
+                      ensureFileExists();
+                      workspaceStore.markDirty();
                     }}
-                    title="Switch between mermaid code and configuration">
-                    {$stateStore.editorMode === 'code' ? 'Config' : 'Code'}
-                  </button>
+                    isMobile={width < 768}
+                    sendChatMessage={handleSendChatMessage} />
                 </div>
-              </div>
-              <div class="flex-1 overflow-hidden text-[12px]">
-                <Editor
-                  onUpdate={(code) => {
-                    updateCodeStore({ code });
-                    ensureFileExists();
-                    workspaceStore.markDirty();
-                  }}
-                  isMobile={width < 768}
-                  sendChatMessage={handleSendChatMessage} />
               </div>
             </div>
-          </div>
-        {:else if panelId === 'chat'}
-          <div
-            class="relative min-w-0 overflow-hidden border-l border-border/30"
-            style="{panels.panels.canvas.visible
-              ? `width: ${panels.panels.chat.width}px;`
-              : ''} min-width: {panels.panels.chat.minWidth}px; flex: {!panels.panels.canvas.visible
-              ? '1 1 0%'
-              : '0 0 auto'};">
-            <PanelResizeHandle
-              position="left"
-              onResize={(delta) => handlePanelResize('chat', delta)} />
-            <ChatPanel
-              onNewChat={handleNewChat}
-              onClearChat={handleClearChat}
-              onSelectConversation={(id) => chatComponent?.loadConversation(id)}>
-              <div class="flex h-full flex-col">
-                <div class="flex-1 overflow-hidden">
-                  <Chat bind:this={chatComponent} />
+          {:else if panelId === 'chat'}
+            <div
+              class="relative min-w-0 overflow-hidden border-l border-border/30"
+              style="{panels.panels.canvas.visible
+                ? `width: ${panels.panels.chat.width}px;`
+                : ''} min-width: {panels.panels.chat.minWidth}px; flex: {!panels.panels.canvas
+                .visible
+                ? '1 1 0%'
+                : '0 0 auto'};">
+              <PanelResizeHandle
+                position="left"
+                onResize={(delta) => handlePanelResize('chat', delta)} />
+              <ChatPanel
+                onNewChat={handleNewChat}
+                onClearChat={handleClearChat}
+                onSelectConversation={(id) => chatComponent?.loadConversation(id)}>
+                <div class="flex h-full flex-col">
+                  <div class="flex-1 overflow-hidden">
+                    <Chat bind:this={chatComponent} />
+                  </div>
                 </div>
-              </div>
-            </ChatPanel>
-          </div>
+              </ChatPanel>
+            </div>
+          {/if}
         {/if}
-      {/if}
-    {/each}
+      {/each}
+    </div>
   </div>
-</div>
 
-<!-- Modals -->
-<SettingsModal bind:open={isSettingsModalOpen} onOpenChange={(v) => (isSettingsModalOpen = v)} /><RefillGemsModal open={isRefillGemsOpen} onClose={() => (isRefillGemsOpen = false)} />
+  <!-- Modals -->
+  <SettingsModal
+    bind:open={isSettingsModalOpen}
+    onOpenChange={(v) => (isSettingsModalOpen = v)} /><RefillGemsModal
+    open={isRefillGemsOpen}
+    onClose={() => (isRefillGemsOpen = false)} />
 
-<!-- Keyboard Shortcuts Modal -->
-{#if isShortcutsModalOpen}
-  <div
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="shortcuts-modal-title"
-    tabindex="0"
-    class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
-    onclick={() => (isShortcutsModalOpen = false)}
-    onkeydown={(e) => {
-      if (e.key === 'Escape') isShortcutsModalOpen = false;
-    }}>
-    <section
-      role="group"
-      tabindex="-1"
-      class="mx-4 w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl">
-      <div class="mb-4 flex items-center justify-between">
-        <h2 id="shortcuts-modal-title" class="text-sm font-semibold text-foreground">
-          Keyboard Shortcuts
-        </h2>
-        <button
-          type="button"
-          class="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-          aria-label="Close shortcuts dialog"
-          onclick={() => (isShortcutsModalOpen = false)}>
-          <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"
-            ><path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M6 18L18 6M6 6l12 12" /></svg>
-        </button>
-      </div>
-      <div class="space-y-3">
-        <div>
-          <h3
-            class="mb-1.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-            Tools
-          </h3>
-          <div class="space-y-1">
-            {#each [['V', 'Select tool'], ['P', 'Pan tool'], ['D', 'Draw tool'], ['G', 'Toggle grid'], ['R', 'Rough mode']] as [key, label]}
-              <div class="flex items-center justify-between rounded-md px-2 py-1 hover:bg-muted/50">
-                <span class="text-xs text-foreground/80">{label}</span>
-                <kbd
-                  class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
-                  >{key}</kbd>
-              </div>
-            {/each}
+  <!-- Keyboard Shortcuts Modal -->
+  {#if isShortcutsModalOpen}
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shortcuts-modal-title"
+      tabindex="0"
+      class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onclick={() => (isShortcutsModalOpen = false)}
+      onkeydown={(e) => {
+        if (e.key === 'Escape') isShortcutsModalOpen = false;
+      }}>
+      <section
+        role="group"
+        tabindex="-1"
+        class="mx-4 w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 id="shortcuts-modal-title" class="text-sm font-semibold text-foreground">
+            Keyboard Shortcuts
+          </h2>
+          <button
+            type="button"
+            class="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label="Close shortcuts dialog"
+            onclick={() => (isShortcutsModalOpen = false)}>
+            <svg class="size-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              ><path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div class="space-y-3">
+          <div>
+            <h3
+              class="mb-1.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              Tools
+            </h3>
+            <div class="space-y-1">
+              {#each [['V', 'Select tool'], ['P', 'Pan tool'], ['D', 'Draw tool'], ['G', 'Toggle grid'], ['R', 'Rough mode']] as [key, label] (key)}
+                <div
+                  class="flex items-center justify-between rounded-md px-2 py-1 hover:bg-muted/50">
+                  <span class="text-xs text-foreground/80">{label}</span>
+                  <kbd
+                    class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                    >{key}</kbd>
+                </div>
+              {/each}
+            </div>
+          </div>
+          <div>
+            <h3
+              class="mb-1.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              Edit
+            </h3>
+            <div class="space-y-1">
+              {#each [['⌘Z', 'Undo'], ['⌘⇧Z', 'Redo'], ['⌘S', 'Export'], ['⌘O', 'Import'], ['Del', 'Delete selected']] as [key, label] (key)}
+                <div
+                  class="flex items-center justify-between rounded-md px-2 py-1 hover:bg-muted/50">
+                  <span class="text-xs text-foreground/80">{label}</span>
+                  <kbd
+                    class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                    >{key}</kbd>
+                </div>
+              {/each}
+            </div>
+          </div>
+          <div>
+            <h3
+              class="mb-1.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+              View
+            </h3>
+            <div class="space-y-1">
+              {#each [['⌘+', 'Zoom in'], ['⌘-', 'Zoom out'], ['⌘0', 'Reset zoom'], ['?', 'This dialog']] as [key, label] (key)}
+                <div
+                  class="flex items-center justify-between rounded-md px-2 py-1 hover:bg-muted/50">
+                  <span class="text-xs text-foreground/80">{label}</span>
+                  <kbd
+                    class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                    >{key}</kbd>
+                </div>
+              {/each}
+            </div>
           </div>
         </div>
-        <div>
-          <h3
-            class="mb-1.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-            Edit
-          </h3>
-          <div class="space-y-1">
-            {#each [['⌘Z', 'Undo'], ['⌘⇧Z', 'Redo'], ['⌘S', 'Export'], ['⌘O', 'Import'], ['Del', 'Delete selected']] as [key, label]}
-              <div class="flex items-center justify-between rounded-md px-2 py-1 hover:bg-muted/50">
-                <span class="text-xs text-foreground/80">{label}</span>
-                <kbd
-                  class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
-                  >{key}</kbd>
-              </div>
-            {/each}
-          </div>
-        </div>
-        <div>
-          <h3
-            class="mb-1.5 text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
-            View
-          </h3>
-          <div class="space-y-1">
-            {#each [['⌘+', 'Zoom in'], ['⌘-', 'Zoom out'], ['⌘0', 'Reset zoom'], ['?', 'This dialog']] as [key, label]}
-              <div class="flex items-center justify-between rounded-md px-2 py-1 hover:bg-muted/50">
-                <span class="text-xs text-foreground/80">{label}</span>
-                <kbd
-                  class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
-                  >{key}</kbd>
-              </div>
-            {/each}
-          </div>
-        </div>
-      </div>
-    </section>
-  </div>
+      </section>
+    </div>
+  {/if}
 {/if}
