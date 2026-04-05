@@ -9,4 +9,3 @@ export * from './util';
 
 // Direct exports
 export { constants } from './constants';
-export { supabase } from './supabase';
