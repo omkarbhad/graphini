@@ -177,6 +177,35 @@ export interface AppState {
   created_at: string;
 }
 
+export interface DiagramWorkspaceRow {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string | null;
+  diagram_type: string | null;
+  is_starred: boolean;
+  tags: string[];
+  document: Record<string, unknown>;
+  element_count: number;
+  thumbnail_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiagramWorkspaceSummaryRow {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string | null;
+  diagram_type: string | null;
+  is_starred: boolean;
+  tags: string[];
+  element_count: number;
+  thumbnail_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface EnabledModel {
   id: string;
   model_id: string;

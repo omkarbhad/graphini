@@ -13,6 +13,8 @@ import type {
   CreditBalance,
   CreditTransaction,
   DeductCreditsResult,
+  DiagramWorkspaceRow,
+  DiagramWorkspaceSummaryRow,
   EnabledModel,
   FileRecord,
   Message,
@@ -1231,6 +1233,179 @@ export class NeonAdapter implements DatabaseAdapter {
       is_enabled: row.is_enabled,
       sort_order: row.sort_order ?? 0,
       metadata: (row.metadata as Record<string, unknown>) ?? {},
+      created_at: row.created_at.toISOString(),
+      updated_at: row.updated_at.toISOString()
+    };
+  }
+
+  // ── Diagram Workspaces ──────────────────────────────────────────────
+
+  async createDiagramWorkspace(data: {
+    user_id: string;
+    title: string;
+    description?: string;
+    document?: Record<string, unknown>;
+  }): Promise<DiagramWorkspaceRow> {
+    const [row] = await this.db
+      .insert(schema.diagramWorkspaces)
+      .values({
+        user_id: data.user_id,
+        title: data.title,
+        description: data.description ?? null,
+        document: data.document ?? {
+          version: 1,
+          canvas: { elements: [], connections: [], viewport: { x: 0, y: 0, zoom: 1 }, gridEnabled: true, gridSize: 20, snapToGrid: true },
+          mermaidCode: '',
+          chat: { messages: [] },
+          documentMarkdown: ''
+        }
+      })
+      .returning();
+    return this.mapDiagramWorkspace(row);
+  }
+
+  async getDiagramWorkspace(id: string): Promise<DiagramWorkspaceRow | null> {
+    const [row] = await this.db
+      .select()
+      .from(schema.diagramWorkspaces)
+      .where(eq(schema.diagramWorkspaces.id, id));
+    return row ? this.mapDiagramWorkspace(row) : null;
+  }
+
+  async listDiagramWorkspaces(
+    user_id: string,
+    options?: { limit?: number; offset?: number; starred_only?: boolean; search?: string }
+  ): Promise<{ workspaces: DiagramWorkspaceSummaryRow[]; total: number }> {
+    const limit = options?.limit || 50;
+    const offset = options?.offset || 0;
+
+    const conditions = [eq(schema.diagramWorkspaces.user_id, user_id)];
+    if (options?.starred_only) {
+      conditions.push(eq(schema.diagramWorkspaces.is_starred, true));
+    }
+    if (options?.search) {
+      conditions.push(ilike(schema.diagramWorkspaces.title, `%${options.search}%`));
+    }
+
+    const where = and(...conditions);
+
+    // Select summary columns (exclude document blob)
+    const rows = await this.db
+      .select({
+        id: schema.diagramWorkspaces.id,
+        user_id: schema.diagramWorkspaces.user_id,
+        title: schema.diagramWorkspaces.title,
+        description: schema.diagramWorkspaces.description,
+        diagram_type: schema.diagramWorkspaces.diagram_type,
+        is_starred: schema.diagramWorkspaces.is_starred,
+        tags: schema.diagramWorkspaces.tags,
+        element_count: schema.diagramWorkspaces.element_count,
+        thumbnail_url: schema.diagramWorkspaces.thumbnail_url,
+        created_at: schema.diagramWorkspaces.created_at,
+        updated_at: schema.diagramWorkspaces.updated_at
+      })
+      .from(schema.diagramWorkspaces)
+      .where(where)
+      .orderBy(desc(schema.diagramWorkspaces.updated_at))
+      .limit(limit)
+      .offset(offset);
+
+    const [{ count }] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.diagramWorkspaces)
+      .where(where);
+
+    return {
+      workspaces: rows.map((r) => ({
+        id: r.id,
+        user_id: r.user_id,
+        title: r.title,
+        description: r.description,
+        diagram_type: r.diagram_type,
+        is_starred: r.is_starred,
+        tags: (r.tags as string[]) ?? [],
+        element_count: r.element_count,
+        thumbnail_url: r.thumbnail_url,
+        created_at: r.created_at.toISOString(),
+        updated_at: r.updated_at.toISOString()
+      })),
+      total: count
+    };
+  }
+
+  async updateDiagramWorkspace(
+    id: string,
+    data: Partial<Pick<DiagramWorkspaceRow, 'title' | 'description' | 'is_starred' | 'tags'>>
+  ): Promise<DiagramWorkspaceRow> {
+    const updateData: Record<string, unknown> = { updated_at: new Date() };
+    if (data.title !== undefined) updateData.title = data.title;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.is_starred !== undefined) updateData.is_starred = data.is_starred;
+    if (data.tags !== undefined) updateData.tags = data.tags;
+
+    const [row] = await this.db
+      .update(schema.diagramWorkspaces)
+      .set(updateData)
+      .where(eq(schema.diagramWorkspaces.id, id))
+      .returning();
+    return this.mapDiagramWorkspace(row);
+  }
+
+  async deleteDiagramWorkspace(id: string): Promise<void> {
+    await this.db.delete(schema.diagramWorkspaces).where(eq(schema.diagramWorkspaces.id, id));
+  }
+
+  async updateDiagramWorkspaceDocument(
+    id: string,
+    document: Record<string, unknown>,
+    meta?: { element_count?: number; diagram_type?: string | null }
+  ): Promise<void> {
+    const updateData: Record<string, unknown> = {
+      document,
+      updated_at: new Date()
+    };
+    if (meta?.element_count !== undefined) updateData.element_count = meta.element_count;
+    if (meta?.diagram_type !== undefined) updateData.diagram_type = meta.diagram_type;
+
+    await this.db
+      .update(schema.diagramWorkspaces)
+      .set(updateData)
+      .where(eq(schema.diagramWorkspaces.id, id));
+  }
+
+  async duplicateDiagramWorkspace(id: string, newTitle: string): Promise<DiagramWorkspaceRow> {
+    const original = await this.getDiagramWorkspace(id);
+    if (!original) throw new Error('Workspace not found');
+
+    const [row] = await this.db
+      .insert(schema.diagramWorkspaces)
+      .values({
+        user_id: original.user_id,
+        title: newTitle,
+        description: original.description,
+        diagram_type: original.diagram_type,
+        is_starred: false,
+        tags: original.tags,
+        document: original.document as Record<string, unknown>,
+        element_count: original.element_count,
+        thumbnail_url: null
+      })
+      .returning();
+    return this.mapDiagramWorkspace(row);
+  }
+
+  private mapDiagramWorkspace(row: typeof schema.diagramWorkspaces.$inferSelect): DiagramWorkspaceRow {
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      title: row.title,
+      description: row.description,
+      diagram_type: row.diagram_type,
+      is_starred: row.is_starred,
+      tags: (row.tags as string[]) ?? [],
+      document: (row.document as Record<string, unknown>) ?? {},
+      element_count: row.element_count,
+      thumbnail_url: row.thumbnail_url,
       created_at: row.created_at.toISOString(),
       updated_at: row.updated_at.toISOString()
     };

@@ -390,6 +390,32 @@ export const enabledModels = pgTable(
   ]
 );
 
+// ── Diagram Workspaces ────────────────────────────────────────────────────
+
+export const diagramWorkspaces = pgTable(
+  'diagram_workspaces',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    user_id: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull().default('Untitled Workspace'),
+    description: text('description'),
+    diagram_type: text('diagram_type'),
+    is_starred: boolean('is_starred').notNull().default(false),
+    tags: text('tags').array().default(sql`'{}'`),
+    document: jsonb('document').notNull().default({}),
+    element_count: integer('element_count').notNull().default(0),
+    thumbnail_url: text('thumbnail_url'),
+    created_at: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+  },
+  (t) => [
+    index('idx_diagram_workspaces_user').on(t.user_id, t.updated_at),
+    index('idx_diagram_workspaces_starred').on(t.user_id, t.is_starred)
+  ]
+);
+
 // ── File Versions ─────────────────────────────────────────────────────────
 
 export const fileVersions = pgTable(

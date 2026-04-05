@@ -11,6 +11,8 @@ import type {
   CreditBalance,
   CreditTransaction,
   DeductCreditsResult,
+  DiagramWorkspaceRow,
+  DiagramWorkspaceSummaryRow,
   EnabledModel,
   FileRecord,
   Message,
@@ -220,6 +222,30 @@ export interface DatabaseAdapter {
     created_at: string;
   }>>;
   pruneFileVersions(file_id: string, keepCount: number): Promise<number>;
+
+  // ── Diagram Workspaces ───────────────────────────────────────────────
+  createDiagramWorkspace(data: {
+    user_id: string;
+    title: string;
+    description?: string;
+    document?: Record<string, unknown>;
+  }): Promise<DiagramWorkspaceRow>;
+  getDiagramWorkspace(id: string): Promise<DiagramWorkspaceRow | null>;
+  listDiagramWorkspaces(
+    user_id: string,
+    options?: { limit?: number; offset?: number; starred_only?: boolean; search?: string }
+  ): Promise<{ workspaces: DiagramWorkspaceSummaryRow[]; total: number }>;
+  updateDiagramWorkspace(
+    id: string,
+    data: Partial<Pick<DiagramWorkspaceRow, 'title' | 'description' | 'is_starred' | 'tags'>>
+  ): Promise<DiagramWorkspaceRow>;
+  deleteDiagramWorkspace(id: string): Promise<void>;
+  updateDiagramWorkspaceDocument(
+    id: string,
+    document: Record<string, unknown>,
+    meta?: { element_count?: number; diagram_type?: string | null }
+  ): Promise<void>;
+  duplicateDiagramWorkspace(id: string, newTitle: string): Promise<DiagramWorkspaceRow>;
 
   // ── Health ────────────────────────────────────────────────────────────
   healthCheck(): Promise<boolean>;
