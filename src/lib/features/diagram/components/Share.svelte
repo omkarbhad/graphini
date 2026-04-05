@@ -1,12 +1,12 @@
 <script lang="ts">
   import { env } from '$/util/env';
-  import { urlsStore } from '$/util/state';
+  import { urlsStore } from '$/util/state/state';
   import { buttonVariants } from '$lib/components/ui/button';
   import * as Dialog from '$lib/components/ui/dialog';
   import { Separator } from '$lib/components/ui/separator';
   import ShareIcon from '~icons/material-symbols/share';
-  import CopyInput from './CopyInput.svelte';
-  import MermaidChartIcon from './MermaidChartIcon.svelte';
+  import CopyInput from '$lib/components/common/CopyInput.svelte';
+  import MermaidChartIcon from '$lib/components/common/MermaidChartIcon.svelte';
 
   interface Props {
     class?: string;

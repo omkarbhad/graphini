@@ -3,7 +3,7 @@
   import { TID } from '$/constants';
   import type { DocumentationConfig } from '$/types';
   import { standardizeDiagramType } from '$/util/mermaid';
-  import { stateStore } from '$/util/state';
+  import { stateStore } from '$/util/state/state';
   import BookIcon from '~icons/material-symbols/book-2-outline-rounded';
 
   const docURLBase = 'https://mermaid.js.org';

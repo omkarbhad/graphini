@@ -1,8 +1,8 @@
 // Diagram feature module exports
-export * from './Actions.svelte';
-export * from './DiagramDocumentationButton.svelte';
+export * from './components/Actions.svelte';
+export * from './components/DiagramDocumentationButton.svelte';
 export * from './mermaid';
 export * from './mermaidThemes';
 export * from './panZoom';
-export * from './Preset.svelte';
-export * from './Share.svelte';
+export * from './components/Preset.svelte';
+export * from './components/Share.svelte';

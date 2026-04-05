@@ -1,5 +1,5 @@
 {
-  "name": "mermaid-live-editor",
+  "name": "graphini",
   "version": "2.0.67",
   "type": "module",
   "license": "MIT",
@@ -28,8 +28,9 @@
     "test:e2e:debug": "playwright test --debug"
   },
   "devDependencies": {
-    "@ai-sdk/openai": "^2.0.56",
-    "@ai-sdk/svelte": "^3.0.81",
+    "@ai-sdk/anthropic": "^3.0.64",
+    "@ai-sdk/openai": "^3.0.27",
+    "@ai-sdk/svelte": "^4.0.83",
     "@eslint/compat": "^1.2.5",
     "@eslint/eslintrc": "^3.3.1",
     "@eslint/js": "^9.18.0",
@@ -54,7 +55,7 @@
     "@types/uuid": "9.0.8",
     "@vitest/coverage-v8": "^3.2.4",
     "@vitest/ui": "^3.2.4",
-    "ai": "^6.0.71",
+    "ai": "^6.0.83",
     "autoprefixer": "^10.4.21",
     "bash": "link:@shikijs/langs/bash",
     "bits-ui": "^2.14.1",
@@ -64,6 +65,7 @@
     "css": "link:@shikijs/langs/css",
     "cssnano": "^6.1.2",
     "diff": "link:@shikijs/langs/diff",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-es": "^4.1.0",
@@ -123,10 +125,10 @@
     "@mermaid-js/layout-elk": "^0.1.9",
     "@mermaid-js/layout-tidy-tree": "^0.2.0",
     "@mermaid-js/mermaid-zenuml": "^0.2.2",
+    "@neondatabase/serverless": "^1.0.2",
     "@openrouter/ai-sdk-provider": "^2.1.1",
     "@openrouter/sdk": "^0.5.1",
     "@shikijs/themes": "^3.21.0",
-    "@supabase/supabase-js": "^2.77.0",
     "@types/better-sqlite3": "^7.6.13",
     "@vercel/blob": "^2.2.0",
     "@xenova/transformers": "^2.17.2",
@@ -136,6 +138,7 @@
     "dexie": "^4.2.1",
     "dompurify": "^3.3.1",
     "dotenv": "^17.2.3",
+    "drizzle-orm": "^0.45.2",
     "github-dark-default": "link:@shikijs/themes/github-dark-default",
     "github-light-default": "link:@shikijs/themes/github-light-default",
     "hammerjs": "^2.0.8",
@@ -169,7 +172,7 @@
     ]
   },
   "engines": {
-    "node": "24"
+    "node": ">=24"
   },
   "packageManager": "pnpm@10.29.2+sha512.d615db246fe70f25dcfea6d8d73dee782ce23e2245e3c4f6f888249fb568149318637dca73c2c5c8ef2a4ca0d5657fb9567188bfab47f566d1ee6ce987815c39",
   "pnpm": {

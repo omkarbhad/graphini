@@ -11,7 +11,7 @@
   import { Separator } from '$lib/components/ui/separator';
   import * as ToggleGroup from '$lib/components/ui/toggle-group';
   import { waitForRender } from '$lib/util/autoSync';
-  import { inputStateStore, stateStore, urlsStore } from '$lib/util/state';
+  import { inputStateStore, stateStore, urlsStore } from '$lib/util/state/state';
   import { logEvent } from '$lib/util/stats';
   import { version as FAVersion } from '@fortawesome/fontawesome-free/package.json';
   import dayjs from 'dayjs';

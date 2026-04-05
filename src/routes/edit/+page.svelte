@@ -7,13 +7,13 @@
     stateStore,
     updateCodeStore,
     type LayoutOption
-  } from '$/util/state';
+  } from '$/util/state/state';
   import { logEvent } from '$/util/stats';
   import { initHandler, parseCanvasURL } from '$/util/util';
   import ColorPanel from '$lib/components/canvas/ColorPanel.svelte';
   import ElementToolbar from '$lib/components/canvas/ElementToolbar.svelte';
   import IconPanel from '$lib/components/canvas/IconPanel.svelte';
-  import Editor from '$lib/components/editor/Editor.svelte';
+  import Editor from '$lib/features/editor/components/Editor.svelte';
   import { View } from '$lib/components/layout';
   import { ChatPanel, DocumentPanel, PanelResizeHandle } from '$lib/components/panels';
   import RefillGemsModal from '$lib/components/RefillGemsModal.svelte';

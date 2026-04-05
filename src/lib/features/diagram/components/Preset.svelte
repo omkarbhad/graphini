@@ -2,7 +2,7 @@
   import { getSampleDiagrams } from '$/util/mermaid';
   import Card from '$lib/components/cards/Card.svelte';
   import { Button } from '$lib/components/ui/button';
-  import { updateCode } from '$lib/util/state';
+  import { updateCode } from '$lib/util/state/state';
   import { logEvent } from '$lib/util/stats';
   import ShapesIcon from '~icons/material-symbols/account-tree-outline-rounded';
 
