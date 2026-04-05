@@ -23,9 +23,9 @@
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import Chat from '$lib/features/chat/components/Chat.simple.svelte';
   import { authStore } from '$lib/stores/auth.svelte';
-  import { autosave } from '$lib/stores/autosave.svelte';
+  // autosave replaced by workspace auto-save
   import { conversationsStore } from '$lib/stores/conversations.svelte';
-  import { fileSystem, type UserFile } from '$lib/stores/fileSystem.svelte';
+  import { workspaceStore } from '$lib/stores/workspace.svelte';
   import { kv } from '$lib/stores/kvStore.svelte';
   import { panels, type PanelId } from '$lib/stores/panels.svelte';
   import { cn } from '$lib/utils';
@@ -300,36 +300,10 @@
     }
 
     setupPanZoomObserver();
-    autosave.init();
-
-    const urlParts = parseCanvasURL();
-
-    const savedFile = fileSystem.loadCurrentFile();
-    if (savedFile && !urlParts.fileId) {
-      fileSystem.setCurrentFile(savedFile);
-      autosave.setCurrentFile(savedFile);
-      if (savedFile.mermaid) updateCodeStore({ code: savedFile.mermaid });
-      autoFileCreated = true;
-      // Push current file to URL
-      pushCanvasURL({ folderId: savedFile.parentId, fileId: savedFile.id });
-    }
-    fileSystem.loadUserFiles();
 
     const setup = async () => {
       await initHandler();
       window.addEventListener('appinstalled', () => logEvent('pwaInstalled', { isMobile }));
-
-      // If URL has a file ID, load that file from the file system store
-      if (urlParts.fileId) {
-        await fileSystem.loadUserFiles();
-        const file = fileSystem.getFileById(urlParts.fileId);
-        if (file) {
-          fileSystem.setCurrentFile(file);
-          autosave.setCurrentFile(file);
-          if (file.mermaid) updateCodeStore({ code: file.mermaid, updateDiagram: true });
-          autoFileCreated = true;
-        }
-      }
     };
     setup();
 
@@ -389,14 +363,7 @@
     };
     window.addEventListener('open-refill-gems', handleOpenRefillGems);
 
-    if (!autoFileCreated) {
-      const randomName = `Diagram-${Date.now().toString(36).slice(-4).toUpperCase()}.mmd`;
-      const file = fileSystem.createFile(randomName);
-      if (file) {
-        autosave.setCurrentFile(file);
-        autoFileCreated = true;
-      }
-    }
+    // Workspace-based: no need to auto-create files; workspace is loaded by /workspace/[id]
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -536,8 +503,8 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      const currentFile = fileSystem.currentFile;
-      a.download = `${currentFile?.name?.replace(/\.[^.]+$/, '') || 'diagram'}.svg`;
+      const wsTitle = workspaceStore.workspace?.title;
+      a.download = `${wsTitle || 'diagram'}.svg`;
       a.click();
       URL.revokeObjectURL(url);
     }
@@ -616,18 +583,9 @@
     return false;
   };
 
-  let autoFileCreated = false;
+  // Workspace-based: file creation handled by workspace store
   async function ensureFileExists() {
-    if (autoFileCreated) return;
-    if (!fileSystem.currentFile) {
-      autoFileCreated = true;
-      const editorState = get(inputStateStore);
-      const file = fileSystem.createFile('Untitled.mmd');
-      if (editorState.code) fileSystem.updateFile(file.id, { mermaid: editorState.code });
-      autosave.setCurrentFile(file);
-      autosave.markChanged();
-      pushCanvasURL({ fileId: file.id, folderId: file.parentId });
-    }
+    // No-op: workspace handles persistence
   }
 
   let isRenamingInNavbar = $state(false);
@@ -664,60 +622,26 @@
   });
 
   $effect(() => {
-    const name = fileSystem.currentFile?.name || 'Untitled.mmd';
-    document.title = `${name.replace('.mmd', '')} — Graphini`;
+    const name = workspaceStore.workspace?.title || 'Untitled';
+    document.title = `${name} — Graphini`;
   });
 
   function startNavbarRename() {
-    navbarRenameValue = (fileSystem.currentFile?.name || '').replace('.mmd', '');
+    navbarRenameValue = workspaceStore.workspace?.title || 'Untitled';
     isRenamingInNavbar = true;
   }
 
   async function saveNavbarRename() {
-    const currentFile = fileSystem.currentFile;
-    if (!currentFile || !navbarRenameValue.trim()) {
+    if (!workspaceStore.workspace || !navbarRenameValue.trim()) {
       isRenamingInNavbar = false;
       return;
     }
-    const newName = navbarRenameValue.trim().endsWith('.mmd')
-      ? navbarRenameValue.trim()
-      : navbarRenameValue.trim() + '.mmd';
-    await fileSystem.renameFile(currentFile.id, newName);
+    await workspaceStore.updateMeta({ title: navbarRenameValue.trim() });
     isRenamingInNavbar = false;
   }
 
-  const handleFileOpen = async (file: UserFile) => {
-    const currentFile = fileSystem.currentFile;
-    if (currentFile && currentFile.id !== file.id) {
-      // Save current file's mermaid code
-      const state = get(inputStateStore);
-      const currentCode = state.code || '';
-      if (currentCode || currentFile.mermaid)
-        fileSystem.updateFile(currentFile.id, { mermaid: currentCode });
-      // Save current UI state to kv
-      kv.set('ui', `file_uistate_${currentFile.id}`, {
-        activeTool,
-        currentLayout,
-        isGridVisible,
-        isRoughMode,
-        zoomLevel
-      });
-    }
-    // Load new file's code
-    updateCodeStore({ code: file.mermaid || '', updateDiagram: true });
-    fileSystem.setCurrentFile(file);
-    autosave.setCurrentFile(file);
-    autoFileCreated = true;
-    pushCanvasURL({ fileId: file.id, folderId: file.parentId });
-    // Restore UI state from kv
-    const savedUiState = kv.get<Record<string, any>>('ui', `file_uistate_${file.id}`);
-    if (savedUiState && Object.keys(savedUiState).length > 0) {
-      if (savedUiState.activeTool) activeTool = savedUiState.activeTool;
-      if (savedUiState.currentLayout) currentLayout = savedUiState.currentLayout;
-      if (typeof savedUiState.isGridVisible === 'boolean') isGridVisible = savedUiState.isGridVisible;
-      if (typeof savedUiState.isRoughMode === 'boolean') isRoughMode = savedUiState.isRoughMode;
-      if (typeof savedUiState.zoomLevel === 'number') zoomLevel = savedUiState.zoomLevel;
-    }
+  const handleFileOpen = async (_file: unknown) => {
+    // Workspace-based: file switching is handled by workspace navigation
   };
 </script>
 
@@ -749,7 +673,7 @@
             onclick={() => startNavbarRename()}
             title="Click to rename">
             <span class="max-w-[200px] truncate"
-              >{fileSystem.currentFile?.name || 'Untitled.mmd'}</span>
+              >{workspaceStore.workspace?.title || 'Untitled'}</span>
             <Pencil
               class="size-3 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" />
           </button>
@@ -1218,7 +1142,7 @@
                   onUpdate={(code) => {
                     updateCodeStore({ code });
                     ensureFileExists();
-                    autosave.markChanged();
+                    workspaceStore.markDirty();
                   }}
                   isMobile={width < 768}
                   sendChatMessage={handleSendChatMessage} />

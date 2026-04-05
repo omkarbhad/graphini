@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fileSystemStore } from '$/stores/fileSystem';
+  import { workspaceStore } from '$lib/stores/workspace.svelte';
   import { Button } from '$lib/components/ui/button';
   import { stateStore } from '$lib/util/state';
   import type { Snippet } from 'svelte';
@@ -17,8 +17,8 @@
   let { isHistoryOpen = false, onHistoryToggle, onFileSystemToggle, children }: Props = $props();
 
   // Get current file info from file system store
-  const currentFile = $derived($fileSystemStore.currentFile);
-  const displayFilename = $derived(currentFile?.name || 'untitled.mmd');
+  const currentWorkspace = $derived(workspaceStore.workspace);
+  const displayFilename = $derived(currentWorkspace?.title || 'Untitled');
 
   // Generate filename from current code or use default
   const generateFilename = () => {
@@ -35,7 +35,7 @@
     return 'untitled.mmd';
   };
 
-  const currentFilename = $derived(currentFile ? currentFile.name : generateFilename());
+  const currentFilename = $derived(currentWorkspace ? currentWorkspace.title : generateFilename());
 
   const handleHistoryToggle = () => {
     if (onHistoryToggle) {
@@ -53,21 +53,10 @@
   };
 
   const saveFilename = async () => {
-    const newFilename = editingFilename.trim() || 'untitled';
-    const fullFilename = newFilename.endsWith('.mmd') ? newFilename : `${newFilename}.mmd`;
-
-    // Update file system store with new filename
-    if (currentFile) {
-      // Update existing file name
-      fileSystemStore.updateFileName(currentFile.id, fullFilename);
-    } else {
-      // Create new file with this name, then update content
-      const newFile = await fileSystemStore.createFile(fullFilename);
-      if ($stateStore.code) {
-        await fileSystemStore.updateFile(newFile.id, $stateStore.code);
-      }
+    const newTitle = editingFilename.trim() || 'Untitled';
+    if (currentWorkspace) {
+      await workspaceStore.updateMeta({ title: newTitle });
     }
-
     isEditingFilename = false;
   };
 

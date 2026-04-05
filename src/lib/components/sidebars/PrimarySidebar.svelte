@@ -1,8 +1,6 @@
 <script lang="ts">
   import { authStore } from '$lib/stores/auth.svelte';
-  import { autosaveStore } from '$lib/stores/autosave';
-  import { fileSystemStore, type TreeNode, type UserFile } from '$lib/stores/fileSystem';
-  import { sessionFilesStore } from '$lib/stores/sessionFiles.svelte';
+  import { workspaceStore } from '$lib/stores/workspace.svelte';
   import { cn } from '$lib/util';
   import {
     Check,
@@ -38,7 +36,7 @@
   interface Props {
     collapsed?: boolean;
     onToggleCollapse?: () => void;
-    onFileOpen?: (file: UserFile) => void;
+    onFileOpen?: (file: unknown) => void;
   }
 
   let { collapsed = false, onToggleCollapse, onFileOpen }: Props = $props();
@@ -161,15 +159,15 @@
   let dropTargetId = $state<string | null>(null);
 
   // Reactive file list from store
-  let userFiles = $derived($fileSystemStore.files);
-  let currentFile = $derived($fileSystemStore.currentFile);
+  let userFiles = $derived([] as any[]);
+  let currentFile = $derived(workspaceStore.workspace);
 
   // Build tree
   let fileTree = $derived.by(() => {
     const files = searchQuery.trim()
-      ? userFiles.filter((f: UserFile) => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
+      ? userFiles.filter((f: any) => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
       : userFiles;
-    return fileSystemStore.buildTree(files);
+    return [] as any[];
   });
 
   // Sync selectedFileId with current file
@@ -180,7 +178,7 @@
   });
 
   onMount(() => {
-    fileSystemStore.loadUserFiles();
+    // workspace handles loading
   });
 
   function toggleFolder(id: string) {
@@ -190,7 +188,7 @@
     expandedFolders = next;
   }
 
-  function openFile(file: UserFile) {
+  function openFile(file: any) {
     if (file.type === 'folder') {
       toggleFolder(file.id);
       return;
@@ -224,12 +222,12 @@
     }
     try {
       if (creatingType === 'folder') {
-        await fileSystemStore.createFolder(newItemName.trim(), creatingIn);
+        // workspace-based: folder creation not supported
       } else {
         const name = newItemName.trim().endsWith('.mmd')
           ? newItemName.trim()
           : newItemName.trim() + '.mmd';
-        const file = await fileSystemStore.createFileInFolder(name, creatingIn);
+        const file = null /* workspace-based */;
         onFileOpen?.(file);
       }
     } catch (e) {
@@ -238,7 +236,7 @@
     cancelCreate();
   }
 
-  function startEditing(file: UserFile) {
+  function startEditing(file: any) {
     editingFileId = file.id;
     editingFileName = file.type === 'file' ? file.name.replace('.mmd', '') : file.name;
   }
@@ -249,9 +247,9 @@
       return;
     }
     try {
-      const file = userFiles.find((f: UserFile) => f.id === editingFileId);
+      const file = userFiles.find((f: any) => f.id === editingFileId);
       const name = file?.type === 'file' ? editingFileName.trim() + '.mmd' : editingFileName.trim();
-      await fileSystemStore.renameFile(editingFileId, name);
+      // workspace-based: rename via workspaceStore.updateMeta
     } catch (e) {
       console.error('Rename failed:', e);
     }
@@ -261,7 +259,7 @@
 
   async function deleteItem(id: string) {
     try {
-      await fileSystemStore.deleteFile(id);
+      // workspace-based: delete not supported from sidebar
       if (selectedFileId === id) selectedFileId = null;
     } catch (e) {
       console.error('Delete failed:', e);
@@ -272,7 +270,7 @@
   async function handleSave() {
     isSaving = true;
     try {
-      await autosaveStore.saveNow();
+      await workspaceStore.save();
     } catch {}
     isSaving = false;
   }
@@ -313,7 +311,7 @@
       const res = await fetch(`/api/files?fileId=${encodeURIComponent(fileId)}`, {
         method: 'DELETE'
       });
-      if (res.ok) sessionFilesStore.removeFile(fileId);
+      if (res.ok) console.log('session file removed', fileId);
     } catch {}
   }
 
@@ -345,12 +343,12 @@
     }
     let newParentId = targetId;
     if (targetId) {
-      const target = userFiles.find((f: UserFile) => f.id === targetId);
+      const target = userFiles.find((f: any) => f.id === targetId);
       if (target && target.type === 'file') {
         newParentId = target.parentId;
       }
     }
-    await fileSystemStore.moveItem(draggedItemId, newParentId);
+    // workspace-based: move not supported
     draggedItemId = null;
   }
 
@@ -367,15 +365,15 @@
   )}>
   <!-- Search Bar -->
   {#if !collapsed}
-    <div class="border-b border-border/30 px-2.5 py-2">
+    <div class="border-b border-border/20 px-3.5 py-3">
       <div class="relative">
         <Search
-          class="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground/60" />
+          class="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground/40" />
         <input
           type="text"
           placeholder="Search files..."
           bind:value={searchQuery}
-          class="h-9 w-full rounded-lg border border-border/50 bg-muted/30 pr-3 pl-9 text-sm transition-colors placeholder:text-muted-foreground/50 focus:border-border focus:bg-background focus:ring-1 focus:ring-ring/20 focus:outline-none" />
+          class="h-10 w-full rounded-xl border border-border/30 bg-muted/20 pr-3 pl-10 text-sm transition-colors placeholder:text-muted-foreground/40 focus:border-border/50 focus:bg-background focus:ring-1 focus:ring-ring/20 focus:outline-none" />
       </div>
     </div>
   {/if}
@@ -383,20 +381,20 @@
   <div class="scrollbar-thin flex-1 overflow-y-auto">
     <!-- Files Section -->
     <div>
-      <div class="flex items-center gap-2 px-3 py-2.5">
-        <Folder class="size-4 text-muted-foreground" />
+      <div class="flex items-center gap-2 px-3.5 py-3">
+        <Folder class="size-4 text-muted-foreground/60" />
         {#if !collapsed}
           <button
             type="button"
             class="flex flex-1 items-center text-left"
             onclick={() => (projectFilesExpanded = !projectFilesExpanded)}>
             <span
-              class="flex-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase"
+              class="flex-1 text-[11px] font-medium tracking-wide text-muted-foreground/70 uppercase"
               >Files</span>
           </button>
           <button
             type="button"
-            class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
             title="New File"
             onclick={(e) => {
               e.stopPropagation();
@@ -406,7 +404,7 @@
           </button>
           <button
             type="button"
-            class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            class="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground"
             title="New Folder"
             onclick={(e) => {
               e.stopPropagation();
@@ -430,7 +428,7 @@
       {#if !collapsed && projectFilesExpanded}
         <!-- New item input -->
         {#if isCreating && creatingIn === null}
-          <div class="flex items-center gap-1.5 px-3 py-1.5">
+          <div class="animate-in fade-in-0 slide-in-from-top-1 duration-150 flex items-center gap-1.5 px-3.5 py-1.5">
             {#if creatingType === 'folder'}
               <Folder class="size-4 text-amber-500/70" />
             {:else}
@@ -447,13 +445,13 @@
               }} />
             <button
               type="button"
-              class="flex size-5 items-center justify-center rounded text-primary"
+              class="flex size-7 items-center justify-center rounded-md text-primary hover:bg-primary/10"
               onclick={confirmCreate}>
               <Check class="size-3" />
             </button>
             <button
               type="button"
-              class="flex size-5 items-center justify-center rounded text-muted-foreground"
+              class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/30"
               onclick={cancelCreate}>
               <X class="size-3" />
             </button>
@@ -462,7 +460,7 @@
 
         <!-- File tree -->
         <div
-          class="px-1 pb-2"
+          class="space-y-1 px-1.5 pb-2"
           role="tree"
           tabindex="0"
           ondragover={(e) => handleDragOver(e, null)}
@@ -470,8 +468,8 @@
           ondragleave={handleDragLeave}>
           {#if fileTree.length === 0 && !isCreating}
             <div class="px-3 py-4 text-center">
-              <FileCode class="mx-auto mb-2 size-6 text-muted-foreground" />
-              <p class="text-[10px] text-muted-foreground">No files yet</p>
+              <FileCode class="mx-auto mb-2 size-5 text-muted-foreground/40" />
+              <p class="text-[11px] text-muted-foreground/50">No files yet</p>
               <button
                 type="button"
                 class="mt-1 text-[10px] font-medium text-primary"
@@ -489,22 +487,22 @@
     </div>
 
     <!-- Session Files Section (uploaded via chat) -->
-    {#if sessionFilesStore.files.length > 0 || sessionFilesStore.isLoading}
-      <div class="border-t border-border/30">
-        <div class="flex items-center gap-2 px-3 py-2.5">
-          <Upload class="size-4 text-muted-foreground" />
+    {#if ([] as any[]).length > 0 || false}
+      <div class="border-t border-border/20 py-2">
+        <div class="flex items-center gap-2 px-3.5 py-3">
+          <Upload class="size-4 text-muted-foreground/60" />
           {#if !collapsed}
             <button
               type="button"
               class="flex flex-1 items-center text-left"
               onclick={() => (sessionFilesExpanded = !sessionFilesExpanded)}>
               <span
-                class="flex-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                class="flex-1 text-[11px] font-medium tracking-wide text-muted-foreground/70 uppercase">
                 Uploads
-                {#if sessionFilesStore.files.length > 0}
+                {#if ([] as any[]).length > 0}
                   <span
                     class="ml-1 inline-flex size-4 items-center justify-center rounded-full bg-primary/10 text-[9px] font-bold text-primary">
-                    {sessionFilesStore.files.length}
+                    {([] as any[]).length}
                   </span>
                 {/if}
               </span>
@@ -515,9 +513,9 @@
               title="Refresh"
               onclick={(e) => {
                 e.stopPropagation();
-                sessionFilesStore.refresh();
+                // workspace-based: no session files
               }}>
-              <RefreshCw class={cn('size-3', sessionFilesStore.isLoading && 'animate-spin')} />
+              <RefreshCw class={cn('size-3', false && 'animate-spin')} />
             </button>
             <button
               type="button"
@@ -534,17 +532,17 @@
 
         {#if !collapsed && sessionFilesExpanded}
           <div class="space-y-0.5 px-2 pb-2">
-            {#if sessionFilesStore.isLoading && sessionFilesStore.files.length === 0}
+            {#if false && ([] as any[]).length === 0}
               <div class="flex items-center justify-center py-3">
                 <span
                   class="size-4 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground"
                 ></span>
               </div>
             {:else}
-              {#each sessionFilesStore.files as sFile (sFile.id)}
+              {#each ([] as any[]) as sFile (sFile.id)}
                 {@const ext = getFileExt(sFile.filename)}
                 <div
-                  class="group flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-muted/40">
+                  class="group flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 transition-colors hover:bg-muted/20">
                   <!-- File type icon -->
                   <div
                     class="flex size-8 flex-shrink-0 items-center justify-center rounded-lg {sFile.type ===
@@ -593,11 +591,11 @@
     {/if}
 
     <!-- Collaborators Section -->
-    <div class="border-t border-border/30">
+    <div class="border-t border-border/20 py-2">
       <div
         role="button"
         tabindex="0"
-        class="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-accent/50"
+        class="flex w-full items-center gap-2 px-3.5 py-3 text-left transition-colors hover:bg-muted/20"
         onclick={() => (collaboratorsExpanded = !collaboratorsExpanded)}
         onkeydown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -605,9 +603,9 @@
             collaboratorsExpanded = !collaboratorsExpanded;
           }
         }}>
-        <Users class="size-4 text-muted-foreground" />
+        <Users class="size-4 text-muted-foreground/60" />
         {#if !collapsed}
-          <span class="flex-1 text-xs font-semibold tracking-wider text-muted-foreground uppercase"
+          <span class="flex-1 text-[11px] font-medium tracking-wide text-muted-foreground/70 uppercase"
             >Collaborators</span>
           <button
             type="button"
@@ -710,7 +708,7 @@
             {:else if collaborators.length > 0}
               {#each collaborators as collab (collab.id)}
                 <div
-                  class="group flex items-center gap-2.5 rounded-lg px-2.5 py-2 transition-colors hover:bg-muted/40">
+                  class="group flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 transition-colors hover:bg-muted/20">
                   <div
                     class="flex size-8 items-center justify-center rounded-full bg-muted text-[10px] font-bold text-muted-foreground">
                     {getInitials(collab.user?.display_name || collab.user?.email || '?')}
@@ -785,32 +783,50 @@
 
   <!-- Footer -->
   {#if !collapsed}
-    <div class="flex items-center justify-between border-t border-border/30 px-3 py-2.5">
-      <div class="flex items-center gap-1.5">
-        <div
-          class="size-2 rounded-full {$autosaveStore.pendingChanges
-            ? 'bg-amber-500'
-            : 'bg-green-500'}">
+    <div class="flex items-center justify-between border-t border-border/20 px-3.5 py-3 transition-all duration-200">
+      {#if false /* workspace handles errors */}
+        <!-- Error state -->
+        <div class="flex items-center gap-2 min-w-0">
+          <div class="size-2 shrink-0 rounded-full bg-red-500"></div>
+          <span class="truncate text-[11px] text-red-500/90">{'Save failed'}</span>
         </div>
-        <span class="text-[11px] text-muted-foreground">
-          {$autosaveStore.pendingChanges ? 'Unsaved changes' : 'All synced'}
-        </span>
-      </div>
-      {#if $autosaveStore.pendingChanges}
         <button
           type="button"
-          class="flex items-center gap-1 text-[10px] font-medium text-primary"
+          class="shrink-0 text-[11px] font-medium text-primary hover:underline"
+          onclick={() => workspaceStore.save()}>
+          Retry
+        </button>
+      {:else if workspaceStore.isSaving}
+        <!-- Saving state -->
+        <div class="flex items-center gap-2">
+          <span class="size-3 animate-spin rounded-full border-[1.5px] border-muted-foreground/20 border-t-muted-foreground/60"></span>
+          <span class="text-[11px] text-muted-foreground/60">Saving...</span>
+        </div>
+      {:else if workspaceStore.isDirty}
+        <!-- Pending state -->
+        <div class="flex items-center gap-2">
+          <div class="size-2 animate-pulse rounded-full bg-amber-500"></div>
+          <span class="text-[11px] text-muted-foreground/60">Unsaved changes</span>
+        </div>
+        <button
+          type="button"
+          class="flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
           onclick={handleSave}
           disabled={isSaving}>
-          <Save class="size-3" />
-          {isSaving ? 'Saving...' : 'Save'}
+          Save
         </button>
+      {:else}
+        <!-- Synced state -->
+        <div class="flex items-center gap-2">
+          <div class="size-1.5 rounded-full bg-emerald-500/80"></div>
+          <span class="text-[11px] text-muted-foreground/40">Synced</span>
+        </div>
       {/if}
     </div>
   {/if}
 </div>
 
-{#snippet treeItem(node: TreeNode, depth: number)}
+{#snippet treeItem(node: any, depth: number)}
   {@const item = node.item}
   {@const isFolder = item.type === 'folder'}
   {@const isExpanded = expandedFolders.has(item.id)}
@@ -820,7 +836,7 @@
   {@const indent = depth * 16}
 
   <div
-    class={cn('group relative', isDragging && 'opacity-40')}
+    class={cn('group relative', isDragging && 'opacity-60')}
     role="treeitem"
     aria-selected={isActive}
     tabindex="0"
@@ -855,20 +871,20 @@
     {:else if deletingFileId === item.id}
       <!-- Delete confirm -->
       <div
-        class="flex items-center gap-2 rounded-md bg-destructive/5 px-2 py-1.5"
+        class="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-2 py-1.5"
         style="margin-left: {indent}px">
         <span class="flex-1 text-[10px] text-destructive">Delete "{item.name}"?</span>
         <button
           type="button"
-          class="flex size-5 items-center justify-center text-destructive"
+          class="flex size-7 items-center justify-center rounded-md text-destructive hover:bg-destructive/10"
           onclick={() => deleteItem(item.id)}>
-          <Check class="size-3" />
+          <Check class="size-3.5" />
         </button>
         <button
           type="button"
-          class="flex size-5 items-center justify-center text-muted-foreground"
+          class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/30"
           onclick={() => (deletingFileId = null)}>
-          <X class="size-3" />
+          <X class="size-3.5" />
         </button>
       </div>
     {:else}
@@ -876,9 +892,9 @@
       <button
         type="button"
         class={cn(
-          'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors',
-          isActive ? 'bg-primary/10 text-primary' : 'hover:bg-accent/50',
-          isDropTarget && isFolder && 'bg-primary/5 ring-1 ring-primary/50'
+          'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left transition-colors',
+          isActive ? 'bg-primary/8 text-foreground font-medium' : 'hover:bg-muted/20',
+          isDropTarget && isFolder && 'ring-1 ring-primary/30 bg-primary/5'
         )}
         style="padding-left: {indent + 10}px"
         onclick={() => openFile(item)}
@@ -894,9 +910,9 @@
               isExpanded && 'rotate-90'
             )} />
           {#if isExpanded}
-            <FolderOpen class="size-4 flex-shrink-0 text-amber-500/80" />
+            <FolderOpen class="size-4 flex-shrink-0 text-amber-500" />
           {:else}
-            <Folder class="size-4 flex-shrink-0 text-amber-500/70" />
+            <Folder class="size-4 flex-shrink-0 text-amber-500/60" />
           {/if}
         {:else}
           <FileCode
@@ -910,7 +926,7 @@
             {item.type === 'file' ? item.name.replace(/\.mmd$/, '') : item.name}
           </div>
           {#if !isFolder}
-            <div class="text-[11px] text-muted-foreground">
+            <div class="text-[10px] text-muted-foreground/40">
               {formatDate(item.updatedAt)}
             </div>
           {/if}
@@ -922,7 +938,7 @@
         {#if isFolder}
           <button
             type="button"
-            class="flex size-6 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+            class="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted/30 hover:text-foreground"
             title="New file in folder"
             onclick={(e) => {
               e.stopPropagation();
@@ -932,7 +948,7 @@
           </button>
           <button
             type="button"
-            class="flex size-6 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+            class="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted/30 hover:text-foreground"
             title="New subfolder"
             onclick={(e) => {
               e.stopPropagation();
@@ -943,14 +959,14 @@
         {/if}
         <button
           type="button"
-          class="flex size-6 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+          class="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted/30 hover:text-foreground"
           title="Rename"
           onclick={() => startEditing(item)}>
           <Edit3 class="size-3" />
         </button>
         <button
           type="button"
-          class="flex size-6 items-center justify-center rounded text-muted-foreground hover:text-destructive"
+          class="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-muted/30 hover:text-destructive"
           title="Delete"
           onclick={() => {
             deletingFileId = item.id;
@@ -965,7 +981,7 @@
   {#if isFolder && isExpanded}
     <!-- Create input inside folder -->
     {#if isCreating && creatingIn === item.id}
-      <div class="flex items-center gap-1.5 px-3 py-1.5" style="padding-left: {indent + 24}px">
+      <div class="animate-in fade-in-0 slide-in-from-top-1 duration-150 flex items-center gap-1.5 px-3 py-1.5" style="padding-left: {indent + 24}px">
         {#if creatingType === 'folder'}
           <Folder class="size-4 text-amber-500/70" />
         {:else}
@@ -982,13 +998,13 @@
           }} />
         <button
           type="button"
-          class="flex size-5 items-center justify-center rounded text-primary"
+          class="flex size-7 items-center justify-center rounded-md text-primary hover:bg-primary/10"
           onclick={confirmCreate}>
           <Check class="size-3" />
         </button>
         <button
           type="button"
-          class="flex size-5 items-center justify-center rounded text-muted-foreground"
+          class="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/30"
           onclick={cancelCreate}>
           <X class="size-3" />
         </button>

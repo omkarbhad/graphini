@@ -17,10 +17,10 @@
   import { parse as mermaidParse } from '$lib/features/diagram/mermaid';
   import { authStore } from '$lib/stores/auth.svelte';
   import { documentMarkdownStore } from '$lib/stores/documentStore';
-  import { fileSystemStore } from '$lib/stores/fileSystem';
-  import { kvDelete, kvFlush, kvGet, kvInit, kvSet } from '$lib/stores/kvStore';
+  import { workspaceStore } from '$lib/stores/workspace.svelte';
+  import { kv } from '$lib/stores/kvStore.svelte';
   import { modelsStore } from '$lib/stores/models.svelte';
-  import { sessionFilesStore } from '$lib/stores/sessionFiles.svelte';
+  // sessionFilesStore removed — workspace handles state
   import { toolsStore } from '$lib/stores/toolsStore';
   import { svgIdToNodeName } from '$lib/util/diagramMapper';
   import { inputStateStore, stateStore, updateCodeStore } from '$lib/util/state';
@@ -61,12 +61,28 @@
 
   // Per-file chat state: each file gets its own conversation
   function getCurrentFileId(): string {
-    const file = fileSystemStore.getCurrentFile();
+    const file = workspaceStore.workspace;
     return file?.id || '_default';
   }
 
   // Track current file to detect switches
   let currentFileId = getCurrentFileId();
+  let fileEffectInitialized = false;
+
+  // React to file changes (replaces old fileSystemStore.subscribe)
+  $effect(() => {
+    const newFileId = workspaceStore.workspace?.id || '_default';
+    if (!fileEffectInitialized) {
+      fileEffectInitialized = true;
+      return;
+    }
+    if (newFileId !== currentFileId) {
+      saveChatState();
+      debouncedDbSync();
+      currentFileId = newFileId;
+      restoreChatStateForFile();
+    }
+  });
 
   function chatKey(suffix: string, fileId?: string): string {
     return `graphini_chat_${fileId || currentFileId}_${suffix}`;
@@ -75,18 +91,18 @@
   // Persist sessionId per file
   let sessionId = (() => {
     try {
-      const saved = kvGet<string>('chat', chatKey('sessionId'));
+      const saved = kv.get<string>('chat', chatKey('sessionId'));
       if (saved) return saved;
     } catch {}
     const id = uuidv4();
     try {
-      kvSet('chat', chatKey('sessionId'), id);
+      kv.set('chat', chatKey('sessionId'), id);
     } catch {}
     return id;
   })();
 
   // Notify session files store of current session
-  sessionFilesStore.setSessionId(sessionId);
+  // session files removed — workspace handles state
 
   // ── DB Sync for chat persistence ──
   let dbConversationId: string | null = null;
@@ -95,7 +111,7 @@
 
   function getDbConversationId(): string | null {
     try {
-      return kvGet<string>('chat', chatKey('dbConvId')) || null;
+      return kv.get<string>('chat', chatKey('dbConvId')) || null;
     } catch {
       return null;
     }
@@ -104,8 +120,8 @@
   function setDbConversationId(id: string | null) {
     dbConversationId = id;
     try {
-      if (id) kvSet('chat', chatKey('dbConvId'), id);
-      else kvDelete('chat', chatKey('dbConvId'));
+      if (id) kv.set('chat', chatKey('dbConvId'), id);
+      else kv.delete('chat', chatKey('dbConvId'));
     } catch {}
   }
 
@@ -135,7 +151,7 @@
         // Persist active conversation ID so it survives refresh
         if (newConvId) {
           try {
-            kvSet('chat', 'activeConversationId', newConvId);
+            kv.set('chat', 'activeConversationId', newConvId);
           } catch {}
           // Refresh conversations list so history panel shows the new conversation
           import('$lib/stores/conversations.svelte')
@@ -242,7 +258,7 @@
     // Wait for KV store to initialize (loads cache from server), then restore chat
     const initAndRestore = async () => {
       // Ensure KV store cache is populated before reading from it
-      await kvInit();
+      await kv.init();
       // Restore from KV cache (instant after init)
       restoreChatState();
 
@@ -253,7 +269,7 @@
       }
       if (authStore.isLoggedIn) {
         // Check if there's a saved active conversation ID (from switching conversations)
-        const savedActiveConvId = kvGet<string | null>('chat', 'activeConversationId');
+        const savedActiveConvId = kv.get<string | null>('chat', 'activeConversationId');
         if (savedActiveConvId) {
           // Load the specific conversation the user was viewing
           setDbConversationId(savedActiveConvId);
@@ -274,13 +290,13 @@
       } else if (authStore.isInitialized && !authStore.isLoggedIn) {
         // Not logged in — clear any stale KV chat data and reset to clean start
         try {
-          kvDelete('chat', chatKey('messages'));
-          kvDelete('chat', chatKey('parts'));
-          kvDelete('chat', chatKey('artifacts'));
-          kvDelete('chat', chatKey('reasoning'));
-          kvDelete('chat', chatKey('checkpoints'));
-          kvDelete('chat', chatKey('diagramCode'));
-          kvSet('chat', 'activeConversationId', null);
+          kv.delete('chat', chatKey('messages'));
+          kv.delete('chat', chatKey('parts'));
+          kv.delete('chat', chatKey('artifacts'));
+          kv.delete('chat', chatKey('reasoning'));
+          kv.delete('chat', chatKey('checkpoints'));
+          kv.delete('chat', chatKey('diagramCode'));
+          kv.set('chat', 'activeConversationId', null);
         } catch {}
         messages = [];
         messageParts = {};
@@ -305,14 +321,14 @@
       if (wasActive) {
         // Clear all chat KV keys for the current file
         try {
-          kvDelete('chat', chatKey('messages'));
-          kvDelete('chat', chatKey('parts'));
-          kvDelete('chat', chatKey('artifacts'));
-          kvDelete('chat', chatKey('reasoning'));
-          kvDelete('chat', chatKey('checkpoints'));
-          kvDelete('chat', chatKey('diagramCode'));
-          kvSet('chat', 'activeConversationId', null);
-          kvFlush();
+          kv.delete('chat', chatKey('messages'));
+          kv.delete('chat', chatKey('parts'));
+          kv.delete('chat', chatKey('artifacts'));
+          kv.delete('chat', chatKey('reasoning'));
+          kv.delete('chat', chatKey('checkpoints'));
+          kv.delete('chat', chatKey('diagramCode'));
+          kv.set('chat', 'activeConversationId', null);
+          kv.flush();
         } catch {}
       }
     };
@@ -322,7 +338,7 @@
     const handleBeforeUnload = () => {
       saveChatState();
       // Force-flush KV writes immediately so they aren't lost on refresh
-      kvFlush();
+      kv.flush();
       if (authStore.isLoggedIn && messages.length > dbSyncedMessageCount) {
         syncMessagesToDb();
       }
@@ -336,23 +352,7 @@
       }
     }, 60000);
 
-    // Listen for file changes — skip the initial subscribe callback
-    let fileSubInitialized = false;
-    const unsubFile = fileSystemStore.subscribe((state) => {
-      if (!fileSubInitialized) {
-        fileSubInitialized = true;
-        return;
-      }
-      const newFileId = state.currentFile?.id || '_default';
-      if (newFileId !== currentFileId) {
-        // Save current file's chat state before switching
-        saveChatState();
-        debouncedDbSync();
-        currentFileId = newFileId;
-        // Restore new file's chat state
-        restoreChatStateForFile();
-      }
-    });
+    // Listen for file changes — handled by $effect below
 
     return () => {
       window.removeEventListener('node-selected', handleNodeSelectedForContext as EventListener);
@@ -364,7 +364,6 @@
       );
       window.removeEventListener('beforeunload', handleBeforeUnload);
       clearInterval(periodicSyncInterval);
-      unsubFile();
       if (dbSyncTimeout) clearTimeout(dbSyncTimeout);
       if (saveTimeout) clearTimeout(saveTimeout);
       if (autoFixTimeout) clearTimeout(autoFixTimeout);
@@ -375,13 +374,13 @@
   function restoreChatStateForFile() {
     // Update sessionId for new file
     try {
-      const saved = kvGet<string>('chat', chatKey('sessionId'));
+      const saved = kv.get<string>('chat', chatKey('sessionId'));
       if (saved) {
         sessionId = saved;
       } else {
         const id = uuidv4();
         sessionId = id;
-        kvSet('chat', chatKey('sessionId'), id);
+        kv.set('chat', chatKey('sessionId'), id);
       }
     } catch {}
     // Update DB conversation ID for new file
@@ -828,7 +827,7 @@
         if (m.timestamp) msg.timestamp = m.timestamp;
         return msg;
       });
-      kvSet('chat', chatKey('messages'), simpleMessages);
+      kv.set('chat', chatKey('messages'), simpleMessages);
       // Save all message parts (including artifact refs and reasoning refs)
       const allParts: Record<number, any[]> = {};
       for (const [idx, parts] of Object.entries(messageParts)) {
@@ -840,7 +839,7 @@
           return p;
         });
       }
-      kvSet('chat', chatKey('parts'), allParts);
+      kv.set('chat', chatKey('parts'), allParts);
       // Save artifacts (only finalized, non-streaming)
       const savedArtifacts: Record<string, any> = {};
       for (const [id, art] of Object.entries(artifactMap)) {
@@ -848,7 +847,7 @@
           savedArtifacts[id] = { ...art, isStreaming: false };
         }
       }
-      kvSet('chat', chatKey('artifacts'), savedArtifacts);
+      kv.set('chat', chatKey('artifacts'), savedArtifacts);
       // Save reasoning blocks (only finalized)
       const savedReasoning: Record<string, any> = {};
       for (const [id, r] of Object.entries(reasoningMap)) {
@@ -856,9 +855,9 @@
           savedReasoning[id] = { ...r, isStreaming: false };
         }
       }
-      kvSet('chat', chatKey('reasoning'), savedReasoning);
+      kv.set('chat', chatKey('reasoning'), savedReasoning);
       // Save checkpoints
-      kvSet('chat', chatKey('checkpoints'), checkpoints);
+      kv.set('chat', chatKey('checkpoints'), checkpoints);
       // Save current diagram code so it renders on refresh
       try {
         const currentCode = (inputStateStore as any)?.get?.()?.code;
@@ -868,9 +867,9 @@
             storeVal = s;
           });
           unsub();
-          if (storeVal?.code) kvSet('chat', chatKey('diagramCode'), storeVal.code);
+          if (storeVal?.code) kv.set('chat', chatKey('diagramCode'), storeVal.code);
         } else {
-          kvSet('chat', chatKey('diagramCode'), currentCode);
+          kv.set('chat', chatKey('diagramCode'), currentCode);
         }
       } catch {}
     } catch {}
@@ -887,10 +886,10 @@
     conversationStarted = false;
     conversationTitle = null;
     try {
-      const savedMessages = kvGet<any[]>('chat', chatKey('messages'));
-      const savedParts = kvGet<Record<number, any[]>>('chat', chatKey('parts'));
-      const savedArtifacts = kvGet<Record<string, any>>('chat', chatKey('artifacts'));
-      const savedReasoning = kvGet<Record<string, any>>('chat', chatKey('reasoning'));
+      const savedMessages = kv.get<any[]>('chat', chatKey('messages'));
+      const savedParts = kv.get<Record<number, any[]>>('chat', chatKey('parts'));
+      const savedArtifacts = kv.get<Record<string, any>>('chat', chatKey('artifacts'));
+      const savedReasoning = kv.get<Record<string, any>>('chat', chatKey('reasoning'));
       if (savedMessages && Array.isArray(savedMessages) && savedMessages.length > 0) {
         messages = savedMessages;
         conversationStarted = true;
@@ -915,12 +914,12 @@
           reasoningMap = savedReasoning;
         }
         // Restore checkpoints
-        const savedCheckpoints = kvGet<any[]>('chat', chatKey('checkpoints'));
+        const savedCheckpoints = kv.get<any[]>('chat', chatKey('checkpoints'));
         if (savedCheckpoints) {
           checkpoints = savedCheckpoints;
         }
         // Restore diagram code to canvas
-        const savedDiagramCode = kvGet<string>('chat', chatKey('diagramCode'));
+        const savedDiagramCode = kv.get<string>('chat', chatKey('diagramCode'));
         if (savedDiagramCode && savedDiagramCode.trim()) {
           inputStateStore.update((s) => ({ ...s, code: savedDiagramCode, updateDiagram: true }));
         }
@@ -944,15 +943,15 @@
     dbSyncedMessageCount = 0;
     // Clear persisted state for current file
     try {
-      kvDelete('chat', chatKey('messages'));
-      kvDelete('chat', chatKey('parts'));
-      kvDelete('chat', chatKey('artifacts'));
-      kvDelete('chat', chatKey('reasoning'));
-      kvDelete('chat', chatKey('checkpoints'));
-      kvDelete('chat', chatKey('diagramCode'));
+      kv.delete('chat', chatKey('messages'));
+      kv.delete('chat', chatKey('parts'));
+      kv.delete('chat', chatKey('artifacts'));
+      kv.delete('chat', chatKey('reasoning'));
+      kv.delete('chat', chatKey('checkpoints'));
+      kv.delete('chat', chatKey('diagramCode'));
       const newId = uuidv4();
       sessionId = newId;
-      kvSet('chat', chatKey('sessionId'), newId);
+      kv.set('chat', chatKey('sessionId'), newId);
     } catch {}
     window.dispatchEvent(new CustomEvent('conversation-cleared'));
   }
@@ -962,7 +961,7 @@
     // Save current conversation state before clearing
     if (conversationStarted && messages.length > 0) {
       saveChatState();
-      kvFlush();
+      kv.flush();
       if (authStore.isLoggedIn) {
         await syncMessagesToDb();
       }
@@ -984,18 +983,18 @@
     setDbConversationId(null);
     dbSyncedMessageCount = 0;
     try {
-      kvSet('chat', chatKey('sessionId'), newId);
+      kv.set('chat', chatKey('sessionId'), newId);
       // Clear persisted state so restore doesn't bring back old data
-      kvDelete('chat', chatKey('messages'));
-      kvDelete('chat', chatKey('parts'));
-      kvDelete('chat', chatKey('artifacts'));
-      kvDelete('chat', chatKey('reasoning'));
-      kvDelete('chat', chatKey('checkpoints'));
-      kvDelete('chat', chatKey('diagramCode'));
+      kv.delete('chat', chatKey('messages'));
+      kv.delete('chat', chatKey('parts'));
+      kv.delete('chat', chatKey('artifacts'));
+      kv.delete('chat', chatKey('reasoning'));
+      kv.delete('chat', chatKey('checkpoints'));
+      kv.delete('chat', chatKey('diagramCode'));
     } catch {}
     // Persist the active conversation ID as null (new chat)
     try {
-      kvSet('chat', 'activeConversationId', null);
+      kv.set('chat', 'activeConversationId', null);
     } catch {}
     window.dispatchEvent(new CustomEvent('conversation-cleared'));
   }
@@ -1006,7 +1005,7 @@
     // Save current state first
     if (conversationStarted && messages.length > 0) {
       saveChatState();
-      kvFlush();
+      kv.flush();
       if (authStore.isLoggedIn) {
         await syncMessagesToDb();
       }
@@ -1027,13 +1026,13 @@
     setDbConversationId(convId);
     // Persist active conversation ID so it survives refresh
     try {
-      kvSet('chat', 'activeConversationId', convId);
+      kv.set('chat', 'activeConversationId', convId);
     } catch {}
     // Generate a new session ID for this conversation
     const newId = uuidv4();
     sessionId = newId;
     try {
-      kvSet('chat', chatKey('sessionId'), newId);
+      kv.set('chat', chatKey('sessionId'), newId);
     } catch {}
     // Load messages from DB
     try {
@@ -1247,16 +1246,7 @@
       const result = await res.json();
       // Notify session files store for sidebar display
       if (result?.fileId) {
-        sessionFilesStore.addFile({
-          id: result.fileId,
-          filename: result.filename || file.filename || 'file',
-          mediaType: result.mediaType || '',
-          type: result.type || 'unknown',
-          size: result.size || 0,
-          storedAt: Date.now(),
-          hasText: !!result.extractedText,
-          textLength: result.extractedText?.length || 0
-        });
+        // session files removed — file tracking handled by workspace
       }
       return result;
     } catch (err) {

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { documentMarkdownStore } from '$lib/stores/documentStore';
-  import { fileAuxStore, fileSystemStore } from '$lib/stores/fileSystem';
+  import { workspaceStore } from '$lib/stores/workspace.svelte';
   import { cn } from '$lib/util';
   import { Code2, Eye, FileText } from 'lucide-svelte';
   import { marked } from 'marked';
@@ -25,11 +25,11 @@
   let currentEditorText = '';
   let resizeObserver: ResizeObserver | undefined;
 
-  // Load markdown for current file from fileAuxStore
+  // Load markdown for current workspace
   function loadMarkdown() {
-    const aux = fileAuxStore.load(currentFileId);
-    if (aux.markdown) {
-      markdownContent = aux.markdown;
+    const ws = workspaceStore.workspace;
+    if (ws?.document?.documentMarkdown) {
+      markdownContent = ws.document.documentMarkdown;
     } else {
       markdownContent = `# ${currentFileName}\n\nWrite your documentation here.\n`;
     }
@@ -40,22 +40,21 @@
     }
   }
 
-  // Save markdown for current file via fileAuxStore
+  // Save markdown via workspace store
   let saveTimeout: ReturnType<typeof setTimeout> | null = null;
   function saveMarkdown() {
     if (saveTimeout) clearTimeout(saveTimeout);
     const content = markdownContent;
-    const fileId = currentFileId;
     saveTimeout = setTimeout(() => {
-      fileAuxStore.save(fileId, { markdown: content });
       documentMarkdownStore.set(content);
+      workspaceStore.markDirty();
     }, 400);
   }
 
   // Watch for file changes
-  const unsubFile = fileSystemStore.subscribe((s) => {
-    const newId = s.currentFile?.id || '_default';
-    const newName = s.currentFile?.name?.replace(/\.mmd$/, '') || 'Untitled';
+  $effect(() => {
+    const newId = workspaceStore.workspace?.id || '_default';
+    const newName = workspaceStore.workspace?.title || 'Untitled';
     if (newId !== currentFileId) {
       currentFileId = newId;
       currentFileName = newName;
@@ -64,7 +63,6 @@
   });
 
   onDestroy(() => {
-    unsubFile();
     unsubDoc();
     if (saveTimeout) clearTimeout(saveTimeout);
     resizeObserver?.disconnect();
@@ -82,7 +80,7 @@
     if (ignoreExternalUpdate) return;
     if (externalMd && externalMd !== markdownContent) {
       markdownContent = externalMd;
-      fileAuxStore.save(currentFileId, { markdown: markdownContent });
+      workspaceStore.markDirty();
       // Sync to Monaco
       if (monacoEditor && markdownContent !== currentEditorText) {
         currentEditorText = markdownContent;
@@ -172,22 +170,7 @@
     ignoreExternalUpdate = true;
     documentMarkdownStore.set(markdownContent);
     ignoreExternalUpdate = false;
-    // Async: try loading from DB (will merge with localStorage)
-    fileAuxStore
-      .loadFromDb(currentFileId)
-      .then((aux) => {
-        if (aux.markdown && aux.markdown !== markdownContent) {
-          markdownContent = aux.markdown;
-          ignoreExternalUpdate = true;
-          documentMarkdownStore.set(markdownContent);
-          ignoreExternalUpdate = false;
-          if (monacoEditor && markdownContent !== currentEditorText) {
-            currentEditorText = markdownContent;
-            monacoEditor.setValue(markdownContent);
-          }
-        }
-      })
-      .catch(() => {});
+    // Document content is loaded from workspace store (no separate DB fetch needed)
 
     // Theme subscription - use mermaid theme to avoid leaking to code editor
     const unsubMode = mode.subscribe((m) => {

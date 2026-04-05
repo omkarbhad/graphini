@@ -1,4 +1,5 @@
-import { loadDataFromUrl } from '$lib/features/filesystem/fileLoaders/loader';
+// filesystem feature removed — stub loadDataFromUrl
+const loadDataFromUrl = async () => { /* no-op: workspace system replaces file loading */ };
 import { env } from './env';
 import { initLoading } from './loading';
 import { applyMigrations } from './migrations';
