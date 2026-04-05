@@ -201,6 +201,10 @@ export async function validateSession(request: Request): Promise<User | null> {
       db.getUserByFirebaseUid(firebaseUid)
     );
     if (user) return user;
+
+    // User not in graphini DB — sync from magnova-auth and create locally
+    const synced = await syncUserFromMagnovaAuth(firebaseUid);
+    if (synced) return applyAdminOverrides(synced);
   }
 
   // Method 2: Local session (signed email)
@@ -236,6 +240,35 @@ async function lookupAndCacheUser(
   await cache.set(cacheKey, result, { ttlSeconds: 300 });
 
   return result;
+}
+
+/**
+ * Fetch user profile from magnova-auth by Firebase UID and upsert into graphini's DB.
+ * This handles first-time Google login — magnova-auth has the user, graphini doesn't yet.
+ */
+async function syncUserFromMagnovaAuth(firebaseUid: string): Promise<User | null> {
+  const baseUrl = env.MAGNOVA_AUTH_URL || 'https://auth.magnova.ai';
+  try {
+    const res = await fetch(`${baseUrl}/api/auth/session`, {
+      method: 'GET',
+      headers: { Cookie: `magnova_session=${encodeURIComponent(firebaseUid)}` }
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const remote = data.user;
+    if (!remote?.email) return null;
+
+    const db = getDb();
+    return db.upsertUserFromFirebase({
+      avatar_url: remote.avatar_url ?? null,
+      display_name: remote.display_name ?? remote.name ?? null,
+      email: remote.email,
+      firebase_uid: firebaseUid
+    });
+  } catch (e) {
+    console.error('[auth] Failed to sync user from magnova-auth:', e);
+    return null;
+  }
 }
 
 /**

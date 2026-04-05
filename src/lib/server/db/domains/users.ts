@@ -82,6 +82,37 @@ export async function getUserByFirebaseUid(
   return user ? mapUser(user) : null;
 }
 
+export async function upsertUserFromFirebase(
+  db: NeonHttpDatabase<typeof schema>,
+  data: {
+    firebase_uid: string;
+    email: string;
+    display_name?: string | null;
+    avatar_url?: string | null;
+  }
+): Promise<User> {
+  const [user] = await db
+    .insert(schema.users)
+    .values({
+      avatar_url: data.avatar_url ?? null,
+      display_name: data.display_name ?? null,
+      email: data.email,
+      email_verified: true,
+      firebase_uid: data.firebase_uid,
+      last_login_at: new Date()
+    })
+    .onConflictDoUpdate({
+      target: schema.users.firebase_uid,
+      set: {
+        display_name: sql`COALESCE(${data.display_name ?? null}, ${schema.users.display_name})`,
+        avatar_url: sql`COALESCE(${data.avatar_url ?? null}, ${schema.users.avatar_url})`,
+        last_login_at: new Date()
+      }
+    })
+    .returning();
+  return mapUser(user);
+}
+
 export async function updateUser(
   db: NeonHttpDatabase<typeof schema>,
   id: string,

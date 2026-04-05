@@ -31,6 +31,12 @@ export interface DatabaseAdapter {
   getUserById(id: string): Promise<User | null>;
   getUserByEmail(email: string): Promise<User | null>;
   getUserByFirebaseUid(firebase_uid: string): Promise<User | null>;
+  upsertUserFromFirebase(data: {
+    firebase_uid: string;
+    email: string;
+    display_name?: string | null;
+    avatar_url?: string | null;
+  }): Promise<User>;
   updateUser(
     id: string,
     data: Partial<
@@ -213,14 +219,19 @@ export interface DatabaseAdapter {
     content_mermaid: string;
     content_document: string;
   }): Promise<{ id: string; version: number; created_at: string }>;
-  listFileVersions(file_id: string, limit?: number): Promise<Array<{
-    id: string;
-    file_id: string;
-    version: number;
-    content_mermaid: string;
-    content_document: string;
-    created_at: string;
-  }>>;
+  listFileVersions(
+    file_id: string,
+    limit?: number
+  ): Promise<
+    {
+      id: string;
+      file_id: string;
+      version: number;
+      content_mermaid: string;
+      content_document: string;
+      created_at: string;
+    }[]
+  >;
   pruneFileVersions(file_id: string, keepCount: number): Promise<number>;
 
   // ── Diagram Workspaces ───────────────────────────────────────────────
