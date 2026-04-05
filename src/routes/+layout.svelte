@@ -1,6 +1,7 @@
 <script lang="ts">
   import { loadingStateStore } from '$/util/loading';
-  import { getLastProgrammaticHash, toggleDarkTheme } from '$/util/state/state';
+  import { toggleDarkTheme } from '$/util/state/state';
+  import { getLastProgrammaticHash } from '$/util/state/url';
   import { initHandler } from '$/util/util';
   import { Toaster } from '$lib/components/ui/sonner/index.js';
   import { authStore } from '$lib/stores/auth.svelte.js';

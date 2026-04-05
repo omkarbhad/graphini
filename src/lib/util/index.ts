@@ -12,6 +12,7 @@ export * from './state/persist';
 
 export * from './serialization/serde';
 export * from './state/state';
+export * from './state/url';
 export * from './stats';
 export * from './util';
 

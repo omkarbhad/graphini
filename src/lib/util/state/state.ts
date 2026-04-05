@@ -1,18 +1,15 @@
-import { C } from '$/constants';
 import type { ErrorHash, MarkerData, State, ValidatedState } from '$/types';
-import { replaceState } from '$app/navigation';
 import { parse } from '$lib/features/diagram/mermaid';
 import type { MermaidConfig } from 'mermaid';
 import { derived, get, writable, type Readable } from 'svelte/store';
-import { env } from '../env';
 import {
   extractErrorLineText,
   findMostRelevantLineNumber,
   replaceLineNumberInErrorMessage
 } from '../error/errorHandling';
 import { localStorage, persist } from './persist';
-import { deserializeState, pakoSerde, serializeState } from '../serialization/serde';
-import { errorDebug, formatJSON, MCBaseURL } from '../util';
+import { deserializeState, serializeState } from '../serialization/serde';
+import { errorDebug, formatJSON } from '../util';
 
 export const defaultState: State = {
   code: '',
@@ -217,37 +214,6 @@ export const stateStore: Readable<ValidatedState> = derived(
   currentState
 );
 
-export const urlsStore = derived([stateStore], ([{ code, serialized }]) => {
-  const { krokiRendererUrl, rendererUrl } = env;
-  const png = rendererUrl ? `${rendererUrl}/img/${serialized}?type=png` : '';
-  return {
-    kroki: krokiRendererUrl ? `${krokiRendererUrl}/mermaid/svg/${pakoSerde.serialize(code)}` : '',
-    mdCode: png
-      ? `[![](${png})](${window.location.protocol}//${window.location.host}${window.location.pathname}#${serialized})`
-      : '',
-    mermaidChart: ({
-      medium
-    }: {
-      medium: 'ai_repair' | 'main_menu' | 'save_diagram' | 'share' | 'toggle';
-    }) => {
-      const params = new URLSearchParams({
-        utm_source: C.utmSource,
-        utm_medium: medium
-      }).toString();
-      return {
-        save: `${MCBaseURL}/app/plugin/save?state=${serialized}&${params}`,
-
-        plugins: `${MCBaseURL}/plugins?${params}`,
-        home: `${MCBaseURL}/?${params}`
-      };
-    },
-    new: `${window.location.protocol}//${window.location.host}/canvas`,
-    png,
-    svg: rendererUrl ? `${rendererUrl}/svg/${serialized}` : '',
-    view: `/view#${serialized}`
-  };
-});
-
 export const loadState = (data: string): void => {
   let state: State;
   console.log(`Loading '${data}'`);
@@ -356,36 +322,6 @@ export const toggleDarkTheme = (isDark: boolean): void => {
     config.theme = isDark ? 'dark' : 'default';
     return { ...state, mermaid: formatJSON(config), updateDiagram: true };
   });
-};
-
-// Track the last hash we programmatically set to prevent hashchange feedback loops
-let lastProgrammaticHash = '';
-
-export const getLastProgrammaticHash = (): string => lastProgrammaticHash;
-
-/**
- * Build and push the canvas URL: /canvas/g-xxx/f-xxx/c-xxx
- * Each segment is optional — only included if the ID is provided.
- */
-export const pushCanvasURL = (
-  opts: {
-    folderId?: string | null;
-    fileId?: string | null;
-    chatId?: string | null;
-  } = {}
-): void => {
-  let path = '/canvas';
-  if (opts.folderId) path += `/${opts.folderId}`;
-  if (opts.fileId) path += `/${opts.fileId}`;
-  if (opts.chatId) path += `/${opts.chatId}`;
-  const current = window.location.pathname;
-  if (current === path) return;
-  lastProgrammaticHash = path;
-  replaceState(path, {});
-};
-
-export const initURLSubscription = (): void => {
-  // No-op: URLs are now driven by file UUID via pushCanvasURL, not serialized state
 };
 
 export const getStateString = (): string => {

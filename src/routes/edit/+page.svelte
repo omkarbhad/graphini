@@ -2,14 +2,13 @@
   import { PanZoomState } from '$/features/diagram/panZoom';
   import {
     inputStateStore,
-    pushCanvasURL,
     setLayout,
     stateStore,
     updateCodeStore,
     type LayoutOption
   } from '$/util/state/state';
   import { logEvent } from '$/util/stats';
-  import { initHandler, parseCanvasURL } from '$/util/util';
+  import { initHandler } from '$/util/util';
   import ColorPanel from '$lib/components/canvas/ColorPanel.svelte';
   import ElementToolbar from '$lib/components/canvas/ElementToolbar.svelte';
   import IconPanel from '$lib/components/canvas/IconPanel.svelte';

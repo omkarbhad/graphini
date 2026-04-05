@@ -3,7 +3,7 @@ import dayjs from 'dayjs';
 import duration from 'dayjs/plugin/duration';
 import type { Component } from 'svelte';
 import { get, writable, type Writable } from 'svelte/store';
-import { localStorage, persist } from '../persist';
+import { localStorage, persist } from '../state/persist';
 import April2025 from './April2025.svelte';
 
 dayjs.extend(duration);

@@ -2,8 +2,9 @@
 const loadDataFromUrl = async () => { /* no-op: workspace system replaces file loading */ };
 import { env } from './env';
 import { initLoading } from './loading';
-import { applyMigrations } from './migrations';
-import { initURLSubscription, loadState, updateCodeStore, verifyState } from './state';
+import { applyMigrations } from './state/migrations';
+import { loadState, updateCodeStore, verifyState } from './state/state';
+import { initURLSubscription, parseCanvasURL } from './state/url';
 import { initAnalytics, plausible } from './stats';
 
 export const getDomain = (url?: string): string => {
@@ -12,31 +13,7 @@ export const getDomain = (url?: string): string => {
   return domain;
 };
 
-/**
- * Parse /canvas/g-xxx/f-xxx/c-xxx URL segments.
- * Returns { folderId, fileId, chatId } — each null if not present.
- */
-export const parseCanvasURL = (): {
-  folderId: string | null;
-  fileId: string | null;
-  chatId: string | null;
-} => {
-  const path = window.location.pathname;
-  if (!path.startsWith('/canvas')) return { folderId: null, fileId: null, chatId: null };
-  const segments = path
-    .replace(/^\/canvas\/?/, '')
-    .split('/')
-    .filter(Boolean);
-  let folderId: string | null = null;
-  let fileId: string | null = null;
-  let chatId: string | null = null;
-  for (const seg of segments) {
-    if (seg.startsWith('g-')) folderId = seg;
-    else if (seg.startsWith('f-')) fileId = seg;
-    else if (seg.startsWith('c-')) chatId = seg;
-  }
-  return { folderId, fileId, chatId };
-};
+export { parseCanvasURL } from './state/url';
 
 export const loadStateFromURL = (): void => {
   // /canvas/g-xxx/f-xxx/c-xxx — handled by the edit page's onMount (DB load)

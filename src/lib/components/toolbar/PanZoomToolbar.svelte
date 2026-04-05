@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { inputStateStore, updateCodeStore, urlsStore } from '$/util/state/state';
+  import { inputStateStore, updateCodeStore } from '$/util/state/state';
+  import { urlsStore } from '$/util/state/url';
   import { Button } from '$lib/components/ui/button';
   import type { PanZoomState } from '$lib/features/diagram/panZoom';
   import { ArrowDown, ArrowRight } from 'lucide-svelte';
