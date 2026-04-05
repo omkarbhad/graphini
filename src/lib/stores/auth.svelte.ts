@@ -88,73 +88,16 @@ async function fetchMe(): Promise<void> {
   }
 }
 
-async function login(
-  email: string,
-  password: string
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    state.loading = true;
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-      credentials: 'include'
-    });
-    const data = await res.json();
-    if (res.ok) {
-      state.user = data.user;
-      // Fetch credits after login
-      await refreshCredits();
-      // Sync preferences from server
-      syncPreferencesFromServer().catch(() => {});
-      return { success: true };
-    }
-    return { success: false, error: data.error || 'Login failed' };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Network error' };
-  } finally {
-    state.loading = false;
-  }
+function login(returnTo?: string): void {
+  const url = returnTo ? `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}` : '/api/auth/login';
+  window.location.href = url;
 }
 
-async function register(
-  email: string,
-  password: string,
-  displayName?: string
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    state.loading = true;
-    const res = await fetch('/api/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, display_name: displayName }),
-      credentials: 'include'
-    });
-    const data = await res.json();
-    if (res.ok) {
-      state.user = data.user;
-      await refreshCredits();
-      // Sync preferences from server
-      syncPreferencesFromServer().catch(() => {});
-      return { success: true };
-    }
-    return { success: false, error: data.error || 'Registration failed' };
-  } catch (err: any) {
-    return { success: false, error: err?.message || 'Network error' };
-  } finally {
-    state.loading = false;
-  }
-}
-
-async function logout(): Promise<void> {
-  try {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-  } catch {
-    /* ignore */
-  }
+function logout(): void {
   state.user = null;
   state.credits = null;
   saveCachedAuth(null, null);
+  window.location.href = '/api/auth/logout';
 }
 
 async function refreshCredits(): Promise<void> {
@@ -191,7 +134,6 @@ export const authStore = {
   },
   init: fetchMe,
   login,
-  register,
   logout,
   refreshCredits
 };
