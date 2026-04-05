@@ -1,6 +1,6 @@
 # Graphini Full Rebuild — Design Spec
 
-**Date:** 2026-04-05
+**Date:** 2026-04-05 (updated with audit fixes)
 **Scope:** Full codebase restructure, auth migration, homepage + dashboard integration, store modernization, dependency upgrades
 **Approach:** Aggressive — feature-based architecture, domain-split server code, complete Svelte 5 runes migration
 
@@ -12,16 +12,18 @@
 
 | File | Lines | Reason |
 |------|-------|--------|
-| `src/lib/server/db-legacy.ts` | 616 | Replaced by neon-adapter |
-| `src/lib/server/cache-legacy.ts` | 550 | Replaced by server/cache/ |
-| `src/lib/server/db/supabase-adapter.ts` | 890 | Replaced by neon-adapter |
-| `src/lib/supabase.ts` | 16 | Stub, no real usage after auth swap |
+| `src/lib/server/db-legacy.ts` | 616 | Replaced by neon-adapter, 0 non-legacy imports |
+| `src/lib/server/cache-legacy.ts` | 550 | Replaced by server/cache/, 0 non-legacy imports |
+| `src/lib/server/db/supabase-adapter.ts` | 890 | Replaced by neon-adapter, 0 non-legacy imports |
+| `src/lib/supabase.ts` | 16 | Stub — only imported by `UserLoginCircle.svelte` (update that import) |
 | `src/lib/stores/aiSettings.ts` | 79 | 0 imports, replaced by settings.svelte.ts |
-| `src/lib/components/AuthModal.svelte` | ~100 | Replaced by magnova-auth redirect |
+
+**NOTE:** `AuthModal.svelte` deletion is handled in Section 2a (Auth Guard), not here.
 
 **Barrel export cleanup:**
 - Remove `aiSettingsStore` re-export from `src/lib/stores/index.ts`
 - Remove supabase re-exports from `src/lib/index.ts`
+- Update `UserLoginCircle.svelte` to use `authStore` instead of `supabase` import
 
 ---
 
@@ -70,6 +72,84 @@ COOKIE_SECRET=<session signing key>
 
 ---
 
+## 2a. Auth Guard (replaces AuthModal)
+
+**Delete:** `src/lib/components/AuthModal.svelte` (171 lines)
+
+**Problem:** AuthModal is a login/register modal with password fields. It's imported by `edit/+page.svelte` as an auth gate. With magnova-auth, login happens via redirect — no modal needed.
+
+**Replace with:** Redirect-based auth guard in `+layout.svelte` or per-route.
+
+**Implementation:**
+- `src/routes/edit/+page.svelte` — remove AuthModal import, add auth check:
+  ```ts
+  // In onMount or load function:
+  if (!authStore.isLoggedIn) {
+    goto(authStore.getLoginUrl(window.location.href));
+    return;
+  }
+  ```
+- `src/routes/dashboard/+page.svelte` — same pattern (dashboard requires auth)
+- `src/routes/+page.svelte` — no auth required (marketing page)
+- `src/routes/view/+page.svelte` — no auth required (view-only)
+
+**Layout auth init** (`src/routes/+layout.svelte`):
+- Current: calls `authStore.init()` which checks session against old auth system
+- New: `authStore.init()` calls `GET /api/auth/me` which proxies to magnova-auth
+- `kv.init()` stays unchanged (it uses the graphini DB, not Supabase auth)
+- On auth failure: set `user = null`, don't redirect (let individual routes decide)
+
+**Deletion order (atomic swap):**
+1. First: rewrite `authStore` to use magnova-auth endpoints
+2. Then: rewrite `/api/auth/*` routes to proxy to magnova-auth
+3. Then: replace AuthModal usage in edit page with redirect guard
+4. Finally: delete AuthModal.svelte and old auth route handlers
+
+---
+
+## 2b. Migration Matrix — Files That Import Deleted Stores/Components
+
+### fileSystem.svelte.ts (6 dependents → migrate to workspace store)
+
+| File | What it uses | Migration |
+|------|-------------|-----------|
+| `src/routes/edit/+page.svelte` | `fileSystem`, `type UserFile` | Replace with `workspaceStore`, load workspace by ID from URL |
+| `src/lib/components/sidebars/PrimarySidebar.svelte` | File list, folder tree | Replace with workspace list from dashboard (sidebar removed or simplified) |
+| `src/lib/features/chat/components/Chat.simple.svelte` | Current file context | Replace with `workspaceStore.current` |
+| `src/lib/components/toolbar/LeftToolbar.svelte` | File operations | Replace with workspace operations |
+| `src/lib/components/panels/DocumentPanel.svelte` | File content | Replace with workspace document |
+| `src/lib/stores/autosave.svelte.ts` | Auto-save file | Replace with workspace auto-save via `PUT /api/workspaces/[id]/document` |
+
+### sessionFiles.svelte.ts (2 dependents → delete, functionality absorbed by workspace)
+
+| File | What it uses | Migration |
+|------|-------------|-----------|
+| `src/lib/components/sidebars/PrimarySidebar.svelte` | Session file list | Replaced by workspace store |
+| `src/lib/features/chat/components/Chat.simple.svelte` | Session context | Replaced by workspace store |
+
+### AuthModal.svelte (1 dependent → redirect guard)
+
+| File | What it uses | Migration |
+|------|-------------|-----------|
+| `src/routes/edit/+page.svelte` | Login gate modal | Replace with redirect to magnova-auth |
+
+### Auth API routes (called by authStore internals)
+
+| Route | Called by | Migration |
+|-------|----------|-----------|
+| `POST /api/auth/login` | `authStore.login()` | Rewrite to redirect to magnova-auth |
+| `POST /api/auth/register` | `authStore.register()` | Remove — magnova-auth handles registration |
+| `POST /api/auth/logout` | `authStore.logout()` | Rewrite to redirect to magnova-auth signout |
+
+### /api/user/files and /api/files (called by fileSystem/sessionFiles stores)
+
+| Route | Called by | Migration |
+|-------|----------|-----------|
+| `/api/user/files` | `fileSystem.svelte.ts` | Replaced by `/api/workspaces/*` |
+| `/api/files` | `sessionFiles.svelte.ts` | Replaced by `/api/workspaces/*` |
+
+---
+
 ## 3. Homepage from graphini2
 
 **Copy verbatim** from graphini2's `src/routes/+page.svelte` (~468 lines).
@@ -100,16 +180,27 @@ COOKIE_SECRET=<session signing key>
 - `src/routes/api/files/`
 - `src/lib/server/file-store.ts`
 
-**Add from graphini2:**
+**Add (ported from graphini2, adapted to graphini's stack):**
+
+These are NOT copy-paste — they must be adapted to graphini's Drizzle ORM, NeonAdapter, and auth system.
+
 - `src/routes/dashboard/+page.svelte` — workspace grid (cards, sidebar, search, filters)
+  - Depends on: workspace store, auth store, workspace types, WORKSPACE_CATEGORIES design tokens
 - `src/routes/workspace/[id]/+page.svelte` — workspace loader (fetches -> redirects to /edit)
+  - Depends on: workspace store
 - `src/lib/stores/workspace.svelte.ts` — workspace CRUD, list, search, star, duplicate
-- `src/routes/api/workspaces/` — full API:
+  - Calls: `/api/workspaces/*` routes (must be created)
+- `src/lib/types/workspace.ts` — NEW type definitions:
+  - `DiagramWorkspace`, `DiagramWorkspaceSummary`, `WorkspaceDocument`
+- `src/lib/design-tokens.ts` — NEW (or add to constants.ts):
+  - `WORKSPACE_CATEGORIES` — diagram type icons, colors, labels
+- `src/routes/api/workspaces/` — full API (NEW server routes):
   - `+server.ts` — GET list, POST create
   - `[id]/+server.ts` — GET, PATCH, DELETE
   - `[id]/document/+server.ts` — PUT document
   - `[id]/duplicate/+server.ts` — POST duplicate
-- Workspace types: `DiagramWorkspace`, `DiagramWorkspaceSummary`, `WorkspaceDocument`
+- `src/lib/server/db/domains/workspaces.ts` — DB queries for workspace CRUD
+- Add workspace methods to `DatabaseAdapter` interface in `adapter.ts`
 
 **DB schema — add `workspaces` table:**
 ```sql
@@ -138,9 +229,11 @@ After:  / (marketing) -> /dashboard (workspace grid) -> /workspace/[id] -> /edit
 
 ## 5. Split Bloated Files
 
-### neon-adapter.ts (1,229 lines) -> Domain modules
+### neon-adapter.ts (1,229 lines) -> Domain modules (composition pattern)
 
-Split into `src/lib/server/db/domains/`:
+**Constraint:** `DatabaseAdapter` interface is monolithic (50+ methods). We do NOT split the interface — we split the implementation into domain helper files that `NeonAdapter` delegates to.
+
+Split helper functions into `src/lib/server/db/domains/`:
 
 | File | Responsibility |
 |------|---------------|
@@ -151,7 +244,21 @@ Split into `src/lib/server/db/domains/`:
 | `cache.ts` | DB-backed cache operations |
 | `credits.ts` | Credit balance, transactions, purchases |
 
-`neon-adapter.ts` becomes thin orchestrator (~50 lines) importing from domains.
+Each domain file exports plain functions that accept a `db` (Drizzle instance) parameter. `NeonAdapter` remains the single class implementing `DatabaseAdapter`, but each method delegates to the appropriate domain helper:
+
+```ts
+// neon-adapter.ts (~100 lines, down from 1,229)
+import { createUser, getUserById, ... } from './domains/users';
+import { getConversations, ... } from './domains/conversations';
+
+class NeonAdapter implements DatabaseAdapter {
+  createUser(data) { return createUser(this.db, data); }
+  getUserById(id) { return getUserById(this.db, id); }
+  // ...
+}
+```
+
+**Interface stays unified.** No sub-interfaces needed.
 
 ### mermaid.ts (1,213 lines) -> Feature modules
 
@@ -165,20 +272,26 @@ Split within `src/lib/features/diagram/`:
 
 `mermaid.ts` becomes public API re-exporting from these.
 
-### schema.ts (406 lines) -> Domain schemas
+### schema.ts (406 lines) -> Keep as single file
 
-Split into `src/lib/server/db/schemas/`:
+**Original plan was to split by domain, but audit found 20+ cross-table foreign keys:**
+- `conversations` -> `users` AND `workspaces`
+- `files` -> `users`, `conversations`, `messages`
+- `snapshots` -> `conversations` AND `messages`
+- `collaborationMembers` -> `workspaces` AND `users`
 
-| File | Tables |
-|------|--------|
-| `users.ts` | users, sessions |
-| `files.ts` | files, file_versions |
-| `conversations.ts` | conversations, messages |
-| `models.ts` | models, model_configs |
-| `cache.ts` | cache_entries |
-| `credits.ts` | credits, credit_transactions |
+Splitting creates circular imports. **Keep `schema.ts` as a single file** but reorganize internally with clear section comments:
 
-`schema.ts` becomes barrel re-export.
+```ts
+// === USERS & AUTH ===
+// === WORKSPACES ===
+// === CONVERSATIONS & MESSAGES ===
+// === FILES ===
+// === CREDITS ===
+// === CACHE & KV ===
+```
+
+Add the new `workspaces` table definition here.
 
 ---
 
@@ -218,6 +331,30 @@ All original `.ts` store files replaced by `.svelte.ts` versions.
 
 ### Update `stores/index.ts`
 Only export rune-based stores. Remove all legacy re-exports.
+
+---
+
+## 6a. Edit Page Rewrite
+
+**File:** `src/routes/edit/+page.svelte`
+
+The edit page is the most impacted file — it imports several deleted/moved items. Changes needed:
+
+| Current Import | Action |
+|---------------|--------|
+| `AuthModal` | Remove — replace with auth redirect guard (Section 2a) |
+| `fileSystem`, `type UserFile` | Replace with `workspaceStore` — load workspace by `id` from URL query or route |
+| `ElementToolbar` from `components/canvas/` | Update import path (stays in `components/canvas/` — see Section 7 note) |
+| `IconPanel` from `components/canvas/` | Same |
+| `ColorPanel` from `components/canvas/` | Same |
+| `Editor` from `components/editor/` | Update import path to `features/editor/components/` |
+
+**New behavior:**
+- Edit page receives workspace ID from URL (e.g., `/edit?workspace=<id>` or from `/workspace/[id]` redirect)
+- On mount: load workspace via `workspaceStore.load(id)`
+- Auto-save: `workspaceStore.saveDocument()` replaces `autosave` file-based logic
+- If no workspace ID and not authenticated: redirect to marketing page
+- If no workspace ID and authenticated: redirect to dashboard
 
 ---
 
@@ -274,6 +411,9 @@ components/
 ### Rule
 - Component used by one feature -> `features/<name>/components/`
 - Component shared across features -> `components/`
+
+### Note on canvas components
+`ElementToolbar`, `IconPanel`, `ColorPanel` are imported directly by `edit/+page.svelte` (route level), not by a canvas feature module. They **stay in `components/canvas/`** since they're consumed at the route level, not owned by a single feature. Only move components that are truly encapsulated within a feature.
 
 ---
 
@@ -403,6 +543,7 @@ src/
     components/           # Shared UI only
       common/
       cards/
+      canvas/             # STAYS (ElementToolbar, IconPanel, ColorPanel — route-level)
       layout/
       navigation/         # Navbar, Header, EditNavbar, EditToolbar
       panels/
@@ -415,21 +556,23 @@ src/
       RefillGemsModal.svelte
       Navbar.svelte
     features/             # Feature modules (own UI + logic)
-      canvas/components/
       chat/components/
-      diagram/            # mermaid-parser, renderer, themes
-      editor/components/
+      diagram/            # mermaid-parser, renderer, themes, components/
+      editor/components/  # Editor, DesktopEditor, MobileEditor (moved from components/editor/)
       history/
       icons/
       workspace/          # NEW (replaces filesystem)
+        components/       # Dashboard cards, sidebar, filters
+        index.ts
     server/
       auth/               # getAuthUrl, getSignoutUrl, validateSession
       cache/
       db/
-        domains/          # users, files, conversations, models, cache, credits
-        schemas/          # split by domain
-        adapter.ts
-        neon-adapter.ts   # thin orchestrator (~50 lines)
+        domains/          # users, workspaces, conversations, models, cache, credits
+        adapter.ts        # DatabaseAdapter interface (unified, not split)
+        neon-adapter.ts   # Delegates to domain helpers (~100 lines)
+        schema.ts         # Single file, organized by section comments
+        types.ts
         index.ts
       logger.ts           # NEW
       rate-limit.ts       # NEW
@@ -453,6 +596,8 @@ src/
       workspace.svelte.ts         # NEW
       index.ts
     themes/
+    types/
+      workspace.ts        # NEW (DiagramWorkspace, WorkspaceSummary, WorkspaceDocument)
     util/
       diagram/
       editor/
@@ -468,22 +613,25 @@ src/
       autoSync.ts
       promos/
       index.ts
-    constants.ts
+    constants.ts          # Add WORKSPACE_CATEGORIES design tokens
     index.ts
     types.d.ts
     utils.ts
   routes/
     +page.svelte          # Marketing homepage (from graphini2)
-    +layout.svelte
-    dashboard/            # NEW workspace grid
+    +layout.svelte        # Auth init updated for magnova-auth
+    dashboard/            # NEW workspace grid (auth required)
     workspace/[id]/       # NEW loader -> /edit
-    edit/
+    edit/                 # REWRITTEN (workspace-based, auth guard, no AuthModal)
     view/
     canvas/
     admin/
     api/
-      auth/               # me, login redirect, logout redirect
-      workspaces/         # NEW
+      auth/
+        me/               # Proxy to magnova-auth (GET)
+        login/            # Redirect to magnova-auth (GET, replaces POST)
+        logout/           # Redirect to magnova-auth signout (GET, replaces POST)
+      workspaces/         # NEW (list, create, get, patch, delete, document, duplicate)
       chat/
       diagram/
       kv/
@@ -507,5 +655,6 @@ docs/
   superpowers/
 ```
 
-**Total deleted:** ~3,500+ lines of dead code
+**Total deleted:** ~3,500+ lines of dead code + AuthModal + old auth routes + filesystem feature
+**Total new:** workspace API, workspace store, workspace types, design tokens, dashboard, auth guard
 **Total restructured:** ~5,000+ lines across splits and migrations
