@@ -1,6 +1,6 @@
 <script lang="ts">
   import { env } from '$/util/env';
-  import { urlsStore } from '$/util/state/state';
+  import { urlsStore } from '$/util/state/url';
   import { buttonVariants } from '$lib/components/ui/button';
   import * as Dialog from '$lib/components/ui/dialog';
   import { Separator } from '$lib/components/ui/separator';
