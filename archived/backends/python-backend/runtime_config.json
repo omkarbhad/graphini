@@ -1,0 +1,8 @@
+{
+  "api": {
+    "client_configured": false,
+    "model_name": "gpt-5-mini",
+    "openai_api_key": null,
+    "use_openai": true
+  }
+}

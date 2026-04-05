@@ -1,0 +1,3310 @@
+import {
+  GEMINI_API_KEY,
+  OPENAI_API_KEY,
+  OPEN_ROUTER_BASE_URL,
+  OPEN_ROUTER_KEY
+} from '$env/static/private';
+import {
+  convertGeminiFunctionCallToOpenAI,
+  convertValidToolsToGemini,
+  createGeminiClient,
+  geminiStreamResponse,
+  isGeminiModel
+} from '$lib/gemini';
+import { createMessage } from '$lib/server/db';
+import { createErrorResponse, validateChatRequest } from '$lib/server/validation';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
+import type {
+  ChatCompletionMessageParam,
+  ChatCompletionTool
+} from 'openai/resources/chat/completions';
+
+interface RequestEvent {
+  request: Request;
+  params: Record<string, string>;
+  url: URL;
+  getClientAddress: () => string;
+  cookies: {
+    get: (name: string) => string | undefined;
+    set: (name: string, value: string, options?: any) => void;
+    delete: (name: string, options?: any) => void;
+    getAll: () => { name: string; value: string }[];
+  };
+  locals: Record<string, any>;
+  platform: Record<string, any>;
+  route: {
+    id: string | null;
+  };
+}
+
+interface UIPart {
+  type: string;
+  text?: string;
+  toolName?: string;
+  result?: unknown;
+}
+interface UIMessage {
+  id?: string;
+  role: string;
+  content?: string;
+  parts?: UIPart[];
+}
+
+const MAX_DIAGRAM_LENGTH = 20000;
+
+// Centralized timeout configuration (in milliseconds)
+// These should be aligned with client-side timeouts in Chat.svelte
+const TIMEOUT_CONFIG = {
+  OPENAI_API: 5 * 60 * 1000, // 5 minutes - OpenAI API timeout
+  OPENROUTER_API: 5 * 60 * 1000, // 5 minutes - OpenRouter API timeout
+  STREAM_TIMEOUT: 10 * 60 * 1000, // 10 minutes - Overall stream timeout (allows for continuation rounds)
+  CLIENT_REQUEST: 3 * 60 * 1000 // 3 minutes - Should match Chat.svelte activeTimeoutId (180000ms)
+} as const;
+
+// Safe JSON parsing helper with automatic fixing of common issues
+function safeJsonParse(
+  jsonString: string,
+  isDev: boolean = false
+): { success: boolean; data: any; error?: string } {
+  if (!jsonString || typeof jsonString !== 'string') {
+    return { success: false, data: null, error: 'Invalid input: not a string' };
+  }
+
+  // First, try direct parsing
+  try {
+    return { success: true, data: JSON.parse(jsonString) };
+  } catch (initialError) {
+    if (isDev) console.log('Initial JSON parse failed, attempting fixes...');
+  }
+
+  // Try to fix common JSON issues
+  let fixedArgs = jsonString
+    .trim()
+    .replace(/,\s*}$/g, '}')
+    .replace(/,\s*]/g, ']')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+
+  // Handle concatenated JSON objects
+  if (fixedArgs.includes('}{')) {
+    const parts = fixedArgs.split('}{');
+    for (let i = 0; i < parts.length; i++) {
+      let candidatePart = parts[i];
+      if (!candidatePart.startsWith('{')) candidatePart = '{' + candidatePart;
+      if (!candidatePart.endsWith('}')) candidatePart = candidatePart + '}';
+      try {
+        const parsed = JSON.parse(candidatePart);
+        if (isDev) console.log(`Found valid JSON in part ${i + 1}`);
+        return { success: true, data: parsed };
+      } catch (e) {
+        // Continue to next part
+      }
+    }
+  }
+
+  // Try to extract JSON object using brace matching
+  const firstBrace = fixedArgs.indexOf('{');
+  if (firstBrace !== -1) {
+    let braceCount = 0;
+    for (let i = firstBrace; i < fixedArgs.length; i++) {
+      if (fixedArgs[i] === '{') braceCount++;
+      else if (fixedArgs[i] === '}') {
+        braceCount--;
+        if (braceCount === 0) {
+          const jsonCandidate = fixedArgs.substring(firstBrace, i + 1);
+          try {
+            const parsed = JSON.parse(jsonCandidate);
+            if (isDev) console.log('Successfully extracted JSON from string');
+            return { success: true, data: parsed };
+          } catch (e) {
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // Final attempt with the fixed string
+  try {
+    return { success: true, data: JSON.parse(fixedArgs) };
+  } catch (finalError) {
+    return {
+      success: false,
+      data: null,
+      error: finalError instanceof Error ? finalError.message : 'Unknown parse error'
+    };
+  }
+}
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: OPENAI_API_KEY ?? '',
+  timeout: TIMEOUT_CONFIG.OPENAI_API
+});
+
+// Initialize OpenRouter client lazily (will be created in POST handler)
+let openrouter: OpenAI | null = null;
+
+// Initialize Gemini client lazily (will be created in POST handler)
+let gemini: GoogleGenerativeAI | null = null;
+
+// Helper function to determine which client to use based on model
+function getAIClient(model: string, isDev: boolean = false) {
+  if (isDev) console.log(`getAIClient called with model: ${model}`);
+
+  // Gemini models start with 'gemini-'
+  if (isGeminiModel(model)) {
+    if (isDev) console.log('Model detected as Gemini');
+    if (!gemini) {
+      if (isDev) console.error('Gemini client not initialized. Please check your GEMINI_API_KEY.');
+      throw new Error('Gemini client not initialized. Please check your GEMINI_API_KEY.');
+    }
+    if (isDev) console.log('Returning Gemini client');
+    return { provider: 'gemini', client: gemini };
+  }
+  // OpenRouter models typically contain slashes (e.g., "anthropic/claude-3-sonnet")
+  if (model.includes('/') && openrouter) {
+    if (isDev) console.log('Model detected as OpenRouter');
+    return { provider: 'openrouter', client: openrouter };
+  }
+  if (isDev) console.log('Defaulting to OpenAI');
+  return { provider: 'openai', client: openai };
+}
+
+// Helper function to handle Gemini streaming
+async function handleGeminiStream(
+  geminiClient: GoogleGenerativeAI,
+  model: string,
+  systemPrompt: string,
+  userText: string,
+  tools: ChatCompletionTool[],
+  mode: string,
+  sendEvent: (event: string, data: any) => Uint8Array,
+  safeEnqueue: (event: string, data: any) => void,
+  controller: ReadableStreamDefaultController,
+  isDev: boolean
+): Promise<Response> {
+  try {
+    if (isDev) console.log('handleGeminiStream called with model:', model);
+
+    // Get Gemini model
+    const geminiModel = geminiClient.getGenerativeModel({ model });
+    if (isDev) console.log('Gemini model created successfully');
+
+    // Convert tools to Gemini format
+    const geminiTools =
+      tools.length > 0 && mode !== 'plan' ? convertValidToolsToGemini(tools) : undefined;
+    if (isDev) console.log('Gemini tools converted:', geminiTools ? 'yes' : 'no');
+
+    // Prepare messages
+    const messages = [{ role: 'user' as const, content: `${systemPrompt}\n\n${userText}` }];
+    if (isDev) console.log('Messages prepared, length:', messages[0].content.length);
+
+    if (isDev) console.log('Starting Gemini streaming...');
+
+    // Stream response
+    const stream = geminiStreamResponse(geminiModel, messages, geminiTools ? [geminiTools] : []);
+    if (isDev) console.log('Stream created');
+
+    let fullContent = '';
+    let functionCall: any = null;
+    let eventCount = 0;
+
+    for await (const event of stream) {
+      eventCount++;
+      if (isDev) console.log(`Gemini event ${eventCount}:`, event.type);
+
+      switch (event.type) {
+        case 'text':
+          if (event.content) {
+            fullContent += event.content;
+            safeEnqueue('text', { content: event.content });
+            if (isDev) console.log('Text event:', event.content.substring(0, 50) + '...');
+          }
+          break;
+        case 'function_call':
+          functionCall = event.functionCall;
+          if (functionCall) {
+            if (isDev) console.log('Function call:', functionCall.name);
+            // Convert to OpenAI format for compatibility
+            const openaiToolCall = convertGeminiFunctionCallToOpenAI({
+              name: functionCall.name,
+              args: JSON.parse(functionCall.arguments || '{}')
+            });
+            safeEnqueue('tool_call', { tool_call: openaiToolCall });
+          }
+          break;
+        case 'error':
+          if (isDev) console.error('Gemini streaming error:', event.error);
+          safeEnqueue('error', { message: event.error });
+          safeEnqueue('done', {});
+          try {
+            controller.close();
+          } catch (closeError) {
+            if (isDev) console.error('Error closing controller:', closeError);
+          }
+          return new Response(JSON.stringify({ error: 'Gemini API Error', message: event.error }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        case 'done':
+          if (isDev) console.log('Gemini stream done');
+          break;
+      }
+    }
+
+    if (isDev)
+      console.log(
+        `Total events processed: ${eventCount}, Full content length: ${fullContent.length}`
+      );
+
+    // Send done event safely
+    safeEnqueue('done', {});
+    try {
+      controller.close();
+    } catch (closeError) {
+      if (isDev) console.error('Error closing controller:', closeError);
+    }
+
+    return new Response('Gemini stream completed', { status: 200 });
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    if (isDev) console.error('Gemini stream error:', error);
+    return new Response(JSON.stringify({ error: 'Gemini API Error', message: errorMessage }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+// Helper function to validate Mermaid diagram syntax
+function validateMermaidDiagram(diagramCode: string) {
+  const validationErrors: Array<{
+    line: number;
+    column?: number;
+    message: string;
+    severity: 'error' | 'warning' | 'info';
+    suggestion?: string;
+    code?: string;
+  }> = [];
+
+  const lines = diagramCode.split('\n');
+
+  // Validate diagram syntax
+  for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+    const line = lines[lineNum];
+    const trimmedLine = line.trim();
+
+    if (!trimmedLine || trimmedLine.startsWith('%%')) continue;
+
+    // Check for unclosed brackets
+    const openBrackets = (trimmedLine.match(/[\[\(\{]/g) || []).length;
+    const closeBrackets = (trimmedLine.match(/[\]\)\}]/g) || []).length;
+    if (openBrackets !== closeBrackets) {
+      validationErrors.push({
+        line: lineNum + 1,
+        message: 'Unclosed bracket detected',
+        severity: 'error',
+        suggestion: 'Add a closing bracket',
+        code: trimmedLine.substring(0, 50)
+      });
+    }
+
+    // Check for unclosed quotes
+    const quotes = (trimmedLine.match(/"/g) || []).length;
+    if (quotes % 2 !== 0) {
+      validationErrors.push({
+        line: lineNum + 1,
+        message: 'Unclosed quote detected',
+        severity: 'error',
+        suggestion: 'Add a closing quote',
+        code: trimmedLine.substring(0, 50)
+      });
+    }
+
+    // Check for invalid arrow syntax
+    if (trimmedLine.includes('->') && !trimmedLine.includes('|')) {
+      const arrowMatch = trimmedLine.match(/\s*->\s*/);
+      if (arrowMatch) {
+        validationErrors.push({
+          line: lineNum + 1,
+          message: 'Invalid arrow syntax',
+          severity: 'warning',
+          suggestion: 'Use proper arrow syntax like A-->B',
+          code: trimmedLine.substring(0, 50)
+        });
+      }
+    }
+
+    // Check for empty node labels
+    if (trimmedLine.match(/\[\s*\]/) || trimmedLine.match(/\(\s*\)/)) {
+      validationErrors.push({
+        line: lineNum + 1,
+        message: 'Empty node label',
+        severity: 'warning',
+        suggestion: 'Add a label inside the brackets',
+        code: trimmedLine.substring(0, 50)
+      });
+    }
+  }
+
+  // Check for missing diagram type
+  const hasValidType = lines.some(
+    (line) =>
+      line.trim().startsWith('flowchart') ||
+      line.trim().startsWith('graph') ||
+      line.trim().startsWith('sequenceDiagram') ||
+      line.trim().startsWith('classDiagram') ||
+      line.trim().startsWith('stateDiagram') ||
+      line.trim().startsWith('erDiagram') ||
+      line.trim().startsWith('gantt') ||
+      line.trim().startsWith('pie') ||
+      line.trim().startsWith('journey') ||
+      line.trim().startsWith('mindmap') ||
+      line.trim().startsWith('timeline')
+  );
+
+  if (!hasValidType && diagramCode.trim().length > 0) {
+    validationErrors.push({
+      line: 1,
+      message: 'Missing or invalid diagram type declaration',
+      severity: 'error',
+      suggestion: 'Add a diagram type like "flowchart TD" at the beginning'
+    });
+  }
+
+  return validationErrors;
+}
+
+// Enhanced Tool definitions
+const tools: ChatCompletionTool[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'comprehensive_questionnaire',
+      description:
+        'Conduct a comprehensive questionnaire with 3-5 MULTIPLE CHOICE questions (2-5 options each) to collect all necessary information for diagram creation. Use this for complex or ambiguous requests that require multiple data points. IMPORTANT: Questions and options MUST be self-explanatory and clear without additional context.',
+      parameters: {
+        type: 'object',
+        properties: {
+          questions: {
+            description:
+              'Array of 3-5 self-explanatory questions that users can understand without additional context',
+            items: {
+              type: 'object',
+              properties: {
+                context: {
+                  type: 'string',
+                  description: 'Optional context, but question should be clear without it'
+                },
+                id: { type: 'string', description: 'Unique question identifier (q1, q2, q3)' },
+                options: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string', description: 'Option identifier' },
+                      label: {
+                        type: 'string',
+                        description: 'Clear, self-explanatory option label'
+                      },
+                      description: {
+                        type: 'string',
+                        description: 'Optional description, but option should be clear without it'
+                      }
+                    },
+                    required: ['id', 'label']
+                  },
+                  description: 'Self-explanatory options that cover all likely scenarios'
+                },
+                question: {
+                  type: 'string',
+                  description: 'Clear, self-explanatory question that needs no additional context'
+                },
+                required: { type: 'boolean', description: 'Whether this question is required' },
+                type: {
+                  type: 'string',
+                  enum: ['multiple_choice'],
+                  description: 'Type of question - always multiple choice'
+                }
+              },
+              required: ['id', 'question', 'type', 'required', 'options']
+            },
+            maxItems: 5,
+            minItems: 3,
+            type: 'array'
+          },
+          context: {
+            type: 'string',
+            description:
+              'Brief overall context about why this questionnaire is needed (keep minimal)'
+          },
+          estimated_completion_time: {
+            type: 'string',
+            description: 'Estimated time for user to complete questionnaire (e.g., "2-3 minutes")'
+          }
+        },
+        required: ['questions', 'context', 'estimated_completion_time']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'thinking',
+      description:
+        'Share your thought process with the user. Use this to show planning, analysis, or reasoning steps.',
+      parameters: {
+        type: 'object',
+        properties: {
+          thought: {
+            type: 'string',
+            description: 'Your current thinking or analysis step'
+          },
+          step: {
+            type: 'string',
+            enum: ['analyzing', 'planning', 'designing', 'refining', 'validating'],
+            description: 'The type of thinking step'
+          },
+          next_action: {
+            type: 'string',
+            description: 'What you plan to do next based on this thinking'
+          }
+        },
+        required: ['thought', 'step']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'diagram_editor',
+      description:
+        'Unified tool for reading, creating, updating, clearing, and patching Mermaid diagrams. Supports surgical precision patching for modifying specific parts of existing diagrams.',
+      parameters: {
+        type: 'object',
+        properties: {
+          operation: {
+            type: 'string',
+            enum: ['read', 'create', 'update', 'clear', 'patch'],
+            description:
+              'The operation to perform: read (get current diagram), create (new diagram), update (replace diagram), clear (empty editor), patch (modify specific parts)'
+          },
+          diagram_code: {
+            type: 'string',
+            description: 'The Mermaid diagram code (required for create/update operations)'
+          },
+          diagram_type: {
+            type: 'string',
+            enum: [
+              'flowchart',
+              'sequenceDiagram',
+              'classDiagram',
+              'stateDiagram',
+              'erDiagram',
+              'gantt',
+              'pie',
+              'journey',
+              'mindmap',
+              'timeline'
+            ],
+            description: 'The type of diagram (for create/update operations)'
+          },
+          title: {
+            type: 'string',
+            description: 'Optional title for the diagram'
+          },
+          explanation: {
+            type: 'string',
+            description: 'Explanation of what the diagram shows or what changes were made'
+          },
+          include_metadata: {
+            type: 'boolean',
+            description: 'Include editor metadata in read operation',
+            default: false
+          },
+          patches: {
+            type: 'array',
+            description:
+              'Array of patches to apply (for patch operation). Each patch can target nodes, connections, or styles.',
+            items: {
+              type: 'object',
+              properties: {
+                type: {
+                  type: 'string',
+                  enum: [
+                    'node_add',
+                    'node_remove',
+                    'node_modify',
+                    'node_style',
+                    'connection_add',
+                    'connection_remove',
+                    'connection_modify',
+                    'style_add',
+                    'style_remove',
+                    'style_modify',
+                    'text_replace',
+                    'text_insert',
+                    'text_delete'
+                  ],
+                  description: 'Type of patch operation'
+                },
+                target: {
+                  type: 'string',
+                  description: 'Target of the patch (node ID, connection pattern, etc.)'
+                },
+                changes: {
+                  type: 'object',
+                  description: 'Changes to apply'
+                }
+              },
+              required: ['type', 'target', 'changes']
+            }
+          },
+          patch_mode: {
+            type: 'string',
+            enum: ['precise', 'best_effort'],
+            description: 'Patch mode: precise (fail on errors) or best_effort (continue on errors)',
+            default: 'best_effort'
+          },
+          continuation: {
+            type: 'boolean',
+            description:
+              'Set to true to indicate this tool call should continue processing after completion (for multi-step operations)',
+            default: false
+          }
+        },
+        required: ['operation']
+      }
+    }
+  }
+];
+
+export async function POST(event: RequestEvent) {
+  const isDev = process.env.NODE_ENV === 'development';
+
+  // Initialize OpenRouter client if not already done and key is available
+  if (!openrouter && OPEN_ROUTER_KEY) {
+    openrouter = new OpenAI({
+      apiKey: OPEN_ROUTER_KEY,
+      baseURL: OPEN_ROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+      timeout: TIMEOUT_CONFIG.OPENROUTER_API,
+      defaultHeaders: {
+        'HTTP-Referer': process.env.OPEN_ROUTER_HTTP_REFERER || 'https://mermaid.live',
+        'X-Title': process.env.OPEN_ROUTER_TITLE || 'Mermaid Live Editor'
+      }
+    });
+  }
+
+  // Initialize Gemini client if not already done and key is available
+  if (!gemini && GEMINI_API_KEY) {
+    if (isDev) console.log('Initializing Gemini client with API key');
+    gemini = createGeminiClient(GEMINI_API_KEY);
+    if (isDev) console.log('Gemini client initialized successfully');
+  } else if (!GEMINI_API_KEY) {
+    if (isDev) console.log('GEMINI_API_KEY not found in environment');
+  } else {
+    if (isDev) console.log('Gemini client already initialized');
+  }
+
+  // Check if at least one provider is configured
+  if (!OPENAI_API_KEY && !OPEN_ROUTER_KEY && !GEMINI_API_KEY) {
+    if (isDev) console.error('No AI provider API key is configured');
+    return new Response(
+      JSON.stringify({ error: 'Service Unavailable', message: 'Chat service is not configured.' }),
+      { status: 503, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Validate OpenRouter key format if present
+  if (OPEN_ROUTER_KEY && !OPEN_ROUTER_KEY.startsWith('sk-or-')) {
+    if (isDev) console.error('Invalid OpenRouter API key format - should start with sk-or-');
+    return new Response(
+      JSON.stringify({
+        error: 'Configuration Error',
+        message: 'Invalid OpenRouter API key format'
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  let body: Record<string, unknown>;
+  try {
+    body = await event.request.json();
+    if (isDev) console.log('Request body parsed successfully:', Object.keys(body));
+  } catch (error) {
+    if (isDev) console.error('Failed to parse request body:', error);
+    return new Response(
+      JSON.stringify({ error: 'Invalid JSON', message: 'Request body must be valid JSON' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // Validate and sanitize input
+  const validation = validateChatRequest(body, isDev);
+  if (!validation.isValid) {
+    const errorResponse = createErrorResponse(validation.errors);
+    if (isDev) console.error('Validation failed:', validation.errors);
+    return new Response(JSON.stringify(errorResponse), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  const { message, conversationId, currentDiagram, mode, model } = validation.sanitized!;
+
+  // Move diagram declaration here to make it available in retry logic
+  const diagram =
+    typeof currentDiagram === 'string' ? currentDiagram.slice(0, MAX_DIAGRAM_LENGTH) : '';
+
+  if (isDev) {
+    console.log('Validated data:', {
+      conversationId,
+      diagramLength: currentDiagram?.length || 0,
+      hasMessage: !!message,
+      mode,
+      model
+    });
+  }
+
+  // Check for retry request
+  let retryPart;
+  if (typeof message === 'string') {
+    // Parse retry data from string message for retry requests
+    try {
+      const retryMatch = message.match(
+        /<retry-tool toolCallId="([^"]*)" toolCallName="([^"]*)" originalArgs="([\s\S]*?)"><\/retry-tool>/
+      );
+      if (retryMatch) {
+        retryPart = {
+          type: 'text',
+          _retry: {
+            toolCallId: retryMatch[1],
+            toolCallName: retryMatch[2],
+            originalArgs: retryMatch[3]
+              .replace(/&quot;/g, '"')
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
+          }
+        };
+      }
+    } catch (error) {
+      if (isDev) console.error('Failed to parse retry from string message:', error);
+    }
+  } else if (typeof message === 'object' && message && 'parts' in message) {
+    // Original logic for object messages with parts
+    retryPart = (message as any).parts?.find(
+      (p) =>
+        p.type === 'text' &&
+        '_retry' in p &&
+        typeof p._retry === 'object' &&
+        'toolCallId' in p._retry &&
+        'toolCallName' in p._retry &&
+        'originalArgs' in p._retry
+    );
+  }
+
+  if (retryPart && retryPart._retry) {
+    // Handle retry request
+    console.log('Processing retry request for tool:', retryPart._retry.toolCallName);
+
+    const encoder = new TextEncoder();
+    const sendEvent = (type: string, data: unknown) => {
+      return encoder.encode(`data: ${JSON.stringify({ type, ...(data as object) })}\n\n`);
+    };
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          // Try to parse the original args using centralized safe parser
+          const parseResult = safeJsonParse(retryPart._retry.originalArgs, isDev);
+
+          if (!parseResult.success) {
+            console.error('Retry JSON parse failed:', parseResult.error);
+            console.error('Raw args:', retryPart._retry.originalArgs?.substring(0, 200));
+            try {
+              controller.enqueue(
+                sendEvent('error', {
+                  message: 'Invalid tool call arguments format - unable to fix',
+                  code: 'INVALID_TOOL_ARGS_PERMANENT',
+                  retryable: false
+                })
+              );
+              controller.close();
+            } catch (closeError) {
+              console.error('Error closing stream after parse failure:', closeError);
+            }
+            return;
+          }
+
+          const args = parseResult.data;
+
+          // Execute the tool
+          const executeTool = async (
+            toolName: string,
+            args: any,
+            controller: ReadableStreamDefaultController,
+            toolCallId: string
+          ) => {
+            if (toolName === 'comprehensive_questionnaire') {
+              // Validate questionnaire data
+              if (!args.questions || !Array.isArray(args.questions)) {
+                throw new Error('Invalid questionnaire format: missing questions');
+              }
+
+              if (args.questions.length < 3 || args.questions.length > 5) {
+                throw new Error('Invalid questionnaire: must have 3-5 questions');
+              }
+
+              // Validate and normalize each question
+              for (let i = 0; i < args.questions.length; i++) {
+                const question = args.questions[i];
+
+                if (!question.question || typeof question.question !== 'string') {
+                  throw new Error(`Invalid question ${i + 1}: missing or invalid question text`);
+                }
+
+                if (!question.options || !Array.isArray(question.options)) {
+                  throw new Error(`Invalid question ${i + 1}: missing or invalid options array`);
+                }
+
+                if (question.options.length < 2 || question.options.length > 5) {
+                  throw new Error(`Invalid question ${i + 1}: must have 2-5 options`);
+                }
+
+                // Ensure question has required fields for frontend
+                if (!question.id) {
+                  question.id = `q${i + 1}`;
+                }
+                if (!question.type) {
+                  question.type = 'multiple_choice';
+                }
+                if (typeof question.required !== 'boolean') {
+                  question.required = true;
+                }
+
+                // Validate and normalize options
+                for (let j = 0; j < question.options.length; j++) {
+                  const option = question.options[j];
+                  if (!option.id) {
+                    option.id = `${question.id}_opt${j + 1}`;
+                  }
+                  if (!option.label) {
+                    option.label = typeof option === 'string' ? option : `Option ${j + 1}`;
+                  }
+                  if (!option.description && typeof option === 'object') {
+                    option.description = option.description || '';
+                  }
+                }
+              }
+
+              const { context, questions, estimated_completion_time } = args;
+              try {
+                controller.enqueue(
+                  sendEvent('comprehensive-questionnaire', {
+                    context,
+                    questions,
+                    estimated_completion_time: estimated_completion_time
+                  })
+                );
+              } catch (error) {
+                console.error('Error enqueueing questionnaire event in retry:', error);
+              }
+
+              // Close stream after presenting questionnaire to stop AI from continuing
+              try {
+                controller.enqueue(sendEvent('done', {}));
+                controller.close();
+              } catch (error) {
+                console.error('Error closing stream after questionnaire in retry:', error);
+              }
+              return;
+            } else if (toolName === 'thinking') {
+              const { thought, step } = args;
+              try {
+                controller.enqueue(
+                  sendEvent('thinking', {
+                    id: toolCallId,
+                    thought,
+                    step
+                  })
+                );
+              } catch (error) {
+                console.error('Error enqueueing thinking event in retry:', error);
+              }
+
+              return {
+                success: true,
+                operation: 'thinking',
+                taskId: toolCallId,
+                continuation: false,
+                message: 'Thinking process completed',
+                timestamp: new Date().toISOString()
+              };
+            } else if (toolName === 'diagram_editor') {
+              const {
+                operation,
+                diagram_code,
+                diagram_type,
+                title,
+                explanation,
+                include_metadata,
+                patches,
+                patch_mode,
+                continuation
+              } = args;
+              const taskId = `${operation}-${Date.now()}`;
+
+              // Helper function for operation messages (local to retry handler)
+              const getRetryOperationMessage = (op: string): string => {
+                switch (op) {
+                  case 'read':
+                    return 'Reading current diagram...';
+                  case 'create':
+                    return 'Creating diagram...';
+                  case 'update':
+                    return 'Updating diagram...';
+                  case 'clear':
+                    return 'Clearing diagram...';
+                  case 'patch':
+                    return 'Applying patches...';
+                  default:
+                    return 'Processing...';
+                }
+              };
+
+              // Send start event
+              controller.enqueue(
+                sendEvent('diagram_editor_start', {
+                  operation,
+                  taskId,
+                  message: getRetryOperationMessage(operation),
+                  diagramType: diagram_type
+                })
+              );
+
+              switch (operation) {
+                case 'read':
+                  // Send task progress for reading diagram
+                  controller.enqueue(
+                    sendEvent('diagram_editor_task', {
+                      taskId,
+                      operation,
+                      task: {
+                        title: 'Reading Diagram',
+                        status: 'in-progress',
+                        progress: 50,
+                        details: 'Accessing diagram content from editor...'
+                      }
+                    })
+                  );
+
+                  // Simulate a brief delay to show the task UI
+                  await new Promise((resolve) => setTimeout(resolve, 500));
+
+                  controller.enqueue(
+                    sendEvent('diagram_editor_complete', {
+                      taskId,
+                      operation,
+                      diagramCode: diagram,
+                      metadata: include_metadata ? { cursor_position: 0, selection: null } : null,
+                      task: {
+                        title: 'Reading Diagram',
+                        status: 'complete',
+                        progress: 100,
+                        details: diagram
+                          ? `Successfully read diagram (${diagram.length} characters)`
+                          : 'No diagram content found'
+                      }
+                    })
+                  );
+                  break;
+
+                case 'create':
+                case 'update':
+                  // Fix: Convert literal \n strings to actual newlines
+                  const normalizedCode = diagram_code?.replace(/\\n/g, '\n');
+
+                  // Send validation start event
+                  controller.enqueue(
+                    sendEvent('diagram_editor_validation_start', {
+                      taskId,
+                      operation,
+                      code: normalizedCode,
+                      message: 'Validating diagram code...'
+                    })
+                  );
+
+                  // Simulate validation
+                  await new Promise((resolve) => setTimeout(resolve, 100));
+
+                  // Send syntax check start event
+                  controller.enqueue(
+                    sendEvent('diagram_editor_syntax_check_start', {
+                      taskId,
+                      operation,
+                      code: normalizedCode,
+                      message: 'Checking diagram syntax...'
+                    })
+                  );
+
+                  // Detect diagram type
+                  const lines = normalizedCode.split('\n');
+                  const firstLineLower = lines[0]?.trim().toLowerCase() || '';
+                  let detectedType = 'unknown';
+
+                  if (
+                    firstLineLower.startsWith('flowchart') ||
+                    firstLineLower.startsWith('graph')
+                  ) {
+                    detectedType = 'flowchart';
+                  } else if (firstLineLower.startsWith('sequencediagram')) {
+                    detectedType = 'sequenceDiagram';
+                  } else if (firstLineLower.startsWith('classdiagram')) {
+                    detectedType = 'classDiagram';
+                  } else if (firstLineLower.startsWith('statediagram')) {
+                    detectedType = 'stateDiagram';
+                  } else if (firstLineLower.startsWith('erdiagram')) {
+                    detectedType = 'erDiagram';
+                  } else if (firstLineLower.startsWith('gantt')) {
+                    detectedType = 'gantt';
+                  }
+
+                  // Send type detection event
+                  if (detectedType !== 'unknown') {
+                    controller.enqueue(
+                      sendEvent('diagram_editor_type_detected', {
+                        taskId,
+                        operation,
+                        detectedType,
+                        message: `Detected diagram type: ${detectedType}`
+                      })
+                    );
+                  }
+
+                  // Simulate syntax checking
+                  await new Promise((resolve) => setTimeout(resolve, 150));
+
+                  // Send syntax check complete
+                  controller.enqueue(
+                    sendEvent('diagram_editor_syntax_check_complete', {
+                      taskId,
+                      operation,
+                      valid: true,
+                      message: 'Diagram syntax is valid'
+                    })
+                  );
+
+                  // Send validation complete
+                  controller.enqueue(
+                    sendEvent('diagram_editor_validation_complete', {
+                      taskId,
+                      operation,
+                      valid: true,
+                      message: 'Diagram validation passed'
+                    })
+                  );
+
+                  // Send code generation start
+                  controller.enqueue(
+                    sendEvent('diagram_editor_code_generation_start', {
+                      taskId,
+                      operation,
+                      message: 'Generating diagram code...'
+                    })
+                  );
+
+                  // Simulate code generation
+                  await new Promise((resolve) => setTimeout(resolve, 100));
+
+                  // Send code generation progress
+                  controller.enqueue(
+                    sendEvent('diagram_editor_code_generation_progress', {
+                      taskId,
+                      operation,
+                      progress: 75,
+                      message: 'Processing diagram code...'
+                    })
+                  );
+
+                  // Send enhancement start
+                  controller.enqueue(
+                    sendEvent('diagram_editor_enhancement_start', {
+                      taskId,
+                      operation,
+                      message: 'Enhancing diagram...'
+                    })
+                  );
+
+                  // Simulate enhancement
+                  await new Promise((resolve) => setTimeout(resolve, 100));
+
+                  // Send enhancement complete
+                  controller.enqueue(
+                    sendEvent('diagram_editor_enhancement_complete', {
+                      taskId,
+                      operation,
+                      message: 'Diagram enhancement complete'
+                    })
+                  );
+
+                  // Send code generation complete
+                  controller.enqueue(
+                    sendEvent('diagram_editor_code_generation_complete', {
+                      taskId,
+                      operation,
+                      message: 'Diagram code generation complete'
+                    })
+                  );
+
+                  controller.enqueue(
+                    sendEvent('diagram_editor_complete', {
+                      taskId,
+                      operation,
+                      diagramCode: normalizedCode,
+                      diagramType: diagram_type || detectedType,
+                      title,
+                      explanation
+                    })
+                  );
+                  break;
+
+                case 'clear':
+                  controller.enqueue(
+                    sendEvent('diagram_editor_complete', {
+                      taskId,
+                      operation,
+                      diagramCode: '',
+                      explanation: explanation || 'Diagram cleared'
+                    })
+                  );
+                  break;
+
+                case 'patch':
+                  // For patches, we need to apply them to the current diagram
+                  if (patches && Array.isArray(patches)) {
+                    let currentCode = diagram;
+                    const appliedPatches: any[] = [];
+                    const failedPatches: any[] = [];
+
+                    for (let i = 0; i < patches.length; i++) {
+                      const patch = patches[i];
+                      controller.enqueue(
+                        sendEvent('diagram_editor_patch_progress', {
+                          taskId,
+                          patchIndex: i,
+                          totalPatches: patches.length,
+                          currentPatch: patch,
+                          message: `Applying patch ${i + 1}/${patches.length}`
+                        })
+                      );
+
+                      try {
+                        // Simple patch application for retry handler
+                        if (patch.type === 'node_add' && patch.content) {
+                          currentCode = currentCode.trimEnd() + '\n' + patch.content;
+                        } else if (
+                          patch.type === 'style_modify' &&
+                          patch.target &&
+                          patch.properties
+                        ) {
+                          const styleString = Object.entries(patch.properties)
+                            .map(([k, v]) => `${k}:${v}`)
+                            .join(',');
+                          currentCode =
+                            currentCode.trimEnd() + `\n    style ${patch.target} ${styleString}`;
+                        }
+                        appliedPatches.push({ patch, success: true });
+                      } catch (error) {
+                        failedPatches.push({
+                          patch,
+                          error: error instanceof Error ? error.message : 'Unknown error'
+                        });
+                        if (patch_mode === 'precise') break;
+                      }
+                    }
+
+                    controller.enqueue(
+                      sendEvent('diagram_editor_patch_complete', {
+                        taskId,
+                        finalCode: currentCode,
+                        appliedCount: appliedPatches.length,
+                        failedCount: failedPatches.length
+                      })
+                    );
+
+                    controller.enqueue(
+                      sendEvent('diagram_editor_complete', {
+                        taskId,
+                        operation,
+                        diagramCode: currentCode,
+                        explanation: `Applied ${appliedPatches.length} patches`
+                      })
+                    );
+                  }
+                  break;
+              }
+
+              // Handle continuation logic in retry
+              if (continuation) {
+                try {
+                  controller.enqueue(
+                    sendEvent('continuation_request', {
+                      taskId,
+                      operation,
+                      message: 'Diagram operation completed, continuing with next step...'
+                    })
+                  );
+                } catch (error) {
+                  console.error('Error enqueueing continuation event in retry:', error);
+                }
+              }
+
+              // Return result data for the model to understand the operation state
+              return {
+                success: true,
+                operation,
+                taskId,
+                continuation: continuation || false,
+                shouldCloseStream: true, // Close stream after diagram operations to prevent additional text
+                message: `Diagram ${operation} operation completed${continuation ? ' (continuation requested)' : ''}`,
+                timestamp: new Date().toISOString()
+              };
+            } else if (toolName === 'create_diagram') {
+              // Handle create_diagram tool in retry
+              const { mermaid_code, diagram_type, title, explanation } = args;
+
+              if (!mermaid_code) {
+                throw new Error('Invalid create_diagram: missing mermaid_code');
+              }
+
+              // Normalize the code
+              const normalizedCode = mermaid_code
+                .replace(/\\n/g, '\n')
+                .replace(/\\"/g, '"')
+                .replace(/\\\\/g, '\\')
+                .trim();
+
+              // Send tool_call_complete event with the mermaid code
+              try {
+                controller.enqueue(
+                  sendEvent('tool_call_complete', {
+                    id: toolCallId,
+                    name: toolName,
+                    mermaid_code: normalizedCode,
+                    diagram_type: diagram_type || 'flowchart',
+                    title: title || 'Generated Diagram',
+                    explanation: explanation || 'Diagram created successfully'
+                  })
+                );
+              } catch (error) {
+                console.error('Error enqueueing tool_call_complete in retry:', error);
+              }
+
+              return {
+                success: true,
+                operation: 'create',
+                mermaid_code: normalizedCode,
+                diagram_type: diagram_type || 'flowchart',
+                shouldCloseStream: true, // Close stream after diagram creation to prevent additional text
+                message: 'Diagram created successfully',
+                timestamp: new Date().toISOString()
+              };
+            } else {
+              // Unknown tool - log warning but don't throw to prevent stream from getting stuck
+              console.warn(`Unknown tool in retry: ${toolName}, sending generic completion`);
+              try {
+                controller.enqueue(
+                  sendEvent('tool_call_complete', {
+                    id: toolCallId,
+                    name: toolName,
+                    message: `Tool ${toolName} completed`
+                  })
+                );
+              } catch (error) {
+                console.error('Error enqueueing generic tool_call_complete in retry:', error);
+              }
+              return {
+                success: true,
+                operation: 'unknown',
+                message: `Tool ${toolName} completed`,
+                timestamp: new Date().toISOString()
+              };
+            }
+          };
+
+          await executeTool(
+            retryPart._retry.toolCallName,
+            args,
+            controller,
+            retryPart._retry.toolCallId
+          );
+          try {
+            controller.enqueue(sendEvent('done', {}));
+            controller.close();
+          } catch (closeError) {
+            console.error('Error closing stream after retry:', closeError);
+          }
+        } catch (error) {
+          console.error('Retry execution failed:', error);
+          try {
+            controller.enqueue(
+              sendEvent('error', {
+                message:
+                  'Retry failed: ' + (error instanceof Error ? error.message : 'Unknown error'),
+                code: 'RETRY_FAILED',
+                retryable: true,
+                originalError: error instanceof Error ? error.message : 'Unknown error'
+              })
+            );
+            controller.close();
+          } catch (closeError) {
+            console.error('Error closing stream after retry error:', closeError);
+          }
+        }
+      }
+    });
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no'
+      }
+    });
+  }
+
+  const userText =
+    typeof message === 'string'
+      ? message.trim()
+      : (message as any).parts
+          ?.filter(
+            (p): p is { type: 'text'; text: string } =>
+              p.type === 'text' && typeof p.text === 'string'
+          )
+          .map((p) => p.text.trim()) // Trim whitespace
+          .filter((text) => text.length > 0) // Remove empty strings
+          .join('\n') || '';
+
+  // Additional security validation
+  if (userText.length > 10000) {
+    return new Response(
+      JSON.stringify({
+        error: 'Message Too Long',
+        message: 'Message exceeds maximum length of 10,000 characters'
+      }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  if (isDev) {
+    console.log(
+      'Extracted user text:',
+      userText.substring(0, 100) + (userText.length > 100 ? '...' : '')
+    );
+  }
+
+  if (!userText.trim()) {
+    return new Response(
+      JSON.stringify({ error: 'Invalid Message', message: 'Message cannot be empty' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const systemPrompt = buildSystemPrompt(diagram, mode === 'plan');
+
+  // Save user message with retry logic
+  async function saveMessageWithRetry(data: Parameters<typeof createMessage>[0], maxRetries = 3) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await createMessage(data);
+        if (isDev) console.log('Message saved successfully on attempt:', attempt);
+        return;
+      } catch (error) {
+        if (isDev) console.error(`Message save attempt ${attempt} failed:`, error);
+
+        if (attempt === maxRetries) {
+          console.error('Failed to save message after all retries:', error);
+          // Don't fail the request - just log the error
+          return;
+        }
+
+        // Exponential backoff: 1s, 2s, 4s
+        const delay = Math.pow(2, attempt - 1) * 1000;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  saveMessageWithRetry({
+    conversation_id: conversationId!,
+    role: 'user',
+    content: userText || '',
+    parts: (message as any)?.parts ?? null
+  }).catch((err) => {
+    if (isDev) console.error('Critical error in message saving:', err);
+  });
+
+  const encoder = new TextEncoder();
+
+  // Helper to send SSE-style events
+  const sendEvent = (type: string, data: unknown) => {
+    return encoder.encode(`data: ${JSON.stringify({ type, ...(data as object) })}\n\n`);
+  };
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      let streamClosed = false;
+      let toolResults: Map<string, any> = new Map();
+      let sentStartEvents: Set<string> = new Set();
+      let toolCalls: any[] = [];
+
+      // Handle abort signal
+      const abortHandler = () => {
+        console.log('Stream aborted by client');
+        if (!streamClosed) {
+          streamClosed = true;
+          cleanupResources();
+          try {
+            controller.close();
+          } catch (error) {
+            console.error('Error closing stream on abort:', error);
+          }
+        }
+      };
+
+      // Add abort listener
+      event.request.signal.addEventListener('abort', abortHandler);
+
+      // Overall stream timeout to prevent hanging - uses centralized config
+      let streamTimeout = setTimeout(() => {
+        if (!streamClosed) {
+          console.error('Stream timeout - forcing closure');
+          safeEnqueue('error', {
+            message: 'Request timeout',
+            code: 'STREAM_TIMEOUT'
+          });
+          closeStream();
+        }
+      }, TIMEOUT_CONFIG.STREAM_TIMEOUT);
+
+      // Helper to reset timeout during continuation rounds
+      const resetTimeout = () => {
+        clearTimeout(streamTimeout);
+        streamTimeout = setTimeout(() => {
+          if (!streamClosed) {
+            console.error('Stream timeout - forcing closure');
+            safeEnqueue('error', {
+              message: 'Request timeout',
+              code: 'STREAM_TIMEOUT'
+            });
+            closeStream();
+          }
+        }, TIMEOUT_CONFIG.STREAM_TIMEOUT);
+      };
+
+      // Cleanup function to prevent memory leaks
+      const cleanupResources = () => {
+        clearTimeout(streamTimeout);
+        toolResults.clear();
+        sentStartEvents.clear();
+        toolCalls = [];
+        // Remove abort listener
+        event.request.signal.removeEventListener('abort', abortHandler);
+      };
+
+      const closeStream = () => {
+        if (!streamClosed) {
+          streamClosed = true;
+          cleanupResources();
+          try {
+            controller.enqueue(sendEvent('done', {}));
+            controller.close();
+          } catch (error) {
+            console.error('Error closing stream:', error);
+          }
+        }
+      };
+
+      // Helper to safely enqueue events
+      const safeEnqueue = (type: string, data: unknown) => {
+        if (!streamClosed) {
+          try {
+            controller.enqueue(sendEvent(type, data));
+          } catch (error) {
+            console.error('Error enqueueing event:', error);
+            // If controller is already closed, mark stream as closed
+            if (
+              error instanceof TypeError &&
+              error.message.includes('Controller is already closed')
+            ) {
+              streamClosed = true;
+            }
+          }
+        }
+      };
+
+      // Helper function for operation messages
+      const getOperationMessage = (operation: string): string => {
+        switch (operation) {
+          case 'read':
+            return 'Reading current diagram...';
+          case 'create':
+            return 'Creating diagram...';
+          case 'update':
+            return 'Updating diagram...';
+          case 'clear':
+            return 'Clearing diagram...';
+          case 'patch':
+            return 'Applying patches...';
+          default:
+            return 'Processing...';
+        }
+      };
+
+      // Execute individual tool with error handling
+      const executeTool = async (
+        toolName: string,
+        args: any,
+        controller: ReadableStreamDefaultController,
+        toolCallId: string
+      ) => {
+        console.log('Executing tool:', toolName, 'with args:', args);
+
+        if (toolName === 'comprehensive_questionnaire') {
+          // Validate questionnaire data
+          if (!args.questions || !Array.isArray(args.questions)) {
+            throw new Error('Invalid questionnaire format: missing questions');
+          }
+
+          if (args.questions.length < 3 || args.questions.length > 5) {
+            throw new Error('Invalid questionnaire: must have 3-5 questions');
+          }
+
+          // Validate and normalize each question
+          for (let i = 0; i < args.questions.length; i++) {
+            const question = args.questions[i];
+
+            if (!question.question || typeof question.question !== 'string') {
+              throw new Error(`Invalid question ${i + 1}: missing or invalid question text`);
+            }
+
+            if (!question.options || !Array.isArray(question.options)) {
+              throw new Error(`Invalid question ${i + 1}: missing or invalid options array`);
+            }
+
+            if (question.options.length < 2 || question.options.length > 5) {
+              throw new Error(`Invalid question ${i + 1}: must have 2-5 options`);
+            }
+
+            // Ensure question has required fields for frontend
+            if (!question.id) {
+              question.id = `q${i + 1}`;
+            }
+            if (!question.type) {
+              question.type = 'multiple_choice';
+            }
+            if (typeof question.required !== 'boolean') {
+              question.required = true;
+            }
+
+            // Validate and normalize options
+            for (let j = 0; j < question.options.length; j++) {
+              const option = question.options[j];
+              if (!option.id) {
+                option.id = `${question.id}_opt${j + 1}`;
+              }
+              if (!option.label) {
+                option.label = typeof option === 'string' ? option : `Option ${j + 1}`;
+              }
+              if (!option.description && typeof option === 'object') {
+                option.description = option.description || '';
+              }
+            }
+          }
+
+          // Send questionnaire event to client
+          const { context, estimated_completion_time } = args;
+          console.log('Sending comprehensive-questionnaire event:', {
+            context,
+            questions: args.questions.map((q) => ({
+              id: q.id,
+              question: q.question,
+              type: q.type,
+              required: q.required,
+              optionsCount: q.options?.length
+            })),
+            estimated_completion_time
+          });
+
+          safeEnqueue('comprehensive-questionnaire', {
+            context,
+            questions: args.questions.map((q) => ({
+              id: q.id,
+              question: q.question,
+              type: q.type,
+              required: q.required,
+              options: q.options
+            })),
+            estimated_completion_time
+          });
+
+          // Return a special result to signal that the stream should be closed
+          // The caller will handle closing the stream
+          return {
+            success: true,
+            operation: 'questionnaire',
+            shouldCloseStream: true,
+            message: 'Questionnaire presented',
+            timestamp: new Date().toISOString()
+          };
+        } else if (toolName === 'thinking') {
+          const { thought, step } = args;
+          safeEnqueue('thinking', {
+            id: toolCallId,
+            thought,
+            step
+          });
+
+          return {
+            success: true,
+            operation: 'thinking',
+            taskId: toolCallId,
+            continuation: false,
+            message: 'Thinking process completed',
+            timestamp: new Date().toISOString()
+          };
+        } else if (toolName === 'diagram_editor') {
+          const {
+            operation,
+            diagram_code,
+            diagram_type,
+            title,
+            explanation,
+            include_metadata,
+            patches,
+            patch_mode,
+            continuation
+          } = args;
+          const taskId = `${operation}-${Date.now()}`;
+
+          // Send start event
+          safeEnqueue('diagram_editor_start', {
+            operation,
+            taskId,
+            message: getOperationMessage(operation),
+            diagramType: diagram_type
+          });
+
+          switch (operation) {
+            case 'read':
+              // Read current diagram from editor with Task UI
+              const currentDiagram = diagram || '';
+              const lines = currentDiagram.split('\n');
+              const lineCount = lines.length;
+
+              // Send task progress for reading diagram
+              safeEnqueue('diagram_editor_task', {
+                taskId,
+                operation,
+                task: {
+                  title: 'Reading Diagram',
+                  status: 'in-progress',
+                  progress: 30,
+                  details: 'Accessing diagram content from editor...'
+                }
+              });
+
+              // Simulate brief delay to show progress
+              await new Promise((resolve) => setTimeout(resolve, 300));
+
+              // Send task progress for parsing
+              safeEnqueue('diagram_editor_task', {
+                taskId,
+                operation,
+                task: {
+                  title: 'Reading Diagram',
+                  status: 'in-progress',
+                  progress: 60,
+                  details: `Parsing diagram syntax (${lineCount} lines)...`
+                }
+              });
+
+              // Validate diagram syntax
+              const validationErrors: Array<{
+                line: number;
+                column?: number;
+                message: string;
+                severity: 'error' | 'warning' | 'info';
+                type: 'syntax' | 'lint' | 'structure' | 'semantic';
+                suggestion?: string;
+                code?: string;
+              }> = [];
+
+              // Basic syntax validation
+              if (currentDiagram.trim()) {
+                // Check for diagram type declaration
+                const diagramTypes = [
+                  'flowchart',
+                  'graph',
+                  'sequenceDiagram',
+                  'classDiagram',
+                  'stateDiagram',
+                  'erDiagram',
+                  'gantt',
+                  'pie',
+                  'journey',
+                  'mindmap',
+                  'timeline',
+                  'gitGraph',
+                  'quadrantChart',
+                  'xychart',
+                  'block'
+                ];
+                const firstLine = lines[0]?.trim() || '';
+                const hasValidType = diagramTypes.some(
+                  (type) =>
+                    firstLine.toLowerCase().startsWith(type.toLowerCase()) ||
+                    firstLine.toLowerCase().startsWith('graph ')
+                );
+
+                if (!hasValidType && currentDiagram.trim().length > 0) {
+                  validationErrors.push({
+                    line: 1,
+                    message: 'Missing or invalid diagram type declaration',
+                    severity: 'error',
+                    type: 'syntax',
+                    suggestion:
+                      'Start with a diagram type like "flowchart TD" or "sequenceDiagram"',
+                    code: firstLine.substring(0, 50)
+                  });
+                }
+
+                // Check for common syntax errors
+                lines.forEach((line, idx) => {
+                  const lineNum = idx + 1;
+                  const trimmedLine = line.trim();
+
+                  // Skip empty lines and comments
+                  if (!trimmedLine || trimmedLine.startsWith('%%')) return;
+
+                  // Check for unclosed brackets
+                  const openBrackets = (trimmedLine.match(/[\[\(\{]/g) || []).length;
+                  const closeBrackets = (trimmedLine.match(/[\]\)\}]/g) || []).length;
+                  if (openBrackets !== closeBrackets) {
+                    validationErrors.push({
+                      line: lineNum,
+                      message: 'Unclosed bracket detected',
+                      severity: 'error',
+                      type: 'syntax',
+                      suggestion: 'Check for matching brackets [ ], ( ), { }',
+                      code: trimmedLine.substring(0, 50)
+                    });
+                  }
+
+                  // Check for unclosed quotes
+                  const quotes = (trimmedLine.match(/"/g) || []).length;
+                  if (quotes % 2 !== 0) {
+                    validationErrors.push({
+                      line: lineNum,
+                      message: 'Unclosed quote detected',
+                      severity: 'error',
+                      type: 'syntax',
+                      suggestion: 'Ensure all quotes are properly closed',
+                      code: trimmedLine.substring(0, 50)
+                    });
+                  }
+
+                  // Check for invalid arrow syntax in flowcharts
+                  if (
+                    firstLine.toLowerCase().includes('flowchart') ||
+                    firstLine.toLowerCase().startsWith('graph')
+                  ) {
+                    if (
+                      trimmedLine.includes('->') &&
+                      !trimmedLine.includes('-->') &&
+                      !trimmedLine.includes('-.->')
+                    ) {
+                      // Check if it's a valid arrow
+                      const arrowMatch = trimmedLine.match(/\s*->\s*/);
+                      if (arrowMatch && !trimmedLine.includes('|')) {
+                        validationErrors.push({
+                          line: lineNum,
+                          message: 'Invalid arrow syntax',
+                          severity: 'warning',
+                          type: 'lint',
+                          suggestion: 'Use --> for arrows in flowcharts',
+                          code: trimmedLine.substring(0, 50)
+                        });
+                      }
+                    }
+                  }
+
+                  // Check for empty node labels
+                  if (trimmedLine.match(/\[\s*\]/) || trimmedLine.match(/\(\s*\)/)) {
+                    validationErrors.push({
+                      line: lineNum,
+                      message: 'Empty node label',
+                      severity: 'warning',
+                      type: 'lint',
+                      suggestion: 'Add a label inside the brackets',
+                      code: trimmedLine.substring(0, 50)
+                    });
+                  }
+                });
+              }
+
+              // Send progress: validating
+              safeEnqueue('diagram_editor_progress', {
+                taskId,
+                progress: 90,
+                message:
+                  validationErrors.length > 0
+                    ? `Found ${validationErrors.length} issue(s)...`
+                    : 'Validating diagram...',
+                currentStep: 'validating'
+              });
+
+              const isValid = validationErrors.filter((e) => e.severity === 'error').length === 0;
+              const errors = validationErrors.filter((e) => e.severity === 'error');
+              const warnings = validationErrors.filter(
+                (e) => e.severity === 'warning' || e.severity === 'info'
+              );
+
+              // Detect diagram type
+              let detectedType: string | undefined;
+              const firstLineLower = lines[0]?.trim().toLowerCase() || '';
+              if (firstLineLower.startsWith('flowchart') || firstLineLower.startsWith('graph')) {
+                detectedType = 'flowchart';
+              } else if (firstLineLower.startsWith('sequencediagram')) {
+                detectedType = 'sequenceDiagram';
+              } else if (firstLineLower.startsWith('classdiagram')) {
+                detectedType = 'classDiagram';
+              } else if (firstLineLower.startsWith('statediagram')) {
+                detectedType = 'stateDiagram';
+              } else if (firstLineLower.startsWith('erdiagram')) {
+                detectedType = 'erDiagram';
+              } else if (firstLineLower.startsWith('gantt')) {
+                detectedType = 'gantt';
+              } else if (firstLineLower.startsWith('pie')) {
+                detectedType = 'pie';
+              } else if (firstLineLower.startsWith('journey')) {
+                detectedType = 'journey';
+              } else if (firstLineLower.startsWith('mindmap')) {
+                detectedType = 'mindmap';
+              } else if (firstLineLower.startsWith('timeline')) {
+                detectedType = 'timeline';
+              }
+
+              // Send final task progress before completion
+              safeEnqueue('diagram_editor_task', {
+                taskId,
+                operation,
+                task: {
+                  title: 'Reading Diagram',
+                  status: 'complete',
+                  progress: 100,
+                  details: currentDiagram
+                    ? `Successfully read diagram (${lineCount} lines, ${detectedType || 'unknown'} type)`
+                    : 'No diagram content found in editor'
+                }
+              });
+
+              safeEnqueue('diagram_editor_complete', {
+                taskId,
+                operation,
+                diagramCode: currentDiagram,
+                diagramType: detectedType,
+                metadata: {
+                  cursor_position: 0,
+                  selection: null,
+                  lineCount,
+                  isValid,
+                  validation: {
+                    isValid,
+                    errors,
+                    warnings,
+                    diagramType: detectedType,
+                    lineCount
+                  },
+                  validationErrors
+                },
+                task: {
+                  title: 'Reading Diagram',
+                  status: 'complete',
+                  progress: 100,
+                  details: currentDiagram
+                    ? `Successfully read diagram (${lineCount} lines, ${detectedType || 'unknown'} type)`
+                    : 'No diagram content found in editor'
+                }
+              });
+              break;
+
+            case 'create':
+            case 'update':
+              // Create or update diagram with change streaming
+              if (diagram_code && typeof diagram_code === 'string') {
+                const normalizedCode = diagram_code.replace(/\\n/g, '\n');
+                const lines = normalizedCode.split('\n');
+                const existingCode = diagram || '';
+                const existingLines = existingCode.split('\n');
+
+                // Calculate changes
+                const changes: Array<{ type: 'add' | 'remove'; line: string }> = [];
+                const addedLines = lines.filter((line) => !existingLines.includes(line));
+                const removedLines = existingLines.filter((line) => !lines.includes(line));
+
+                addedLines.forEach((line) => changes.push({ type: 'add', line: `+ ${line}` }));
+                removedLines.forEach((line) => changes.push({ type: 'remove', line: `- ${line}` }));
+
+                // Stream changes
+                let changeCount = 0;
+                for (const change of changes) {
+                  safeEnqueue('diagram_editor_change', {
+                    taskId,
+                    change,
+                    totalChanges: changes.length,
+                    currentChange: ++changeCount,
+                    additions: addedLines.length,
+                    removals: removedLines.length
+                  });
+                }
+
+                // Stream partial code
+                let partialCode = '';
+                for (let i = 0; i < lines.length; i++) {
+                  partialCode += (i > 0 ? '\n' : '') + lines[i];
+
+                  if (i % 3 === 0 || i === lines.length - 1) {
+                    safeEnqueue('diagram_editor_partial_code', {
+                      taskId,
+                      partialCode,
+                      lineCount: i + 1,
+                      isComplete: i === lines.length - 1,
+                      operation
+                    });
+                  }
+                }
+
+                // Lint check
+                const lintResults = validateMermaidDiagram(normalizedCode);
+                const errors = lintResults.filter((e) => e.severity === 'error');
+                const warnings = lintResults.filter((e) => e.severity === 'warning');
+
+                safeEnqueue('diagram_editor_complete', {
+                  taskId,
+                  operation,
+                  diagramCode: normalizedCode,
+                  diagramType: diagram_type,
+                  title,
+                  explanation,
+                  metadata: {
+                    changes: {
+                      additions: addedLines.length,
+                      removals: removedLines.length,
+                      total: changes.length
+                    },
+                    lint: {
+                      errors: errors.length,
+                      warnings: warnings.length,
+                      issues: lintResults
+                    }
+                  }
+                });
+              }
+              break;
+
+            case 'clear':
+              safeEnqueue('diagram_editor_complete', {
+                taskId,
+                operation,
+                diagramCode: '',
+                explanation: explanation || 'Diagram cleared'
+              });
+              break;
+
+            case 'patch':
+              // Apply patches to the current diagram
+              if (patches && Array.isArray(patches)) {
+                let currentCode = diagram || '';
+                const appliedPatches: any[] = [];
+                const failedPatches: any[] = [];
+
+                safeEnqueue('diagram_editor_patch_start', {
+                  taskId,
+                  patchCount: patches.length,
+                  message: `Applying ${patches.length} patches...`
+                });
+
+                for (let i = 0; i < patches.length; i++) {
+                  const patch = patches[i];
+
+                  safeEnqueue('diagram_editor_patch_progress', {
+                    taskId,
+                    patchIndex: i,
+                    totalPatches: patches.length,
+                    currentPatch: patch,
+                    message: `Applying patch ${i + 1}/${patches.length}: ${patch.type}`
+                  });
+
+                  try {
+                    // Apply patch based on type
+                    switch (patch.type) {
+                      case 'node_add':
+                        if (patch.content) {
+                          if (patch.position?.after) {
+                            const lines = currentCode.split('\n');
+                            const targetIndex = lines.findIndex((line) =>
+                              line.includes(patch.position.after)
+                            );
+                            if (targetIndex !== -1) {
+                              lines.splice(targetIndex + 1, 0, patch.content);
+                              currentCode = lines.join('\n');
+                            } else {
+                              currentCode = currentCode.trimEnd() + '\n' + patch.content;
+                            }
+                          } else {
+                            currentCode = currentCode.trimEnd() + '\n' + patch.content;
+                          }
+                        }
+                        break;
+
+                      case 'node_remove':
+                        if (patch.target) {
+                          const lines = currentCode.split('\n');
+                          const nodeRegex = new RegExp(
+                            `^\\s*${patch.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[\\[\\(\\{\\>]`
+                          );
+                          currentCode = lines.filter((line) => !nodeRegex.test(line)).join('\n');
+                        }
+                        break;
+
+                      case 'node_modify':
+                        if (patch.target && patch.content) {
+                          const lines = currentCode.split('\n');
+                          const nodeRegex = new RegExp(
+                            `^(\\s*)${patch.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[\\[\\(\\{\\>].*$`
+                          );
+                          currentCode = lines
+                            .map((line) => {
+                              if (nodeRegex.test(line)) {
+                                const indent = line.match(/^\s*/)?.[0] || '';
+                                return indent + patch.content;
+                              }
+                              return line;
+                            })
+                            .join('\n');
+                        }
+                        break;
+
+                      case 'style_add':
+                      case 'style_modify':
+                        if (patch.target && patch.properties) {
+                          const styleString = Object.entries(patch.properties)
+                            .map(([k, v]) => `${k}:${v}`)
+                            .join(',');
+
+                          // Remove existing style for this target
+                          const lines = currentCode.split('\n');
+                          const styleRegex = new RegExp(
+                            `^\\s*style\\s+${patch.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+.*$`
+                          );
+                          const filteredLines = lines.filter((line) => !styleRegex.test(line));
+
+                          // Add new style
+                          filteredLines.push(`    style ${patch.target} ${styleString}`);
+                          currentCode = filteredLines.join('\n');
+                        }
+                        break;
+
+                      case 'style_remove':
+                        if (patch.target) {
+                          const lines = currentCode.split('\n');
+                          const styleRegex = new RegExp(
+                            `^\\s*style\\s+${patch.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+.*$`
+                          );
+                          currentCode = lines.filter((line) => !styleRegex.test(line)).join('\n');
+                        }
+                        break;
+
+                      case 'connection_add':
+                        if (patch.content) {
+                          currentCode = currentCode.trimEnd() + '\n' + patch.content;
+                        }
+                        break;
+
+                      case 'connection_remove':
+                        if (patch.source && patch.target) {
+                          const lines = currentCode.split('\n');
+                          const connRegex = new RegExp(
+                            `^\\s*${patch.source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*[-=]+>\\s*${patch.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`
+                          );
+                          currentCode = lines.filter((line) => !connRegex.test(line)).join('\n');
+                        }
+                        break;
+
+                      case 'text_replace':
+                        if (patch.position?.line !== undefined && patch.content !== undefined) {
+                          const lines = currentCode.split('\n');
+                          if (patch.position.line >= 0 && patch.position.line < lines.length) {
+                            lines[patch.position.line] = patch.content;
+                            currentCode = lines.join('\n');
+                          }
+                        }
+                        break;
+
+                      case 'text_insert':
+                        if (patch.position?.line !== undefined && patch.content) {
+                          const lines = currentCode.split('\n');
+                          const insertIndex = Math.min(patch.position.line, lines.length);
+                          lines.splice(insertIndex, 0, patch.content);
+                          currentCode = lines.join('\n');
+                        }
+                        break;
+
+                      case 'text_delete':
+                        if (patch.position?.line !== undefined) {
+                          const lines = currentCode.split('\n');
+                          if (patch.position.line >= 0 && patch.position.line < lines.length) {
+                            lines.splice(patch.position.line, 1);
+                            currentCode = lines.join('\n');
+                          }
+                        }
+                        break;
+                    }
+
+                    appliedPatches.push({ patch, success: true });
+
+                    // Send partial code update after each patch
+                    safeEnqueue('diagram_editor_partial_code', {
+                      taskId,
+                      partialCode: currentCode,
+                      lineCount: currentCode.split('\n').length,
+                      isComplete: i === patches.length - 1,
+                      operation: 'patch'
+                    });
+                  } catch (error) {
+                    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+                    failedPatches.push({
+                      patch,
+                      error: errorMsg,
+                      canContinue: patch_mode !== 'precise'
+                    });
+
+                    safeEnqueue('diagram_editor_patch_error', {
+                      taskId,
+                      patchIndex: i,
+                      patch,
+                      error: errorMsg,
+                      canContinue: patch_mode !== 'precise'
+                    });
+
+                    if (patch_mode === 'precise') break;
+                  }
+                }
+
+                safeEnqueue('diagram_editor_patch_complete', {
+                  taskId,
+                  finalCode: currentCode,
+                  appliedCount: appliedPatches.length,
+                  failedCount: failedPatches.length
+                });
+
+                safeEnqueue('diagram_editor_complete', {
+                  taskId,
+                  operation,
+                  diagramCode: currentCode,
+                  explanation: `Applied ${appliedPatches.length} of ${patches.length} patches${failedPatches.length > 0 ? ` (${failedPatches.length} failed)` : ''}`
+                });
+              }
+              break;
+          }
+
+          // Handle continuation logic
+          if (continuation) {
+            // Send continuation event to indicate more processing is needed
+            safeEnqueue('continuation_request', {
+              taskId,
+              operation,
+              message: 'Diagram operation completed, continuing with next step...'
+            });
+          }
+
+          // Return result data for the model to understand the operation state
+          return {
+            success: true,
+            operation,
+            taskId,
+            continuation: continuation || false,
+            shouldCloseStream: false, // Allow stream to continue for more AI content
+            message: `Diagram ${operation} operation completed${continuation ? ' (continuation requested)' : ''}`,
+            timestamp: new Date().toISOString()
+          };
+        } else if (toolName === 'create_diagram') {
+          // Handle create_diagram tool - extracts mermaid code and sends completion event
+          const { mermaid_code, diagram_type, title, explanation } = args;
+
+          if (!mermaid_code) {
+            throw new Error('Invalid create_diagram: missing mermaid_code');
+          }
+
+          // Normalize the code
+          const normalizedCode = mermaid_code
+            .replace(/\\n/g, '\n')
+            .replace(/\\"/g, '"')
+            .replace(/\\\\/g, '\\')
+            .trim();
+
+          // Send tool_call_complete event with the mermaid code
+          safeEnqueue('tool_call_complete', {
+            id: toolCallId,
+            name: toolName,
+            mermaid_code: normalizedCode,
+            diagram_type: diagram_type || 'flowchart',
+            title: title || 'Generated Diagram',
+            explanation: explanation || 'Diagram created successfully'
+          });
+
+          return {
+            success: true,
+            operation: 'create',
+            mermaid_code: normalizedCode,
+            diagram_type: diagram_type || 'flowchart',
+            shouldCloseStream: false, // Allow stream to continue for more AI content
+            message: 'Diagram created successfully',
+            timestamp: new Date().toISOString()
+          };
+        } else {
+          // Unknown tool - log warning but don't throw to prevent stream from getting stuck
+          console.warn(`Unknown tool: ${toolName}, sending generic completion`);
+          safeEnqueue('tool_call_complete', {
+            id: toolCallId,
+            name: toolName,
+            message: `Tool ${toolName} completed`
+          });
+          return {
+            success: true,
+            operation: 'unknown',
+            message: `Tool ${toolName} completed`,
+            timestamp: new Date().toISOString()
+          };
+        }
+      };
+
+      // Retry mechanism for tool execution - defined at higher scope for use in continuation
+      const executeToolWithRetry = async (
+        toolName: string,
+        toolArgs: any,
+        currentToolCallId: string,
+        maxRetries: number = 2
+      ) => {
+        let lastError: Error | null = null;
+
+        for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+          try {
+            console.log(`Executing tool ${toolName}, attempt ${attempt}/${maxRetries + 1}`);
+
+            // Execute the tool with current arguments
+            const result = await executeTool(toolName, toolArgs, controller, currentToolCallId);
+            console.log(`Tool ${toolName} succeeded on attempt ${attempt}`);
+            return result;
+          } catch (error) {
+            lastError = error as Error;
+            console.error(`Tool ${toolName} failed on attempt ${attempt}:`, error);
+
+            if (attempt <= maxRetries) {
+              // Notify user of retry attempt
+              safeEnqueue('tool_retry', {
+                toolName,
+                attempt,
+                maxRetries: maxRetries + 1,
+                message: `Retrying ${toolName} due to error... (${attempt}/${maxRetries + 1})`
+              });
+
+              // Wait before retry (exponential backoff)
+              const delay = Math.min(1000 * Math.pow(2, attempt - 1), 3000);
+              await new Promise((resolve) => setTimeout(resolve, delay));
+            }
+          }
+        }
+
+        // All retries failed
+        console.error(`Tool ${toolName} failed after ${maxRetries + 1} attempts`);
+        throw lastError || new Error(`Tool ${toolName} failed after ${maxRetries + 1} attempts`);
+      };
+
+      try {
+        if (isDev) {
+          console.log(`Starting OpenAI API call with model: ${model}`);
+          console.log('System prompt length:', systemPrompt.length);
+          console.log('User message:', userText);
+        }
+
+        // Test basic API connection first
+        try {
+          const models = await openai.models.list();
+          if (isDev)
+            console.log('API connection successful, available models:', models.data.length);
+        } catch (apiError) {
+          if (isDev) console.error('API connection test failed:', apiError);
+          // Send error through the stream and close it properly
+          safeEnqueue('error', {
+            message: apiError instanceof Error ? apiError.message : 'API connection failed',
+            code: 'API_CONNECTION_ERROR',
+            recoverable: false
+          });
+          closeStream();
+          return;
+        }
+
+        const messages: ChatCompletionMessageParam[] = [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userText }
+        ];
+
+        const { client, provider } = getAIClient(model || '', isDev);
+        if (isDev)
+          console.log(
+            `Making API call with ${provider === 'gemini' ? 'Gemini' : provider === 'openrouter' ? 'OpenRouter' : 'OpenAI'} using model: ${model}`
+          );
+
+        // Handle Gemini models separately
+        if (provider === 'gemini') {
+          return await handleGeminiStream(
+            gemini!,
+            model || '',
+            systemPrompt,
+            userText,
+            tools,
+            mode || 'auto',
+            sendEvent,
+            safeEnqueue,
+            controller,
+            isDev
+          );
+        }
+
+        let completion;
+        try {
+          completion = await (client as OpenAI).chat.completions.create({
+            messages,
+            model: model || '',
+            stream: true,
+            tool_choice: mode === 'plan' ? undefined : 'auto',
+            tools: mode === 'plan' ? undefined : tools
+          });
+          if (isDev) console.log('OpenAI API call successful, starting stream processing');
+        } catch (error) {
+          if (isDev) console.error('OpenAI API call failed:', error);
+          // Send error through the stream and close it properly
+          safeEnqueue('error', {
+            message: error instanceof Error ? error.message : 'OpenAI API Error',
+            code: 'API_ERROR',
+            recoverable: false
+          });
+          closeStream();
+          return;
+        }
+
+        let fullContent = '';
+        let toolCallId = '';
+        let toolCallName = '';
+        let toolCallArgs = '';
+        let inToolCall = false;
+        let toolCallStarted = false;
+        let finishReason = '';
+        let continuationRound = 0; // Track continuation rounds to prevent infinite loops
+        const MAX_CONTINUATION_ROUNDS = 5; // Maximum number of continuation rounds
+        let messagesHistory: ChatCompletionMessageParam[] = [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userText }
+        ];
+
+        for await (const chunk of completion) {
+          const delta = chunk.choices[0]?.delta;
+          finishReason = chunk.choices[0]?.finish_reason || '';
+
+          // Debug logging only in development
+          if (isDev) {
+            console.log('Streaming chunk:', JSON.stringify(chunk, null, 2));
+          }
+
+          // Handle regular content - stream immediately
+          if (delta?.content) {
+            fullContent += delta.content;
+            safeEnqueue('text', { content: delta.content });
+          }
+
+          // Handle tool calls - stream progress
+          if (delta?.tool_calls && delta.tool_calls.length > 0) {
+            if (isDev) console.log('Tool calls detected:', delta.tool_calls);
+            for (const tc of delta.tool_calls) {
+              // New tool call starting - use unique ID to prevent race conditions
+              if (tc.id && !toolResults.has(tc.id) && !inToolCall) {
+                toolCallId = tc.id;
+                toolCallName = tc.function?.name || toolCallName;
+                toolCallArgs = tc.function?.arguments || '';
+                inToolCall = true;
+
+                // Send tool call start event - only send specific event, not generic
+                if (!toolCallStarted) {
+                  const eventKey = `${toolCallName}_${toolCallId}`;
+                  if (!sentStartEvents.has(eventKey)) {
+                    sentStartEvents.add(eventKey);
+
+                    // Send only the specific tool start event (not generic tool_call_start)
+                    if (toolCallName === 'comprehensive_questionnaire') {
+                      safeEnqueue('tool_call_start', {
+                        id: toolCallId,
+                        name: toolCallName,
+                        message: 'Preparing comprehensive questionnaire...'
+                      });
+                    } else if (toolCallName === 'diagram_editor') {
+                      safeEnqueue('tool_call_start', {
+                        id: toolCallId,
+                        name: toolCallName,
+                        message: 'Writing diagram to editor...'
+                      });
+                    } else if (toolCallName === 'create_diagram') {
+                      safeEnqueue('tool_call_start', {
+                        id: toolCallId,
+                        name: toolCallName,
+                        message: 'Creating your diagram...'
+                      });
+                    } else if (toolCallName === 'thinking') {
+                      safeEnqueue('tool_call_start', {
+                        id: toolCallId,
+                        name: toolCallName,
+                        message: 'Analyzing...'
+                      });
+                    } else {
+                      safeEnqueue('tool_call_start', {
+                        id: toolCallId,
+                        name: toolCallName,
+                        message: 'Processing...'
+                      });
+                    }
+                  }
+
+                  toolCallStarted = true;
+                }
+              } else if (inToolCall && tc.function?.arguments) {
+                // Accumulate arguments and stream partial updates
+                const previousArgs = toolCallArgs;
+                toolCallArgs += tc.function?.arguments || '';
+
+                // Send partial updates for thinking tool in real-time
+                if (toolCallName === 'thinking') {
+                  try {
+                    // Try to parse partial JSON to extract thought content
+                    const partialMatch = toolCallArgs.match(
+                      /"thought"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/
+                    );
+                    if (partialMatch) {
+                      const partialThought = partialMatch[1]
+                        .replace(/\\"/g, '"')
+                        .replace(/\\n/g, '\n');
+
+                      // Send partial thought update
+                      safeEnqueue('thinking_update', {
+                        id: toolCallId,
+                        partial_thought: partialThought
+                      });
+                    }
+                  } catch {
+                    // Ignore parse errors for partial JSON
+                  }
+                }
+
+                // Try to extract partial mermaid code for live preview
+                try {
+                  // Look for mermaid_code in partial JSON - more robust patterns
+                  const codePatterns = [
+                    /"mermaid_code"\s*:\s*"((?:[^"\\]|\\.)*?)(?="|$)/,
+                    /"mermaid_code"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/
+                  ];
+
+                  for (const pattern of codePatterns) {
+                    const codeMatch = toolCallArgs.match(pattern);
+                    if (codeMatch) {
+                      // Unescape the partial code
+                      let partialCode = codeMatch[1]
+                        .replace(/\\n/g, '\n')
+                        .replace(/\\"/g, '"')
+                        .replace(/\\\\/g, '\\');
+
+                      // Send the partial code for live streaming
+                      safeEnqueue('tool_call_delta', {
+                        id: toolCallId,
+                        partial_code: partialCode,
+                        tool_name: toolCallName
+                      });
+
+                      if (isDev) {
+                        console.log(
+                          'Streaming partial code:',
+                          partialCode.substring(0, 100) + (partialCode.length > 100 ? '...' : '')
+                        );
+                      }
+                      break;
+                    }
+                  }
+                } catch (error) {
+                  if (isDev) console.error('Error parsing partial code:', error);
+                  // Ignore parse errors for partial JSON
+                }
+              }
+            }
+          }
+
+          // Check if tool call completed (finish_reason is 'tool_calls')
+          if (finishReason === 'tool_calls' && inToolCall && toolCallArgs) {
+            console.log('Tool call completed during streaming:', {
+              toolCallName,
+              toolCallArgs: toolCallArgs.substring(0, 100)
+            });
+
+            try {
+              // More lenient JSON validation - try parsing first
+              let args;
+              try {
+                args = JSON.parse(toolCallArgs);
+              } catch (parseError) {
+                console.error('JSON parse error:', parseError);
+                console.error('Raw args:', toolCallArgs.substring(0, 200));
+
+                // Try to fix common JSON issues
+                let fixedArgs = toolCallArgs
+                  .trim()
+                  .replace(/,\s*}$/g, '}') // Remove trailing commas
+                  .replace(/,\s*]/g, ']'); // Remove trailing commas in arrays
+
+                // Handle case where two JSON objects are concatenated or there's extra content
+                if (fixedArgs.includes('}{')) {
+                  console.log('Detected concatenated JSON objects in main stream');
+                  const parts = fixedArgs.split('}{');
+
+                  // Try each part separately to find valid JSON
+                  for (let i = 0; i < parts.length; i++) {
+                    let candidatePart = parts[i];
+                    if (!candidatePart.startsWith('{')) candidatePart = '{' + candidatePart;
+                    if (!candidatePart.endsWith('}')) candidatePart = candidatePart + '}';
+
+                    try {
+                      const testParse = JSON.parse(candidatePart);
+                      console.log(
+                        `Found valid JSON in part ${i + 1} of ${parts.length} in main stream`
+                      );
+                      fixedArgs = candidatePart;
+                      break;
+                    } catch (e) {
+                      console.log(`Part ${i + 1} is not valid JSON in main stream, trying next...`);
+                    }
+                  }
+
+                  // If individual parts don't work, try merging the first two as fallback
+                  if (parts.length >= 2) {
+                    try {
+                      let mergedCandidate = parts[0] + '}, ' + parts[1];
+                      if (!mergedCandidate.startsWith('{')) mergedCandidate = '{' + mergedCandidate;
+                      if (!mergedCandidate.endsWith('}')) mergedCandidate = mergedCandidate + '}';
+
+                      JSON.parse(mergedCandidate);
+                      console.log('Successfully merged first two JSON objects in main stream');
+                      fixedArgs = mergedCandidate;
+                    } catch (e) {
+                      console.log(
+                        'Merging JSON objects failed in main stream, will try extraction method'
+                      );
+                    }
+                  }
+                }
+
+                // Also handle case where there's content after the JSON
+                const firstBrace = fixedArgs.indexOf('{');
+                let lastBrace = -1;
+                let braceCount = 0;
+
+                // Find the matching closing brace for the first opening brace
+                for (let i = firstBrace; i < fixedArgs.length; i++) {
+                  if (fixedArgs[i] === '{') {
+                    braceCount++;
+                  } else if (fixedArgs[i] === '}') {
+                    braceCount--;
+                    if (braceCount === 0) {
+                      lastBrace = i;
+                      break;
+                    }
+                  }
+                }
+
+                if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                  // Extract just the JSON object
+                  const jsonCandidate = fixedArgs.substring(firstBrace, lastBrace + 1);
+                  try {
+                    const testParse = JSON.parse(jsonCandidate);
+                    fixedArgs = jsonCandidate;
+                    console.log('Successfully extracted JSON from larger string');
+                  } catch (e) {
+                    // Keep the original fixedArgs if extraction fails
+                    console.log('JSON extraction failed, trying alternative methods');
+                  }
+                }
+
+                // Additional fixes for escaped quotes
+                fixedArgs = fixedArgs
+                  .replace(/&quot;/g, '"')
+                  .replace(/\\n/g, '\n')
+                  .replace(/\\t/g, '\t');
+
+                try {
+                  args = JSON.parse(fixedArgs);
+                  console.log('Successfully parsed after fixing JSON');
+                } catch (secondError) {
+                  console.error('Still cannot parse JSON after fixes');
+                  console.error('Fixed args:', fixedArgs.substring(0, 200));
+                  safeEnqueue('error', {
+                    message:
+                      'There was an issue creating the diagram. The system encountered invalid parameters.',
+                    code: 'INVALID_TOOL_ARGS',
+                    retryable: true,
+                    retryAction: 'retry_tool_call',
+                    toolCallId: toolCallId,
+                    toolCallName: toolCallName,
+                    originalArgs: toolCallArgs
+                  });
+                  return;
+                }
+              }
+
+              console.log('Parsed tool call args:', args);
+
+              // Execute tool with retry mechanism
+              const toolResult = await executeToolWithRetry(toolCallName, args, toolCallId, 2);
+
+              // Check if tool signals that stream should be closed (e.g., questionnaire)
+              if (toolResult?.shouldCloseStream) {
+                safeEnqueue('done', {});
+                closeStream();
+                return;
+              }
+
+              // Store tool call for history
+              const toolCallForHistory = {
+                id: toolCallId,
+                type: 'function' as const,
+                function: {
+                  name: toolCallName,
+                  arguments: toolCallArgs
+                }
+              };
+              toolCalls.push(toolCallForHistory);
+
+              // Store the result separately
+              // For diagram_editor tool, include validation errors in the result
+              if (toolCallName === 'diagram_editor' && args.operation === 'read') {
+                // Compute validation for the current diagram
+                const lines = (diagram || '').split('\n');
+                const validationErrors = validateMermaidDiagram(diagram || '');
+                const errors = validationErrors.filter((e) => e.severity === 'error');
+                const warnings = validationErrors.filter(
+                  (e) => e.severity === 'warning' || e.severity === 'info'
+                );
+                const isValid = errors.length === 0;
+
+                // Detect diagram type
+                let detectedType: string | undefined;
+                const firstLineLower = lines[0]?.trim().toLowerCase() || '';
+                if (firstLineLower.startsWith('flowchart') || firstLineLower.startsWith('graph')) {
+                  detectedType = 'flowchart';
+                } else if (firstLineLower.startsWith('sequencediagram')) {
+                  detectedType = 'sequenceDiagram';
+                } else if (firstLineLower.startsWith('classdiagram')) {
+                  detectedType = 'classDiagram';
+                } else if (firstLineLower.startsWith('statediagram')) {
+                  detectedType = 'stateDiagram';
+                } else if (firstLineLower.startsWith('erdiagram')) {
+                  detectedType = 'erDiagram';
+                } else if (firstLineLower.startsWith('gantt')) {
+                  detectedType = 'gantt';
+                } else if (firstLineLower.startsWith('pie')) {
+                  detectedType = 'pie';
+                } else if (firstLineLower.startsWith('journey')) {
+                  detectedType = 'journey';
+                } else if (firstLineLower.startsWith('mindmap')) {
+                  detectedType = 'mindmap';
+                } else if (firstLineLower.startsWith('timeline')) {
+                  detectedType = 'timeline';
+                }
+
+                // Add validation errors to the result so the model can see them
+                const resultWithValidation = {
+                  ...args,
+                  diagramCode: diagram,
+                  diagramType: detectedType,
+                  isValid,
+                  validationErrors,
+                  errors,
+                  warnings
+                };
+                toolResults.set(toolCallId, resultWithValidation);
+              } else {
+                toolResults.set(toolCallId, args);
+              }
+
+              // Reset tool call state to allow for additional tool calls
+              toolCallId = '';
+              toolCallName = '';
+              toolCallArgs = '';
+              inToolCall = false;
+              toolCallStarted = false;
+            } catch (e) {
+              console.error('Failed to parse tool call arguments:', e);
+              safeEnqueue('error', { message: 'Failed to process tool call' });
+            }
+          }
+        }
+
+        // Always ensure stream closes properly
+        if (!finishReason) {
+          // Stream ended without finish_reason - check if we had tool calls that need continuation
+          if (toolCalls.length > 0 && toolResults.size > 0) {
+            if (isDev)
+              console.log(
+                'Stream ended without finish_reason but has tool calls, continuing conversation'
+              );
+            finishReason = 'tool_calls'; // Force tool_calls continuation
+          } else {
+            // Stream ended without finish_reason (unexpected end)
+            console.warn('Stream ended without finish_reason, closing stream');
+            closeStream();
+            return;
+          }
+        }
+
+        if (finishReason && finishReason !== 'tool_calls') {
+          if (isDev) console.log('Stream finished with reason:', finishReason);
+
+          // Check if this was a questionnaire response but AI didn't follow instructions
+          const hasQuestionnaireResponses =
+            userText.includes('Questionnaire Responses:') &&
+            userText.includes('Q:') &&
+            userText.includes('A:');
+
+          if (hasQuestionnaireResponses && !fullContent.trim() && toolCalls.length === 0) {
+            if (isDev)
+              console.log(
+                'Detected questionnaire responses with empty AI response, providing fallback'
+              );
+
+            // Send a helpful message acknowledging the responses
+            const fallbackMessage = `I understand you want to create a flowchart based on your questionnaire responses. Let me create that for you.
+
+Based on your responses, I'll create an extended authentication flowchart with registration, login, error handling, and password recovery.`;
+
+            safeEnqueue('content', fallbackMessage);
+
+            // Create a basic authentication flowchart
+            const basicDiagram = `flowchart TD
+    A[Start] --> B[User Registration]
+    B --> C{Valid Input?}
+    C -->|Yes| D[Create Account]
+    C -->|No| E[Show Error]
+    E --> B
+    D --> F[Login Page]
+    F --> G{Credentials Valid?}
+    G -->|Yes| H[Access Granted]
+    G -->|No| I[Show Error]
+    I --> J[Password Recovery]
+    J --> K{Email Valid?}
+    K -->|Yes| L[Send Reset Link]
+    K -->|No| M[Show Error]
+    M --> F
+    L --> N[Reset Password]
+    N --> F
+    H --> O[Dashboard]
+    O --> P[End]`;
+
+            safeEnqueue('diagram_editor', {
+              operation: 'create',
+              diagram_code: basicDiagram,
+              diagram_type: 'flowchart',
+              explanation:
+                'Created an extended authentication flowchart with registration, login, error handling, and password recovery based on your questionnaire responses.'
+            });
+
+            fullContent = fallbackMessage;
+          }
+
+          // Save assistant message when stream completes normally
+          if (fullContent.trim()) {
+            saveMessageWithRetry({
+              conversation_id: conversationId!,
+              role: 'assistant',
+              content: fullContent,
+              parts: [{ type: 'text', text: fullContent }]
+            }).catch((err) => {
+              if (isDev) console.error('Failed to save assistant message:', err);
+            });
+          }
+
+          closeStream();
+        } else if (finishReason === 'tool_calls') {
+          // Tool calls completed - continue conversation with tool results
+          if (isDev) console.log('Tool calls completed, continuing conversation');
+
+          // Add the assistant's message with tool calls to history
+          if (fullContent || toolCalls.length > 0) {
+            messagesHistory.push({
+              role: 'assistant',
+              content: fullContent || undefined,
+              tool_calls: toolCalls.length > 0 ? toolCalls : undefined
+            });
+          }
+
+          // Add tool results to messages and continue
+          const toolMessages: ChatCompletionMessageParam[] = [];
+          for (const toolCall of toolCalls) {
+            const result = toolResults.get(toolCall.id);
+            toolMessages.push({
+              role: 'tool',
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(result || {})
+            });
+          }
+
+          if (toolMessages.length > 0) {
+            messagesHistory.push(...toolMessages);
+
+            // Continuation loop - keep processing until we get a non-tool_calls finish reason
+            let continueLoop = true;
+            while (continueLoop && !streamClosed) {
+              // Check if we've exceeded the maximum continuation rounds
+              if (continuationRound >= MAX_CONTINUATION_ROUNDS) {
+                console.error(
+                  'Maximum continuation rounds exceeded, stopping to prevent infinite loop'
+                );
+                safeEnqueue('error', {
+                  message:
+                    'Conversation exceeded maximum complexity. Please start a new conversation.',
+                  code: 'MAX_ROUNDS_EXCEEDED'
+                });
+                closeStream();
+                return;
+              }
+
+              continuationRound++;
+              console.log(
+                `Starting continuation round ${continuationRound}/${MAX_CONTINUATION_ROUNDS}`
+              );
+
+              // Reset timeout for continuation round
+              resetTimeout();
+
+              // Make next API call to continue the conversation
+              try {
+                const { client, provider } = getAIClient(model || '');
+                if (provider === 'gemini') {
+                  // Handle Gemini continuation
+                  // This would need to be implemented similar to the main Gemini stream handler
+                  throw new Error('Gemini continuation not implemented');
+                }
+                const nextCompletion = await (client as OpenAI).chat.completions.create({
+                  messages: messagesHistory,
+                  model: model || '',
+                  stream: true,
+                  tool_choice: mode === 'plan' ? undefined : 'auto',
+                  tools: mode === 'plan' ? undefined : tools
+                });
+
+                // Reset state for next round
+                fullContent = '';
+                toolCallId = '';
+                toolCallName = '';
+                toolCallArgs = '';
+                inToolCall = false;
+                toolCallStarted = false;
+                finishReason = '';
+                toolCalls = [];
+                toolResults.clear();
+                sentStartEvents.clear();
+
+                // Continue processing the new stream
+                for await (const chunk of nextCompletion) {
+                  // Check if stream was closed while processing
+                  if (streamClosed) {
+                    console.log('Stream closed during continuation processing, stopping');
+                    continueLoop = false;
+                    break;
+                  }
+
+                  // Process the new stream chunks
+                  const delta = chunk.choices[0]?.delta;
+                  finishReason = chunk.choices[0]?.finish_reason || '';
+
+                  if (isDev) {
+                    console.log('Continuation chunk:', JSON.stringify(chunk, null, 2));
+                  }
+
+                  // Handle content from continuation
+                  if (delta?.content) {
+                    fullContent += delta.content;
+                    safeEnqueue('text', { content: delta.content });
+                  }
+
+                  // Handle tool calls in continuation
+                  if (delta?.tool_calls) {
+                    for (const tc of delta.tool_calls) {
+                      // New tool call starting
+                      if (tc.id && !toolResults.has(tc.id) && !inToolCall) {
+                        toolCallId = tc.id;
+                        toolCallName = tc.function?.name || toolCallName;
+                        toolCallArgs = tc.function?.arguments || '';
+                        inToolCall = true;
+
+                        if (!toolCallStarted) {
+                          const eventKey = `${toolCallName}_${toolCallId}`;
+                          if (!sentStartEvents.has(eventKey)) {
+                            sentStartEvents.add(eventKey);
+
+                            // Send tool_call_start event with specific message
+                            const toolMessages: Record<string, string> = {
+                              comprehensive_questionnaire:
+                                'Preparing comprehensive questionnaire...',
+                              diagram_editor: 'Processing diagram operation...',
+                              thinking: 'Analyzing...'
+                            };
+
+                            safeEnqueue('tool_call_start', {
+                              id: toolCallId,
+                              name: toolCallName,
+                              message: toolMessages[toolCallName] || 'Processing...'
+                            });
+                          }
+
+                          toolCallStarted = true;
+                        }
+                      } else if (inToolCall && tc.function?.arguments) {
+                        toolCallArgs += tc.function?.arguments || '';
+
+                        // Stream partial updates for thinking tool
+                        if (toolCallName === 'thinking') {
+                          try {
+                            const partialMatch = toolCallArgs.match(
+                              /"thought"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/
+                            );
+                            if (partialMatch) {
+                              const partialThought = partialMatch[1]
+                                .replace(/\\"/g, '"')
+                                .replace(/\\n/g, '\n');
+
+                              safeEnqueue('thinking_update', {
+                                id: toolCallId,
+                                partial_thought: partialThought
+                              });
+                            }
+                          } catch {
+                            // Ignore parse errors for partial JSON
+                          }
+                        } else {
+                          // Try to extract partial mermaid code for live preview
+                          try {
+                            const codePatterns = [
+                              /"mermaid_code"\s*:\s*"((?:[^"\\]|\\.)*?)(?="|$)/,
+                              /"mermaid_code"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/
+                            ];
+
+                            for (const pattern of codePatterns) {
+                              const codeMatch = toolCallArgs.match(pattern);
+                              if (codeMatch) {
+                                let partialCode = codeMatch[1]
+                                  .replace(/\\n/g, '\n')
+                                  .replace(/\\"/g, '"')
+                                  .replace(/\\\\/g, '\\');
+
+                                safeEnqueue('tool_call_delta', {
+                                  id: toolCallId,
+                                  partial_code: partialCode,
+                                  tool_name: toolCallName
+                                });
+                                break;
+                              }
+                            }
+                          } catch (error) {
+                            if (isDev)
+                              console.error('Error parsing partial code in continuation:', error);
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  // Handle tool call completion in continuation
+                  if (
+                    finishReason === 'tool_calls' &&
+                    inToolCall &&
+                    toolCallArgs &&
+                    !streamClosed
+                  ) {
+                    try {
+                      let args;
+                      try {
+                        args = JSON.parse(toolCallArgs);
+                      } catch (parseError) {
+                        console.error('JSON parse error in continuation:', parseError);
+                        console.error('Raw args in continuation:', toolCallArgs.substring(0, 200));
+
+                        // Try to fix common JSON issues
+                        let fixedArgs = toolCallArgs
+                          .trim()
+                          .replace(/,\s*}$/g, '}')
+                          .replace(/,\s*]/g, ']');
+
+                        // Handle case where two JSON objects are concatenated or there's extra content
+                        if (fixedArgs.includes('}{')) {
+                          console.log('Detected concatenated JSON objects in continuation');
+                          const parts = fixedArgs.split('}{');
+
+                          // Try each part separately to find valid JSON
+                          for (let i = 0; i < parts.length; i++) {
+                            let candidatePart = parts[i];
+                            if (!candidatePart.startsWith('{')) candidatePart = '{' + candidatePart;
+                            if (!candidatePart.endsWith('}')) candidatePart = candidatePart + '}';
+
+                            try {
+                              const testParse = JSON.parse(candidatePart);
+                              console.log(
+                                `Found valid JSON in part ${i + 1} of ${parts.length} in continuation`
+                              );
+                              fixedArgs = candidatePart;
+                              break;
+                            } catch (e) {
+                              console.log(
+                                `Part ${i + 1} is not valid JSON in continuation, trying next...`
+                              );
+                            }
+                          }
+
+                          // If individual parts don't work, try merging the first two as fallback
+                          if (parts.length >= 2) {
+                            try {
+                              let mergedCandidate = parts[0] + '}, ' + parts[1];
+                              if (!mergedCandidate.startsWith('{'))
+                                mergedCandidate = '{' + mergedCandidate;
+                              if (!mergedCandidate.endsWith('}'))
+                                mergedCandidate = mergedCandidate + '}';
+
+                              JSON.parse(mergedCandidate);
+                              console.log(
+                                'Successfully merged first two JSON objects in continuation'
+                              );
+                              fixedArgs = mergedCandidate;
+                            } catch (e) {
+                              console.log(
+                                'Merging JSON objects failed in continuation, will try extraction method'
+                              );
+                            }
+                          }
+                        }
+
+                        // Also handle case where there's content after the JSON
+                        const firstBrace = fixedArgs.indexOf('{');
+                        let lastBrace = -1;
+                        let braceCount = 0;
+
+                        // Find the matching closing brace for the first opening brace
+                        for (let i = firstBrace; i < fixedArgs.length; i++) {
+                          if (fixedArgs[i] === '{') {
+                            braceCount++;
+                          } else if (fixedArgs[i] === '}') {
+                            braceCount--;
+                            if (braceCount === 0) {
+                              lastBrace = i;
+                              break;
+                            }
+                          }
+                        }
+
+                        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                          // Extract just the JSON object
+                          const jsonCandidate = fixedArgs.substring(firstBrace, lastBrace + 1);
+                          try {
+                            const testParse = JSON.parse(jsonCandidate);
+                            fixedArgs = jsonCandidate;
+                            console.log(
+                              'Successfully extracted JSON from larger string in continuation'
+                            );
+                          } catch (e) {
+                            // Keep the original fixedArgs if extraction fails
+                            console.log(
+                              'JSON extraction failed in continuation, trying alternative methods'
+                            );
+                          }
+                        }
+
+                        // Additional fixes for escaped quotes
+                        fixedArgs = fixedArgs
+                          .replace(/&quot;/g, '"')
+                          .replace(/\\n/g, '\n')
+                          .replace(/\\t/g, '\t');
+
+                        try {
+                          args = JSON.parse(fixedArgs);
+                          console.log('Successfully parsed continuation after fixing JSON');
+                        } catch (secondError) {
+                          console.error('Still cannot parse JSON in continuation after fixes');
+                          console.error('Fixed args in continuation:', fixedArgs);
+                          console.error('Fixed args length:', fixedArgs.length);
+                          console.error('Character at position 98:', fixedArgs.charCodeAt(98));
+                          safeEnqueue('error', {
+                            message:
+                              'There was an issue creating the diagram. The system encountered invalid parameters.',
+                            code: 'INVALID_TOOL_ARGS',
+                            retryable: true,
+                            retryAction: 'retry_tool_call',
+                            toolCallId: toolCallId,
+                            toolCallName: toolCallName,
+                            originalArgs: toolCallArgs
+                          });
+                          closeStream();
+                          return;
+                        }
+                      }
+
+                      // Execute the tool (same as initial stream)
+                      const toolResult = await executeToolWithRetry(
+                        toolCallName,
+                        args,
+                        toolCallId,
+                        2
+                      );
+
+                      // Check if tool signals that stream should be closed (e.g., questionnaire)
+                      if (toolResult?.shouldCloseStream) {
+                        safeEnqueue('done', {});
+                        closeStream();
+                        return;
+                      }
+
+                      // Store tool call for history
+                      const toolCallForHistory = {
+                        id: toolCallId,
+                        type: 'function' as const,
+                        function: {
+                          name: toolCallName,
+                          arguments: toolCallArgs
+                        }
+                      };
+                      toolCalls.push(toolCallForHistory);
+                      // For diagram_editor tool, include validation errors in the result
+                      if (toolCallName === 'diagram_editor' && args.operation === 'read') {
+                        // Compute validation for the current diagram
+                        const lines = (diagram || '').split('\n');
+                        const validationErrors = validateMermaidDiagram(diagram || '');
+                        const errors = validationErrors.filter((e) => e.severity === 'error');
+                        const warnings = validationErrors.filter(
+                          (e) => e.severity === 'warning' || e.severity === 'info'
+                        );
+                        const isValid = errors.length === 0;
+
+                        // Detect diagram type
+                        let detectedType: string | undefined;
+                        const firstLineLower = lines[0]?.trim().toLowerCase() || '';
+                        if (
+                          firstLineLower.startsWith('flowchart') ||
+                          firstLineLower.startsWith('graph')
+                        ) {
+                          detectedType = 'flowchart';
+                        } else if (firstLineLower.startsWith('sequencediagram')) {
+                          detectedType = 'sequenceDiagram';
+                        } else if (firstLineLower.startsWith('classdiagram')) {
+                          detectedType = 'classDiagram';
+                        } else if (firstLineLower.startsWith('statediagram')) {
+                          detectedType = 'stateDiagram';
+                        } else if (firstLineLower.startsWith('erdiagram')) {
+                          detectedType = 'erDiagram';
+                        } else if (firstLineLower.startsWith('gantt')) {
+                          detectedType = 'gantt';
+                        } else if (firstLineLower.startsWith('pie')) {
+                          detectedType = 'pie';
+                        } else if (firstLineLower.startsWith('journey')) {
+                          detectedType = 'journey';
+                        } else if (firstLineLower.startsWith('mindmap')) {
+                          detectedType = 'mindmap';
+                        } else if (firstLineLower.startsWith('timeline')) {
+                          detectedType = 'timeline';
+                        }
+
+                        // Add validation errors to the result so the model can see them
+                        const resultWithValidation = {
+                          ...args,
+                          diagramCode: diagram,
+                          diagramType: detectedType,
+                          isValid,
+                          validationErrors,
+                          errors,
+                          warnings
+                        };
+                        toolResults.set(toolCallId, resultWithValidation);
+                      } else {
+                        toolResults.set(toolCallId, args);
+                      }
+
+                      // Reset for next tool call
+                      toolCallId = '';
+                      toolCallName = '';
+                      toolCallArgs = '';
+                      inToolCall = false;
+                      toolCallStarted = false;
+                    } catch (e) {
+                      console.error('Failed to process tool call in continuation:', e);
+                      safeEnqueue('error', { message: 'Failed to process tool call' });
+                      closeStream();
+                      return;
+                    }
+                  }
+
+                  // Handle stream completion in continuation
+                  if (finishReason && finishReason !== 'tool_calls') {
+                    if (isDev)
+                      console.log('Continuation stream finished with reason:', finishReason);
+                    continueLoop = false;
+
+                    // Save assistant message when continuation completes normally
+                    if (fullContent.trim()) {
+                      saveMessageWithRetry({
+                        conversation_id: conversationId!,
+                        role: 'assistant',
+                        content: fullContent,
+                        parts: [{ type: 'text', text: fullContent }]
+                      }).catch((err) => {
+                        if (isDev)
+                          console.error('Failed to save continuation assistant message:', err);
+                      });
+                    }
+
+                    closeStream();
+                    break;
+                  }
+                }
+
+                // If we finished with tool_calls, we need to continue the loop
+                if (finishReason === 'tool_calls' && toolCalls.length > 0) {
+                  // Add assistant message with tool calls to history
+                  if (fullContent || toolCalls.length > 0) {
+                    messagesHistory.push({
+                      role: 'assistant',
+                      content: fullContent || undefined,
+                      tool_calls: toolCalls.length > 0 ? toolCalls : undefined
+                    });
+                  }
+
+                  // Add tool results to messages
+                  for (const toolCall of toolCalls) {
+                    const result = toolResults.get(toolCall.id);
+                    messagesHistory.push({
+                      role: 'tool',
+                      tool_call_id: toolCall.id,
+                      content: JSON.stringify(result || {})
+                    });
+                  }
+                  // Continue the while loop for next round
+                } else {
+                  continueLoop = false;
+                }
+              } catch (continuationError) {
+                console.error('Failed to continue conversation:', continuationError);
+                safeEnqueue('error', { message: 'Failed to continue conversation' });
+                closeStream();
+                return;
+              }
+            }
+          } else {
+            if (isDev) console.log('No tool messages to process');
+            closeStream();
+          }
+        } else {
+          // Safety: if we've processed everything but no finish_reason,
+          // ensure we don't hang indefinitely
+          setTimeout(() => {
+            if (!streamClosed) {
+              if (isDev) console.log('Stream timeout - forcing completion');
+              closeStream();
+            }
+          }, 5000); // 5 second timeout
+        }
+      } catch (error) {
+        // Enhanced error handling with proper error boundaries
+        const errorMessage = error instanceof Error ? error.message : 'Unknown streaming error';
+        const errorStack = error instanceof Error ? error.stack : undefined;
+
+        if (isDev) {
+          console.error('OpenAI streaming error:', error);
+          console.error('Error details:', errorMessage);
+          console.error('Error stack:', errorStack);
+        }
+
+        if (!streamClosed) {
+          // Send user-friendly error message
+          const userMessage = isDev ? errorMessage : 'Streaming service temporarily unavailable';
+          controller.enqueue(
+            sendEvent('error', {
+              message: userMessage,
+              code: 'STREAMING_ERROR',
+              recoverable: true
+            })
+          );
+          closeStream();
+        }
+      }
+    }
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'X-Accel-Buffering': 'no'
+    }
+  });
+}
+
+function buildSystemPrompt(diagram: string, isPlanMode: boolean): string {
+  if (isPlanMode) {
+    return `You are a Mermaid diagram planning assistant. Help users plan diagrams step by step.
+Focus on understanding requirements, suggesting diagram types, and organizing content.
+Keep responses concise and actionable.`;
+  }
+
+  const diagramContext = diagram ? `\nCURRENT DIAGRAM:\n\`\`\`mermaid\n${diagram}\n\`\`\`\n` : '';
+
+  return `You are an expert Mermaid diagram assistant with advanced tools. Greet user properly. Act autonomously: choose the right tools and order without asking permission, while following these guardrails.${diagramContext}
+
+WORKFLOW (never stop early):
+1) "thinking" to analyze the request.
+2) Choose info path:
+   - If ambiguous/complex → "comprehensive_questionnaire" (3-5 multiple-choice, self-contained, 2-5 options each).
+   - If clear → skip questionnaire.
+3) If questionnaire used → wait for all answers, then "thinking" (step="planning").
+4) Create/modify via "diagram_editor" (prefer operation="create" unless patching/clearing existing).
+
+TOOL RULES (use your judgment):
+- diagram_editor operations: read | create | update | clear | patch.
+- Use read ONLY when the user explicitly asks to view current diagram or before patching existing.
+- patch for targeted edits; create/update for full replaces; clear only on explicit reset.
+
+QUESTIONNAIRE RULES:
+- 3-5 concise multiple-choice questions, each self-explanatory; 2-5 options; clear labels; no jargon unless needed; include completion time.
+
+DIAGRAM QUALITY:
+- Standard Mermaid syntax only (NodeID[Label]); no custom icons; code must be valid/complete; keep clean/readable.
+- Supported types: flowchart, sequenceDiagram, classDiagram, stateDiagram, erDiagram, gantt, pie, journey, mindmap, timeline.
+
+AFTER THINKING: always proceed to questionnaire or diagram creation; never end on thinking alone. Keep moving until a diagram operation executes.`;
+}

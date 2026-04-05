@@ -1,0 +1,782 @@
+openapi: 3.0.3
+info:
+  title: Mermaid Live Editor Chat API
+  description: API for managing chat conversations, messages, and AI-powered diagram generation
+  version: 1.0.0
+  contact:
+    name: Mermaid Live Editor Team
+    email: support@mermaid.live
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://mermaid.live/api
+    description: Production server
+  - url: http://localhost:5173/api
+    description: Development server
+
+paths:
+  /chat:
+    post:
+      tags:
+        - Chat
+      summary: Send a chat message and get AI response
+      description: |
+        Send a message to the AI assistant and receive a streaming response.
+        Supports both regular chat and diagram generation modes.
+      operationId: chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatRequest'
+            examples:
+              simple_chat:
+                summary: Simple chat request
+                value:
+                  conversationId: '123e4567-e89b-12d3-a456-426614174000'
+                  message:
+                    role: 'user'
+                    content: 'Create a simple flowchart for user login'
+                    parts:
+                      - type: 'text'
+                        text: 'Create a simple flowchart for user login'
+                  currentDiagram: ''
+                  mode: 'create'
+                  model: 'gpt-5-mini'
+                  userId: 'user@example.com'
+              diagram_generation:
+                summary: Diagram generation request
+                value:
+                  conversationId: '123e4567-e89b-12d3-a456-426614174000'
+                  message:
+                    role: 'user'
+                    content: 'Create a detailed AWS architecture diagram'
+                    parts:
+                      - type: 'text'
+                        text: 'Create a detailed AWS architecture diagram'
+                  currentDiagram: "graph TD\nA[Start] --> B[End]"
+                  mode: 'create'
+                  model: 'gpt-5-mini'
+                  userId: 'user@example.com'
+      responses:
+        '200':
+          description: Streaming response with AI-generated content
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: Server-Sent Events stream
+              example: |
+                data: {"type":"text","content":"I'll create a flowchart for user login"}
+
+                data: {"type":"tool_call_start","id":"tool_123","name":"create_diagram"}
+
+                data: {"type":"tool_call_complete","id":"tool_123","name":"create_diagram","mermaid_code":"graph TD\nA[Start] --> B{Login?}\nB -->|Yes| C[Dashboard]\nB -->|No| D[Login Form]"}
+
+                data: {"type":"done"}
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /chat/conversations:
+    get:
+      tags:
+        - Conversations
+      summary: List user conversations
+      description: Retrieve a paginated list of conversations for the authenticated user
+      operationId: listConversations
+      parameters:
+        - name: user_id
+          in: query
+          description: Filter by user ID
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          description: Maximum number of conversations to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          description: Number of conversations to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Conversation'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Conversations
+      summary: Create a new conversation
+      description: Create a new chat conversation with optional metadata
+      operationId: createConversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateConversationRequest'
+      responses:
+        '201':
+          description: Conversation created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /chat/conversations/{id}:
+    get:
+      tags:
+        - Conversations
+      summary: Get a specific conversation
+      description: Retrieve a conversation with its messages
+      operationId: getConversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Conversation ID
+          schema:
+            type: string
+            format: uuid
+        - name: include_messages
+          in: query
+          description: Whether to include messages in the response
+          schema:
+            type: boolean
+            default: true
+        - name: limit
+          in: query
+          description: Maximum number of messages to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: offset
+          in: query
+          description: Number of messages to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Conversation details with messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversation:
+                    $ref: '#/components/schemas/Conversation'
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    patch:
+      tags:
+        - Conversations
+      summary: Update a conversation
+      description: Update conversation metadata like title
+      operationId: updateConversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Conversation ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateConversationRequest'
+      responses:
+        '200':
+          description: Conversation updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Conversations
+      summary: Delete a conversation
+      description: Delete a conversation and all its messages
+      operationId: deleteConversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Conversation ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Conversation deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: 'Conversation deleted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /chat/conversations/{id}/messages:
+    get:
+      tags:
+        - Messages
+      summary: List conversation messages
+      description: Retrieve messages for a specific conversation
+      operationId: listMessages
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Conversation ID
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          description: Maximum number of messages to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: offset
+          in: query
+          description: Number of messages to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Message'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Messages
+      summary: Create a message
+      description: Add a new message to a conversation
+      operationId: createMessage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Conversation ID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMessageRequest'
+      responses:
+        '201':
+          description: Message created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /chat/snapshots:
+    get:
+      tags:
+        - Snapshots
+      summary: List snapshots
+      description: Retrieve diagram snapshots for conversations
+      operationId: listSnapshots
+      parameters:
+        - name: conversation_id
+          in: query
+          required: true
+          description: Filter by conversation ID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of snapshots
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  snapshots:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Snapshot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Snapshots
+      summary: Create a snapshot
+      description: Create a diagram state snapshot
+      operationId: createSnapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSnapshotRequest'
+      responses:
+        '201':
+          description: Snapshot created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Snapshot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  schemas:
+    ChatRequest:
+      type: object
+      required:
+        - conversationId
+        - message
+        - mode
+        - model
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+          description: ID of the conversation
+        message:
+          $ref: '#/components/schemas/Message'
+        currentDiagram:
+          type: string
+          description: Current diagram code in the editor
+          maxLength: 20000
+        mode:
+          $ref: '#/components/schemas/PromptMode'
+        model:
+          $ref: '#/components/schemas/Model'
+        userId:
+          type: string
+          format: email
+          description: User identifier for personalization
+
+    Message:
+      type: object
+      required:
+        - role
+        - content
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique message identifier
+        role:
+          type: string
+          enum: [user, assistant, system, tool]
+          description: Message role
+        content:
+          type: string
+          description: Message content
+          maxLength: 10000
+        parts:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessagePart'
+          description: Structured message parts
+        createdAt:
+          type: string
+          format: date-time
+          description: Message creation timestamp
+        metadata:
+          type: object
+          description: Additional message metadata
+
+    MessagePart:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          description: Part type (text, tool_call, etc.)
+        text:
+          type: string
+          description: Text content for text parts
+        toolName:
+          type: string
+          description: Tool name for tool call parts
+        result:
+          description: Tool execution result
+
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique conversation identifier
+        userId:
+          type: string
+          format: uuid
+          description: User who owns the conversation
+        title:
+          type: string
+          description: Conversation title
+          maxLength: 200
+        createdAt:
+          type: string
+          format: date-time
+          description: Conversation creation timestamp
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last update timestamp
+        metadata:
+          type: object
+          description: Additional conversation metadata
+
+    CreateConversationRequest:
+      type: object
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: User ID
+        title:
+          type: string
+          description: Conversation title
+          maxLength: 200
+          default: 'New Chat'
+        metadata:
+          type: object
+          description: Initial metadata
+
+    UpdateConversationRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          description: New conversation title
+          maxLength: 200
+        metadata:
+          type: object
+          description: Updated metadata
+
+    CreateMessageRequest:
+      type: object
+      required:
+        - role
+        - content
+      properties:
+        role:
+          type: string
+          enum: [user, assistant, system, tool]
+          description: Message role
+        content:
+          type: string
+          description: Message content
+          maxLength: 10000
+        parts:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessagePart'
+          description: Message parts
+        metadata:
+          type: object
+          description: Message metadata
+
+    Snapshot:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique snapshot identifier
+        conversationId:
+          type: string
+          format: uuid
+          description: Associated conversation ID
+        messageId:
+          type: string
+          format: uuid
+          description: Associated message ID
+        description:
+          type: string
+          description: Snapshot description
+        state:
+          type: object
+          description: Diagram state
+        createdAt:
+          type: string
+          format: date-time
+          description: Snapshot creation timestamp
+
+    CreateSnapshotRequest:
+      type: object
+      required:
+        - conversationId
+        - state
+      properties:
+        conversationId:
+          type: string
+          format: uuid
+          description: Conversation ID
+        messageId:
+          type: string
+          format: uuid
+          description: Message ID
+        description:
+          type: string
+          description: Snapshot description
+        state:
+          type: object
+          description: Diagram state to snapshot
+
+    Pagination:
+      type: object
+      properties:
+        limit:
+          type: integer
+          description: Items per page
+        offset:
+          type: integer
+          description: Items skipped
+        total:
+          type: integer
+          description: Total items available
+        hasMore:
+          type: boolean
+          description: Whether more items are available
+
+    PromptMode:
+      type: string
+      enum: [plan, create]
+      description: Chat interaction mode
+
+    Model:
+      type: string
+      enum: [gpt-5-mini, gpt-5-nano]
+      description: AI model to use
+
+    ApiError:
+      type: object
+      required:
+        - error
+        - message
+        - timestamp
+      properties:
+        error:
+          type: string
+          description: Error category
+        message:
+          type: string
+          description: Human-readable error message
+        code:
+          type: string
+          description: Machine-readable error code
+        details:
+          description: Additional error details
+        timestamp:
+          type: string
+          format: date-time
+          description: Error timestamp
+        requestId:
+          type: string
+          description: Request identifier for tracing
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error: 'Validation Error'
+            message: 'Invalid conversation ID format'
+            code: 'INVALID_INPUT'
+            timestamp: '2024-01-01T00:00:00Z'
+            requestId: 'req_1234567890'
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error: 'Client Error'
+            message: 'Authentication required'
+            code: 'UNAUTHORIZED'
+            timestamp: '2024-01-01T00:00:00Z'
+            requestId: 'req_1234567890'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error: 'Client Error'
+            message: 'Conversation not found'
+            code: 'NOT_FOUND'
+            timestamp: '2024-01-01T00:00:00Z'
+            requestId: 'req_1234567890'
+
+    RateLimited:
+      description: Too many requests
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error: 'Client Error'
+            message: 'Rate limit exceeded'
+            code: 'RATE_LIMITED'
+            details:
+              retryAfter: 60
+            timestamp: '2024-01-01T00:00:00Z'
+            requestId: 'req_1234567890'
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying
+          schema:
+            type: integer
+
+    InternalServerError:
+      description: Server error occurred
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error: 'Server Error'
+            message: 'Internal server error'
+            code: 'INTERNAL_ERROR'
+            timestamp: '2024-01-01T00:00:00Z'
+            requestId: 'req_1234567890'
+
+    ServiceUnavailable:
+      description: Service temporarily unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error: 'Server Error'
+            message: 'Database service unavailable'
+            code: 'SERVICE_UNAVAILABLE'
+            timestamp: '2024-01-01T00:00:00Z'
+            requestId: 'req_1234567890'
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Chat
+    description: Chat and AI interaction endpoints
+  - name: Conversations
+    description: Conversation management
+  - name: Messages
+    description: Message management
+  - name: Snapshots
+    description: Diagram state snapshots
