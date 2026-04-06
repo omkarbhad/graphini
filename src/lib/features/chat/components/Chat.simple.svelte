@@ -1391,6 +1391,7 @@
           enabledTools: toolsStore.getEnabledToolIds(),
           sessionId: sessionId,
           isRepair,
+          engine: workspaceStore.workspace?.document?.engine ?? 'mermaid',
           messages: messages
             .slice(0, -1)
             .filter((m: any) => m.role === 'user' || (m.role === 'assistant' && m.content))

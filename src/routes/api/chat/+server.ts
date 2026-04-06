@@ -1,3 +1,4 @@
+import { buildStructurizrSystemPrompt } from '$lib/features/structurizr/system-prompt';
 import { validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { deleteFile, getFileById, getSessionFiles } from '$lib/server/file-store';
@@ -2338,8 +2339,11 @@ export const POST: RequestHandler = async ({ request }) => {
       sessionId,
       conversationId,
       enabledTools,
-      isRepair
+      isRepair,
+      engine
     } = await clonedRequest.json();
+
+    const engineName = engine ?? 'mermaid';
 
     // Use sessionId if provided, otherwise fall back to conversationId, then 'default'
     const diagramSessionId = sessionId ?? conversationId ?? 'default';
@@ -2406,8 +2410,12 @@ export const POST: RequestHandler = async ({ request }) => {
     // Build messages array — always text-only (images are pre-processed in /api/upload)
     const userContent = message;
 
+    const systemPrompt = engineName === 'structurizr'
+      ? buildStructurizrSystemPrompt()
+      : buildMultiStepSystemPrompt();
+
     let messages: any[] = [
-      { role: 'system', content: buildMultiStepSystemPrompt() },
+      { role: 'system', content: systemPrompt },
       ...(uiMessages || []),
       { role: 'user', content: userContent }
     ];
