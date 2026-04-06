@@ -2429,49 +2429,30 @@
       </div>
     {:else if !hasMessages}
       <!-- Empty State — Graphini Welcome -->
-      <div class="flex h-full flex-col items-center justify-center gap-5 px-6 py-8">
-        <!-- Logo -->
-        <div class="flex flex-col items-center gap-3">
-          <div class="relative">
-            <img
-              src="/brand/logo.png"
-              alt="Graphini"
-              class="h-16 w-16 rounded-2xl shadow-lg ring-1 ring-black/5 dark:ring-white/10" />
-            <div
-              class="absolute -right-1 -bottom-1 flex h-5 w-5 items-center justify-center rounded-full bg-green-500 ring-2 ring-background">
-              <Sparkles class="size-2.5 text-white" />
-            </div>
-          </div>
-          <div class="space-y-1 text-center">
-            <h3 class="text-lg font-bold tracking-tight text-foreground">Graphini</h3>
-            <p class="text-[11px] font-medium text-muted-foreground/60">Your AI Diagram Maker</p>
-          </div>
+      <div class="flex h-full flex-col items-center justify-center px-5 py-10">
+        <!-- Greeting -->
+        <div class="mb-8 text-center">
+          <h2 class="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
+            What will you diagram?
+          </h2>
+          <p class="mt-2 text-sm text-muted-foreground/70">
+            Describe it in plain English — I'll handle the rest.
+          </p>
         </div>
 
-        <!-- Tagline -->
-        <p class="max-w-sm text-center text-xs leading-relaxed text-muted-foreground/70">
-          Describe any diagram and I'll build it for you — flowcharts, architectures, ER diagrams,
-          mind maps, and more. Just ask.
-        </p>
-
         <!-- Suggestion Cards -->
-        <div class="mt-1 grid w-full max-w-md grid-cols-2 gap-2 px-2">
-          {#each suggestions as suggestion}
+        <div class="grid w-full max-w-lg grid-cols-2 gap-2.5 sm:grid-cols-3">
+          {#each suggestions as suggestion (suggestion.label)}
             <button
               type="button"
               onclick={() => {
                 inputText = suggestion.prompt;
               }}
-              class="group flex items-start gap-2.5 rounded-xl border border-border/40 bg-card/60 px-3 py-2.5 text-left shadow-sm transition-all duration-150 hover:border-indigo-500/30 hover:bg-indigo-500/[0.04] hover:shadow-md dark:border-border/20 dark:bg-white/[0.02] dark:hover:border-indigo-500/30 dark:hover:bg-indigo-500/[0.06]">
-              <span class="mt-0.5 text-sm leading-none">{suggestion.icon}</span>
-              <div class="min-w-0 flex-1">
-                <span
-                  class="block text-[11px] font-semibold text-foreground/90 group-hover:text-foreground"
-                  >{suggestion.label}</span>
-                <span
-                  class="mt-0.5 block truncate text-[10px] leading-tight text-muted-foreground/60 group-hover:text-muted-foreground/80"
-                  >{suggestion.prompt.slice(0, 60)}...</span>
-              </div>
+              class="group relative flex flex-col items-center gap-2 rounded-2xl border border-border/50 bg-card/50 px-3 py-4 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 dark:border-white/[0.06] dark:bg-white/[0.02] dark:hover:border-primary/25 dark:hover:bg-white/[0.04]">
+              <span class="text-2xl leading-none">{suggestion.icon}</span>
+              <span
+                class="text-xs font-medium text-foreground/80 group-hover:text-foreground"
+                >{suggestion.label}</span>
             </button>
           {/each}
         </div>
