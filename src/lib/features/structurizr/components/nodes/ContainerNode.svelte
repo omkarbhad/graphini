@@ -20,7 +20,9 @@
   const techSuffix = $derived(c4.technology ? `: ${c4.technology}` : '');
 </script>
 
-<Handle type="target" position={Position.Top} />
+<Handle type="target" position={Position.Top} id="top" />
+<Handle type="source" position={Position.Right} id="right" />
+<Handle type="target" position={Position.Left} id="left" />
 
 <div class="node-wrapper" style="--bg: {bg}; --text: {text};">
   <div class="node-label">{c4.label}</div>
@@ -30,7 +32,7 @@
   {/if}
 </div>
 
-<Handle type="source" position={Position.Bottom} />
+<Handle type="source" position={Position.Bottom} id="bottom" />
 
 <style>
   .node-wrapper {
