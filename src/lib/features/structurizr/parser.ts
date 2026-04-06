@@ -518,14 +518,44 @@ function parseModelBlock(block: Block, ctx: ParserContext): C4Model {
     }
   }
 
+  // Also parse body lines for element definitions without braces
+  // e.g., `viewer = person "Viewer" "Description"` (no { })
+  for (const bodyLine of block.bodyLines) {
+    const parsed = parseElementLine(bodyLine.text);
+    if (parsed) {
+      // Create a minimal block for the element
+      const fakeBlock: Block = {
+        bodyLines: [],
+        children: [],
+        fullLine: bodyLine.text,
+        keyword: parsed.type,
+        lineNumber: bodyLine.lineNumber
+      };
+      switch (parsed.type) {
+        case 'person': {
+          const p = parsePerson(fakeBlock, ctx);
+          if (p) people.push(p);
+          break;
+        }
+        case 'softwareSystem': {
+          const ss = parseSoftwareSystem(fakeBlock, ctx);
+          if (ss) softwareSystems.push(ss);
+          break;
+        }
+        default:
+          break;
+      }
+    }
+  }
+
   // Parse relationships in model body lines
   parseBodyRelationships(block, ctx);
 
   return {
+    deploymentEnvironments,
     people,
-    softwareSystems,
     relationships: ctx.relationships,
-    deploymentEnvironments
+    softwareSystems
   };
 }
 
