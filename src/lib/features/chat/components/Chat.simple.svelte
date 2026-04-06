@@ -3225,7 +3225,7 @@
       <PromptInputBody>
         <Textarea
           class="field-sizing-content min-h-10 w-full resize-none rounded-none border-none bg-transparent px-3.5 py-2.5 text-[13px] text-foreground shadow-none ring-0 outline-none placeholder:text-muted-foreground/60 focus-visible:ring-0 sm:min-h-[44px] dark:bg-transparent"
-          style="max-height: min(160px, 30vh);"
+          style="max-height: min(240px, 40vh);"
           name="message"
           placeholder={selectedContext.type
             ? `Ask about selected ${selectedContext.type}s...`
