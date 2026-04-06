@@ -14,6 +14,8 @@
   import IconPanel from '$lib/components/canvas/IconPanel.svelte';
   import Editor from '$lib/features/editor/components/Editor.svelte';
   import { View } from '$lib/components/layout';
+  import StructurizrView from '$lib/features/structurizr/components/StructurizrView.svelte';
+  import FileTabs from '$lib/features/structurizr/components/FileTabs.svelte';
   import { ChatPanel, DocumentPanel, PanelResizeHandle } from '$lib/components/panels';
   import RefillGemsModal from '$lib/components/RefillGemsModal.svelte';
   import SettingsModal from '$lib/components/SettingsModal.svelte';
@@ -257,6 +259,13 @@
   let isGridVisible = $state(loadUIState('gridVisible', false));
   let isRoughMode = $state(loadUIState('roughMode', false));
   let zoomLevel = $state(100);
+
+  // Structurizr engine state
+  let activeStructurizrFile = $state('workspace.dsl');
+
+  const isStructurizr = $derived(workspaceStore.workspace?.document?.engine === 'structurizr');
+
+  const structurizrFiles = $derived(workspaceStore.workspace?.document?.files ?? {});
   let isViewRendering = $state(false);
   let viewRenderError = $state('');
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -680,6 +689,30 @@
     await workspaceStore.updateMeta({ title: navbarRenameValue.trim() });
     isRenamingInNavbar = false;
   }
+
+  // Structurizr file management handlers
+  function handleFileSelect(filename: string) {
+    activeStructurizrFile = filename;
+  }
+  function handleFileCreate(filename: string) {
+    workspaceStore.updateFile(filename, '');
+    activeStructurizrFile = filename;
+  }
+  function handleFileDelete(filename: string) {
+    workspaceStore.deleteFile(filename);
+    if (activeStructurizrFile === filename) activeStructurizrFile = 'workspace.dsl';
+  }
+  function handleFileRename(oldName: string, newName: string) {
+    workspaceStore.renameFile(oldName, newName);
+    if (activeStructurizrFile === oldName) activeStructurizrFile = newName;
+  }
+
+  // Sync active Structurizr file content into editor
+  $effect(() => {
+    if (isStructurizr && structurizrFiles[activeStructurizrFile] !== undefined) {
+      inputStateStore.update((s) => ({ ...s, code: structurizrFiles[activeStructurizrFile] }));
+    }
+  });
 </script>
 
 {#if !authStore.isInitialized || authStore.isLoading || wsLoading}
@@ -890,9 +923,7 @@
                     <div
                       class="absolute top-0 left-full z-50 ml-1.5 w-[200px] rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-sm">
                       <div class="mb-1 flex items-center justify-between px-1.5 py-0.5">
-                        <span
-                          class="text-[10px] font-medium text-muted-foreground"
-                          >Add Node</span>
+                        <span class="text-[10px] font-medium text-muted-foreground">Add Node</span>
                         <button
                           type="button"
                           class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -1016,9 +1047,7 @@
                     <div
                       class="absolute top-0 left-full z-50 ml-1.5 w-32 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-sm">
                       <div class="mb-0.5 flex items-center justify-between px-2 py-1">
-                        <span
-                          class="text-[10px] font-medium text-muted-foreground"
-                          >Layout</span>
+                        <span class="text-[10px] font-medium text-muted-foreground">Layout</span>
                         <button
                           type="button"
                           class="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
@@ -1083,7 +1112,8 @@
                     panZoomState.zoomIn();
                     zoomLevel = Math.min(400, zoomLevel + 10);
                   }}><ZoomIn class="size-4" /></Button>
-                <div class="flex size-8 items-center justify-center rounded-[5px] text-[10px] font-medium tabular-nums text-muted-foreground">
+                <div
+                  class="flex size-8 items-center justify-center rounded-[5px] text-[10px] font-medium text-muted-foreground tabular-nums">
                   {zoomLevel}%
                 </div>
                 <Button
@@ -1108,11 +1138,15 @@
 
               <!-- Diagram View -->
               <div class="relative flex-1 overflow-hidden">
-                <View
-                  {panZoomState}
-                  shouldShowGrid={$stateStore.grid}
-                  bind:isRendering={isViewRendering}
-                  bind:renderError={viewRenderError} />
+                {#if isStructurizr}
+                  <StructurizrView files={structurizrFiles} gridEnabled={$inputStateStore.grid} />
+                {:else}
+                  <View
+                    {panZoomState}
+                    shouldShowGrid={$stateStore.grid}
+                    bind:isRendering={isViewRendering}
+                    bind:renderError={viewRenderError} />
+                {/if}
                 <ColorPanel bind:open={isColorPanelOpen} />
                 <IconPanel bind:open={isIconPanelOpen} />
                 <ElementToolbar />
@@ -1172,32 +1206,46 @@
                 position="left"
                 onResize={(delta) => handlePanelResize('code', delta)} />
               <div class="flex h-full flex-col bg-card">
-                <div
-                  class="flex h-10 items-center justify-between gap-1.5 border-b border-border px-3">
-                  <div class="flex items-center gap-1.5">
-                    <Code2 class="size-4 text-muted-foreground" />
-                    <span class="text-xs font-semibold text-foreground">Code</span>
-                    <span class="text-[10px] text-muted-foreground"
-                      >{$stateStore.editorMode === 'config' ? 'config' : 'mermaid'}</span>
+                {#if isStructurizr}
+                  <FileTabs
+                    files={structurizrFiles}
+                    activeFile={activeStructurizrFile}
+                    onSelect={handleFileSelect}
+                    onCreate={handleFileCreate}
+                    onDelete={handleFileDelete}
+                    onRename={handleFileRename} />
+                {:else}
+                  <div
+                    class="flex h-10 items-center justify-between gap-1.5 border-b border-border px-3">
+                    <div class="flex items-center gap-1.5">
+                      <Code2 class="size-4 text-muted-foreground" />
+                      <span class="text-xs font-semibold text-foreground">Code</span>
+                      <span class="text-[10px] text-muted-foreground"
+                        >{$stateStore.editorMode === 'config' ? 'config' : 'mermaid'}</span>
+                    </div>
+                    <div class="flex items-center gap-1">
+                      <button
+                        type="button"
+                        class="flex h-6 items-center gap-1 rounded-md border border-border bg-background px-2 text-[10px] font-medium transition-colors hover:bg-muted/50"
+                        onclick={() => {
+                          const currentMode = $stateStore.editorMode;
+                          const newMode = currentMode === 'code' ? 'config' : 'code';
+                          updateCodeStore({ editorMode: newMode });
+                        }}
+                        title="Switch between mermaid code and configuration">
+                        {$stateStore.editorMode === 'code' ? 'Config' : 'Code'}
+                      </button>
+                    </div>
                   </div>
-                  <div class="flex items-center gap-1">
-                    <button
-                      type="button"
-                      class="flex h-6 items-center gap-1 rounded-md border border-border bg-background px-2 text-[10px] font-medium transition-colors hover:bg-muted/50"
-                      onclick={() => {
-                        const currentMode = $stateStore.editorMode;
-                        const newMode = currentMode === 'code' ? 'config' : 'code';
-                        updateCodeStore({ editorMode: newMode });
-                      }}
-                      title="Switch between mermaid code and configuration">
-                      {$stateStore.editorMode === 'code' ? 'Config' : 'Code'}
-                    </button>
-                  </div>
-                </div>
+                {/if}
                 <div class="flex-1 overflow-hidden text-[12px]">
                   <Editor
                     onUpdate={(code) => {
-                      updateCodeStore({ code });
+                      if (isStructurizr) {
+                        workspaceStore.updateFile(activeStructurizrFile, code);
+                      } else {
+                        updateCodeStore({ code });
+                      }
                       ensureFileExists();
                       workspaceStore.markDirty();
                     }}
