@@ -1,14 +1,30 @@
 <script lang="ts">
   import { Handle, Position } from '@xyflow/svelte';
   import type { NodeProps } from '@xyflow/svelte';
+  import type { HandleDef } from '../../layout.js';
 
   interface C4NodeData {
     label: string;
     description?: string;
-    technology?: string;
     bgColor?: string;
     textColor?: string;
     typeLabel?: string;
+    handles?: HandleDef[];
+  }
+
+  const SIDE_TO_POSITION: Record<string, Position> = {
+    bottom: Position.Bottom,
+    left: Position.Left,
+    right: Position.Right,
+    top: Position.Top
+  };
+
+  function handleStyle(h: HandleDef): string {
+    if (h.side === 'top') return `left: ${h.percent}%; top: 0; transform: translateX(-50%);`;
+    if (h.side === 'bottom')
+      return `left: ${h.percent}%; bottom: 0; top: auto; transform: translateX(-50%);`;
+    if (h.side === 'left') return `top: ${h.percent}%; left: 0; transform: translateY(-50%);`;
+    return `top: ${h.percent}%; right: 0; left: auto; transform: translateY(-50%);`;
   }
 
   let { data }: NodeProps = $props();
@@ -17,23 +33,25 @@
   const bg = $derived(c4.bgColor ?? '#08427B');
   const text = $derived(c4.textColor ?? '#ffffff');
   const typeLabel = $derived(c4.typeLabel ?? 'Person');
+  const handles = $derived(c4.handles ?? []);
 </script>
 
-<Handle type="source" position={Position.Top} id="top" class="c4-handle" />
-<Handle type="source" position={Position.Bottom} id="bottom" class="c4-handle" />
-<Handle type="source" position={Position.Left} id="left" class="c4-handle" />
-<Handle type="source" position={Position.Right} id="right" class="c4-handle" />
+{#each handles as h (h.id)}
+  <Handle
+    type="source"
+    position={SIDE_TO_POSITION[h.side]}
+    id={h.id}
+    class="c4-handle"
+    style={handleStyle(h)} />
+{/each}
 
 <div class="node-wrapper" style="--bg: {bg}; --text: {text};">
-  <!-- Stick figure SVG -->
   <svg
     class="person-icon"
     viewBox="0 0 40 55"
     xmlns="http://www.w3.org/2000/svg"
     aria-hidden="true">
-    <!-- Head -->
     <circle cx="20" cy="10" r="8" fill="currentColor" />
-    <!-- Body -->
     <line
       x1="20"
       y1="18"
@@ -42,7 +60,6 @@
       stroke="currentColor"
       stroke-width="3"
       stroke-linecap="round" />
-    <!-- Arms -->
     <line
       x1="6"
       y1="26"
@@ -51,7 +68,6 @@
       stroke="currentColor"
       stroke-width="3"
       stroke-linecap="round" />
-    <!-- Left leg -->
     <line
       x1="20"
       y1="38"
@@ -60,7 +76,6 @@
       stroke="currentColor"
       stroke-width="3"
       stroke-linecap="round" />
-    <!-- Right leg -->
     <line
       x1="20"
       y1="38"
@@ -70,7 +85,6 @@
       stroke-width="3"
       stroke-linecap="round" />
   </svg>
-
   <div class="node-label">{c4.label}</div>
   <div class="node-type">[{typeLabel}]</div>
   {#if c4.description}

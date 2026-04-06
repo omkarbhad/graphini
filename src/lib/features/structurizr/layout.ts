@@ -1,5 +1,9 @@
 /**
- * ELK-based layout for C4 diagrams.
+ * ELK-based layout for C4 diagrams with per-edge handle positioning.
+ *
+ * ELK computes exact port positions for each edge endpoint. We convert those
+ * into unique handles positioned at precise points along each node's border,
+ * so no two edges share the same connection point.
  */
 
 import ELK from 'elkjs/lib/elk.bundled.js';
@@ -14,6 +18,14 @@ export interface LayoutOptions {
   nodeHeight?: number;
   layerSpacing?: number;
   nodeSpacing?: number;
+}
+
+/** Handle definition: a unique connection point on a node's border. */
+export interface HandleDef {
+  id: string;
+  side: 'top' | 'bottom' | 'left' | 'right';
+  /** Position along the side as a percentage (0–100). */
+  percent: number;
 }
 
 const DIRECTION_MAP: Record<string, string> = {
@@ -80,7 +92,7 @@ export async function applyElkLayout(
 
   const layoutResult = await elk.layout(elkGraph);
 
-  // Position nodes
+  // --- Build node position map ---
   const elkNodeMap = new Map<string, { height: number; width: number; x: number; y: number }>();
   for (const child of layoutResult.children ?? []) {
     elkNodeMap.set(child.id, {
@@ -91,16 +103,20 @@ export async function applyElkLayout(
     });
   }
 
-  const layoutedNodes = nodes.map((node) => {
-    if (positionOverrides[node.id]) {
-      return { ...node, position: positionOverrides[node.id] };
-    }
-    const pos = elkNodeMap.get(node.id);
-    if (!pos) return node;
-    return { ...node, position: { x: pos.x, y: pos.y } };
-  });
+  // --- Collect per-edge handle definitions ---
+  // For each edge, compute the exact handle position on source and target nodes.
+  // handleDefsPerNode: nodeId → HandleDef[]
+  const handleDefsPerNode = new Map<string, HandleDef[]>();
 
-  // Process edges - determine handles from ELK's edge sections
+  function ensureHandleList(nodeId: string): HandleDef[] {
+    let list = handleDefsPerNode.get(nodeId);
+    if (!list) {
+      list = [];
+      handleDefsPerNode.set(nodeId, list);
+    }
+    return list;
+  }
+
   const elkEdgeMap = new Map<
     string,
     {
@@ -114,28 +130,71 @@ export async function applyElkLayout(
     elkEdgeMap.set(elkEdge.id, elkEdge);
   }
 
-  const layoutedEdges = edges.map((edge) => {
+  // First pass: compute handle positions for each edge
+  interface EdgeHandleInfo {
+    sourceHandleId: string;
+    targetHandleId: string;
+  }
+  const edgeHandleInfoMap = new Map<string, EdgeHandleInfo>();
+
+  for (const edge of edges) {
     const elkEdge = elkEdgeMap.get(edge.id);
     const section = elkEdge?.sections?.[0];
-
     const srcNode = elkNodeMap.get(edge.source);
     const tgtNode = elkNodeMap.get(edge.target);
 
-    let sourceHandle = 'bottom';
-    let targetHandle = 'top';
+    if (!section?.startPoint || !section?.endPoint || !srcNode || !tgtNode) {
+      edgeHandleInfoMap.set(edge.id, { sourceHandleId: 'bottom', targetHandleId: 'top' });
+      continue;
+    }
 
-    if (section?.startPoint && srcNode) {
-      sourceHandle = getHandleFromPort(section.startPoint, srcNode);
-    }
-    if (section?.endPoint && tgtNode) {
-      targetHandle = getHandleFromPort(section.endPoint, tgtNode);
-    }
+    // Compute source handle
+    const srcHandle = computeHandleDef(`src-${edge.id}`, section.startPoint, srcNode);
+    ensureHandleList(edge.source).push(srcHandle);
+
+    // Compute target handle
+    const tgtHandle = computeHandleDef(`tgt-${edge.id}`, section.endPoint, tgtNode);
+    ensureHandleList(edge.target).push(tgtHandle);
+
+    edgeHandleInfoMap.set(edge.id, {
+      sourceHandleId: srcHandle.id,
+      targetHandleId: tgtHandle.id
+    });
+  }
+
+  // --- Position nodes and attach handle definitions ---
+  const layoutedNodes = nodes.map((node) => {
+    const pos =
+      positionOverrides[node.id] ??
+      (() => {
+        const p = elkNodeMap.get(node.id);
+        return p ? { x: p.x, y: p.y } : node.position;
+      })();
+
+    const handles = handleDefsPerNode.get(node.id) ?? [];
+
+    return {
+      ...node,
+      data: {
+        ...(node.data as Record<string, unknown>),
+        handles
+      },
+      position: pos
+    };
+  });
+
+  // --- Build edges with unique handle IDs ---
+  const layoutedEdges = edges.map((edge) => {
+    const info = edgeHandleInfoMap.get(edge.id) ?? {
+      sourceHandleId: 'bottom',
+      targetHandleId: 'top'
+    };
 
     return {
       ...edge,
       markerEnd: { height: 15, type: MarkerType.ArrowClosed, width: 15 },
-      sourceHandle,
-      targetHandle,
+      sourceHandle: info.sourceHandleId,
+      targetHandle: info.targetHandleId,
       type: 'smoothstep'
     };
   });
@@ -143,24 +202,40 @@ export async function applyElkLayout(
   return { nodes: layoutedNodes, edges: layoutedEdges };
 }
 
-/** Determine which side of a node a port point is on. */
-function getHandleFromPort(
+/**
+ * Convert an absolute ELK port point into a HandleDef with side and percentage.
+ */
+function computeHandleDef(
+  id: string,
   point: { x: number; y: number },
   node: { height: number; width: number; x: number; y: number }
-): string {
-  const cx = node.x + node.width / 2;
-  const cy = node.y + node.height / 2;
-  const dx = point.x - cx;
-  const dy = point.y - cy;
+): HandleDef {
+  // Compute position relative to the node's top-left corner
+  const relX = point.x - node.x;
+  const relY = point.y - node.y;
 
-  // Normalize by node dimensions to handle non-square nodes
-  const normalizedDx = dx / (node.width / 2);
-  const normalizedDy = dy / (node.height / 2);
+  // Determine which side the point is on based on proximity to each edge
+  const distTop = relY;
+  const distBottom = node.height - relY;
+  const distLeft = relX;
+  const distRight = node.width - relX;
 
-  if (Math.abs(normalizedDx) > Math.abs(normalizedDy)) {
-    return normalizedDx > 0 ? 'right' : 'left';
+  const minDist = Math.min(distTop, distBottom, distLeft, distRight);
+
+  if (minDist === distTop) {
+    return { id, percent: clampPercent((relX / node.width) * 100), side: 'top' };
   }
-  return normalizedDy > 0 ? 'bottom' : 'top';
+  if (minDist === distBottom) {
+    return { id, percent: clampPercent((relX / node.width) * 100), side: 'bottom' };
+  }
+  if (minDist === distLeft) {
+    return { id, percent: clampPercent((relY / node.height) * 100), side: 'left' };
+  }
+  return { id, percent: clampPercent((relY / node.height) * 100), side: 'right' };
+}
+
+function clampPercent(v: number): number {
+  return Math.max(5, Math.min(95, v));
 }
 
 export const applyDagreLayout = applyElkLayout;
