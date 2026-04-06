@@ -100,13 +100,13 @@ async function fetchMe(): Promise<void> {
 }
 
 /**
- * OAuth login — redirect to magnova-auth
+ * OAuth login — redirect directly to magnova-auth (same pattern as Astrova)
  */
+const AUTH_URL = 'https://auth.magnova.ai';
+
 function login(returnTo?: string): void {
-  const url = returnTo
-    ? `/api/auth/login?returnTo=${encodeURIComponent(returnTo)}`
-    : '/api/auth/login';
-  window.location.href = url;
+  const redirect = returnTo || `${window.location.origin}/edit`;
+  window.location.href = `${AUTH_URL}/graphini?redirect=${encodeURIComponent(redirect)}`;
 }
 
 /**
