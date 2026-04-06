@@ -129,22 +129,22 @@ export const DEFAULT_STRUCTURIZR_DOCUMENT: WorkspaceDocument = {
   documentMarkdown: '',
   engine: 'structurizr',
   files: {
-    'workspace.dsl': `workspace "Untitled" "Description" {
+    'workspace.dsl': `workspace {
 
     model {
         user = person "User" "A user of the system"
         system = softwareSystem "System" "Description" {
-            webapp = container "Web App" "" "React"
-            api = container "API" "" "Node.js"
-            db = container "Database" "" "PostgreSQL"
+            webapp = container "Web App" "Serves the UI" "React"
+            api = container "API" "Backend services" "Node.js"
+            db = container "Database" "Stores data" "PostgreSQL"
         }
         user -> webapp "Uses"
-        webapp -> api "Calls"
-        api -> db "Reads/Writes"
+        webapp -> api "Makes API calls to"
+        api -> db "Reads from and writes to"
     }
 
     views {
-        systemContext system "Context" {
+        systemContext system "SystemContext" {
             include *
             autoLayout
         }

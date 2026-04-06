@@ -197,10 +197,24 @@ function buildEdges(
 
 /**
  * Determines whether the view should include all relevant elements.
- * A view with `includes: ['*']` or an empty includes list defaults to showing all.
+ *
+ * The structurizr-parser beta doesn't distinguish `include *` from explicit
+ * includes — it just puts the focal system/container in the elements list.
+ * We treat a view as "include all" when it has no excludes and either:
+ *   - no explicit includes
+ *   - a wildcard ('*') include
+ *   - only the focal element (the parser's representation of `include *`)
  */
 function isIncludeAll(view: C4ViewDefinition): boolean {
-  return view.includes.length === 0 || view.includes.some((inc) => inc.trim() === '*');
+  if (view.excludes.length > 0) return false;
+  if (view.includes.length === 0) return true;
+  if (view.includes.some((inc) => inc.trim() === '*')) return true;
+  // If the only included element is the focal system/container, treat as include-all
+  if (view.includes.length === 1) {
+    const only = view.includes[0];
+    if (only === view.softwareSystemId || only === view.containerId) return true;
+  }
+  return false;
 }
 
 /** Transforms a System Landscape view: shows all people + all software systems. */

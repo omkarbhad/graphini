@@ -23,7 +23,7 @@ A workspace is the top-level container. All elements live inside the model block
 
 Basic skeleton:
 \`\`\`
-workspace "Name" "Description" {
+workspace {
   model {
     // elements and relationships here
   }
