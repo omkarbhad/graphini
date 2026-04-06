@@ -1,12 +1,10 @@
 /**
- * Structurizr DSL parser wrapper.
+ * Custom lightweight Structurizr DSL parser.
  *
- * Resolves `!include` directives from a files map, then uses the
- * `structurizr-parser` package to parse DSL into a strongly-typed
- * C4Workspace object.
+ * Replaces the broken `structurizr-parser` package with a line-by-line
+ * brace-tracking parser that handles the core DSL features we need.
  */
 
-import { StructurizrLexer, StructurizrParser, RawInterpreter } from 'structurizr-parser';
 import type {
   C4Workspace,
   C4Model,
@@ -20,131 +18,6 @@ import type {
   C4ElementStyle,
   C4RelationshipStyle
 } from './types.js';
-
-// ---------------------------------------------------------------------------
-// Raw interpreter output types (loose — the package doesn't export these)
-// ---------------------------------------------------------------------------
-
-interface RawRelationship {
-  id?: string;
-  sourceId?: string;
-  destinationId?: string;
-  description?: string;
-  technology?: string;
-  tags?: string;
-}
-
-interface RawComponent {
-  id?: string;
-  name?: string;
-  description?: string;
-  technology?: string;
-  tags?: string;
-  relationships?: RawRelationship[];
-}
-
-interface RawContainer {
-  id?: string;
-  name?: string;
-  description?: string;
-  technology?: string;
-  tags?: string;
-  components?: RawComponent[];
-  relationships?: RawRelationship[];
-}
-
-interface RawPerson {
-  id?: string;
-  name?: string;
-  description?: string;
-  tags?: string;
-  relationships?: RawRelationship[];
-}
-
-interface RawSoftwareSystem {
-  id?: string;
-  name?: string;
-  description?: string;
-  tags?: string;
-  containers?: RawContainer[];
-  relationships?: RawRelationship[];
-}
-
-interface RawDeploymentNode {
-  id?: string;
-  name?: string;
-  description?: string;
-  technology?: string;
-  tags?: string;
-  environment?: string;
-  instances?: string;
-  children?: RawDeploymentNode[];
-  relationships?: RawRelationship[];
-}
-
-interface RawAutoLayout {
-  rankDirection?: 'TopBottom' | 'BottomTop' | 'LeftRight' | 'RightLeft';
-}
-
-interface RawElementView {
-  id?: string;
-}
-
-interface RawView {
-  key?: string;
-  title?: string;
-  description?: string;
-  automaticLayout?: RawAutoLayout;
-  elements?: RawElementView[];
-  softwareSystemId?: string;
-  containerId?: string;
-}
-
-interface RawElementStyle {
-  tag?: string;
-  background?: string;
-  color?: string;
-  shape?: string;
-  stroke?: string;
-  fontSize?: number;
-  opacity?: number;
-}
-
-interface RawRelationshipStyle {
-  tag?: string;
-  color?: string;
-  thickness?: number;
-  dashed?: boolean;
-  fontSize?: number;
-}
-
-interface RawModel {
-  people?: RawPerson[];
-  softwareSystems?: RawSoftwareSystem[];
-  deploymentNodes?: RawDeploymentNode[];
-}
-
-interface RawViews {
-  systemLandscapeViews?: RawView[];
-  systemContextViews?: RawView[];
-  containerViews?: RawView[];
-  componentViews?: RawView[];
-  dynamicViews?: RawView[];
-  deploymentViews?: RawView[];
-  configuration?: {
-    styles?: {
-      elements?: RawElementStyle[];
-      relationships?: RawRelationshipStyle[];
-    };
-  };
-}
-
-interface RawWorkspace {
-  name?: string;
-  description?: string;
-  model?: RawModel;
-  views?: RawViews;
-}
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -162,18 +35,13 @@ export interface ParseResult {
 }
 
 // ---------------------------------------------------------------------------
-// Include resolution
+// Include resolution (unchanged)
 // ---------------------------------------------------------------------------
 
 const INCLUDE_RE = /^[ \t]*!include[ \t]+(.+)$/m;
 
 /**
  * Recursively inline `!include <path>` directives from the files map.
- *
- * @param files     Map of filename → DSL content
- * @param entryFile The file to start resolving from
- * @param visited   Set of already-visited filenames (cycle detection)
- * @returns         The resolved DSL string with includes inlined
  */
 export function resolveIncludes(
   files: Record<string, string>,
@@ -181,7 +49,6 @@ export function resolveIncludes(
   visited: Set<string> = new Set<string>()
 ): string {
   if (visited.has(entryFile)) {
-    // Circular include — return empty string to break the cycle
     return '';
   }
 
@@ -192,11 +59,9 @@ export function resolveIncludes(
 
   visited.add(entryFile);
 
-  // Replace each !include directive with the resolved content of the target file
   let resolved = content;
   let match: RegExpExecArray | null;
 
-  // Process includes one at a time (the regex is not global, so we loop)
   while ((match = INCLUDE_RE.exec(resolved)) !== null) {
     const includedPath = match[1].trim();
     let includedContent: string;
@@ -204,8 +69,6 @@ export function resolveIncludes(
     if (files[includedPath] !== undefined) {
       includedContent = resolveIncludes(files, includedPath, new Set(visited));
     } else {
-      // File not in the map — leave a comment so the error is visible but
-      // parsing can continue for the rest of the document
       includedContent = `/* !include "${includedPath}" not found in files map */`;
     }
 
@@ -219,10 +82,21 @@ export function resolveIncludes(
 }
 
 // ---------------------------------------------------------------------------
-// Raw → C4 mapping helpers
+// Helpers
 // ---------------------------------------------------------------------------
 
-/** Split a comma-separated tags string into an array; return [] on empty/undefined. */
+/** Extract all quoted strings from a line. */
+function extractQuoted(line: string): string[] {
+  const results: string[] = [];
+  const re = /"([^"]*)"/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(line)) !== null) {
+    results.push(m[1]);
+  }
+  return results;
+}
+
+/** Split comma-separated tags into an array. */
 function splitTags(raw: string | undefined): string[] {
   if (!raw) return [];
   return raw
@@ -231,196 +105,713 @@ function splitTags(raw: string | undefined): string[] {
     .filter(Boolean);
 }
 
-/** Coerce a value to a non-empty string, falling back to `fallback`. */
-function str(value: unknown, fallback = ''): string {
-  if (typeof value === 'string' && value.length > 0) return value;
-  return fallback;
+/** Strip comments from DSL source. Handles // and block comments. */
+function stripComments(src: string): string {
+  // Remove block comments first
+  let result = src.replace(/\/\*[\s\S]*?\*\//g, (match) => {
+    // Preserve line count so line numbers stay correct
+    return match.replace(/[^\n]/g, '');
+  });
+  // Remove line comments
+  result = result.replace(/\/\/.*$/gm, '');
+  return result;
 }
 
-/** Collect all relationships from any model element that carries them. */
-function collectRelationships(
-  raw: { relationships?: RawRelationship[] } | undefined
-): C4Relationship[] {
-  if (!raw?.relationships) return [];
-  return raw.relationships.map(
-    (r): C4Relationship => ({
-      description: str(r.description),
-      sourceId: str(r.sourceId),
-      tags: splitTags(r.tags),
-      targetId: str(r.destinationId),
-      technology: str(r.technology)
-    })
-  );
+// ---------------------------------------------------------------------------
+// Tokeniser: split into lines, track brace depth, build block tree
+// ---------------------------------------------------------------------------
+
+interface Block {
+  keyword: string; // first word of the opening line
+  fullLine: string; // the full opening line (trimmed)
+  lineNumber: number;
+  children: Block[];
+  bodyLines: { text: string; lineNumber: number }[];
 }
 
-function mapComponent(raw: RawComponent): C4Component {
-  return {
-    description: str(raw.description),
-    id: str(raw.id),
-    name: str(raw.name),
-    tags: splitTags(raw.tags),
-    technology: str(raw.technology)
+function buildBlockTree(lines: string[]): Block {
+  const root: Block = {
+    bodyLines: [],
+    children: [],
+    fullLine: '',
+    keyword: '__root__',
+    lineNumber: 0
   };
-}
 
-function mapContainer(raw: RawContainer): C4Container {
-  return {
-    components: (raw.components ?? []).map(mapComponent),
-    description: str(raw.description),
-    id: str(raw.id),
-    name: str(raw.name),
-    tags: splitTags(raw.tags),
-    technology: str(raw.technology)
-  };
-}
+  const stack: Block[] = [root];
 
-function mapPerson(raw: RawPerson): C4Person {
-  return {
-    description: str(raw.description),
-    id: str(raw.id),
-    name: str(raw.name),
-    tags: splitTags(raw.tags)
-  };
-}
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
 
-function mapSoftwareSystem(raw: RawSoftwareSystem): C4SoftwareSystem {
-  return {
-    containers: (raw.containers ?? []).map(mapContainer),
-    description: str(raw.description),
-    id: str(raw.id),
-    name: str(raw.name),
-    tags: splitTags(raw.tags)
-  };
-}
+    const lineNum = i + 1;
 
-function mapDeploymentNode(raw: RawDeploymentNode): C4DeploymentNode {
-  return {
-    children: (raw.children ?? []).map(mapDeploymentNode),
-    description: str(raw.description),
-    id: str(raw.id),
-    instances: raw.instances ? [raw.instances] : [],
-    name: str(raw.name),
-    tags: splitTags(raw.tags),
-    technology: str(raw.technology)
-  };
-}
+    // Count braces on this line
+    const openCount = (trimmed.match(/\{/g) || []).length;
+    const closeCount = (trimmed.match(/\}/g) || []).length;
 
-function extractAllRelationships(rawModel: RawModel): C4Relationship[] {
-  const all: C4Relationship[] = [];
+    if (openCount > 0) {
+      // This line opens a new block
+      const lineBefore = trimmed.replace(/\{[^}]*$/, '').trim();
+      const firstWord = lineBefore.split(/\s+/)[0]?.toLowerCase() || '';
 
-  for (const p of rawModel.people ?? []) {
-    all.push(...collectRelationships(p));
+      const newBlock: Block = {
+        bodyLines: [],
+        children: [],
+        fullLine: lineBefore,
+        keyword: firstWord,
+        lineNumber: lineNum
+      };
+
+      const parent = stack[stack.length - 1];
+      parent.children.push(newBlock);
+      stack.push(newBlock);
+      depth += openCount;
+
+      // Handle case where open and close are on the same line: `autoLayout lr`
+      // won't happen with braces, but `{ }` on one line could
+      for (let c = 0; c < closeCount; c++) {
+        if (stack.length > 1) stack.pop();
+      }
+    } else if (closeCount > 0) {
+      for (let c = 0; c < closeCount; c++) {
+        if (stack.length > 1) stack.pop();
+      }
+    } else {
+      // A body line — belongs to the current block
+      const parent = stack[stack.length - 1];
+      parent.bodyLines.push({ text: trimmed, lineNumber: lineNum });
+    }
   }
-  for (const ss of rawModel.softwareSystems ?? []) {
-    all.push(...collectRelationships(ss));
-    for (const c of ss.containers ?? []) {
-      all.push(...collectRelationships(c));
-      for (const comp of c.components ?? []) {
-        all.push(...collectRelationships(comp));
+
+  return root;
+}
+
+// ---------------------------------------------------------------------------
+// Element parsers
+// ---------------------------------------------------------------------------
+
+// Match: varName = person "Name" "Desc" "Tags"
+// Match: varName = softwareSystem "Name" "Desc" "Tags"
+// Match: varName = container "Name" "Desc" "Tech" "Tags"
+// Match: varName = component "Name" "Desc" "Tech" "Tags"
+const ELEMENT_RE = /^(\w+)\s*=\s*(person|softwareSystem|softwaresystem|container|component)\b/i;
+
+// Match: source -> destination "desc" "tech"
+const RELATIONSHIP_RE = /^(\w+)\s*->\s*(\w+)/;
+
+// Match: containerInstance varName
+const CONTAINER_INSTANCE_RE = /^containerInstance\s+(\w+)/i;
+
+interface ParserContext {
+  variables: Map<string, string>; // varName -> element id (same as varName)
+  relationships: C4Relationship[];
+  errors: ParseError[];
+}
+
+function parseElementLine(line: string): { varName: string; type: string; args: string[] } | null {
+  const m = ELEMENT_RE.exec(line);
+  if (!m) return null;
+  return {
+    varName: m[1],
+    type: m[2].toLowerCase() === 'softwaresystem' ? 'softwareSystem' : m[2].toLowerCase(),
+    args: extractQuoted(line)
+  };
+}
+
+function parsePerson(block: Block, ctx: ParserContext): C4Person | null {
+  const parsed = parseElementLine(block.fullLine);
+  if (!parsed || parsed.type !== 'person') return null;
+
+  const [name, desc, tags] = parsed.args;
+  ctx.variables.set(parsed.varName, parsed.varName);
+
+  // Also parse body lines for relationships
+  parseBodyRelationships(block, ctx);
+
+  return {
+    id: parsed.varName,
+    name: name || parsed.varName,
+    description: desc || '',
+    tags: splitTags(tags)
+  };
+}
+
+function parseComponent(block: Block, ctx: ParserContext): C4Component | null {
+  const parsed = parseElementLine(block.fullLine);
+  if (!parsed || parsed.type !== 'component') return null;
+
+  const [name, desc, tech, tags] = parsed.args;
+  ctx.variables.set(parsed.varName, parsed.varName);
+
+  parseBodyRelationships(block, ctx);
+
+  return {
+    description: desc || '',
+    id: parsed.varName,
+    name: name || parsed.varName,
+    tags: splitTags(tags),
+    technology: tech || ''
+  };
+}
+
+function parseContainer(block: Block, ctx: ParserContext): C4Container | null {
+  const parsed = parseElementLine(block.fullLine);
+  if (!parsed || parsed.type !== 'container') return null;
+
+  const [name, desc, tech, tags] = parsed.args;
+  ctx.variables.set(parsed.varName, parsed.varName);
+
+  const components: C4Component[] = [];
+
+  // Parse child blocks (components)
+  for (const child of block.children) {
+    const childParsed = parseElementLine(child.fullLine);
+    if (childParsed?.type === 'component') {
+      const comp = parseComponent(child, ctx);
+      if (comp) components.push(comp);
+    } else {
+      // Could be a group block
+      if (child.keyword === 'group') {
+        for (const gc of child.children) {
+          const gcParsed = parseElementLine(gc.fullLine);
+          if (gcParsed?.type === 'component') {
+            const comp = parseComponent(gc, ctx);
+            if (comp) components.push(comp);
+          }
+        }
+        parseBodyRelationships(child, ctx);
       }
     }
   }
-  for (const dn of rawModel.deploymentNodes ?? []) {
-    all.push(...collectRelationships(dn));
+
+  // Parse body-line components (no braces)
+  for (const bodyLine of block.bodyLines) {
+    const bp = parseElementLine(bodyLine.text);
+    if (bp?.type === 'component') {
+      const [cName, cDesc, cTech, cTags] = bp.args;
+      ctx.variables.set(bp.varName, bp.varName);
+      components.push({
+        description: cDesc || '',
+        id: bp.varName,
+        name: cName || bp.varName,
+        tags: splitTags(cTags),
+        technology: cTech || ''
+      });
+    }
   }
 
-  // Filter out relationships where either side has no ID (malformed entries)
-  return all.filter((r) => r.sourceId && r.targetId);
-}
+  parseBodyRelationships(block, ctx);
 
-function mapAutoLayout(raw: RawAutoLayout | undefined): C4ViewDefinition['autoLayout'] {
-  if (!raw) return undefined;
-  const dirMap: Record<string, 'TB' | 'BT' | 'LR' | 'RL'> = {
-    TopBottom: 'TB',
-    BottomTop: 'BT',
-    LeftRight: 'LR',
-    RightLeft: 'RL'
-  };
-  const direction = dirMap[raw.rankDirection ?? ''] ?? 'TB';
-  return { direction };
-}
-
-function mapView(raw: RawView, type: C4ViewDefinition['type']): C4ViewDefinition {
   return {
-    autoLayout: mapAutoLayout(raw.automaticLayout),
-    containerId: typeof raw.containerId === 'string' ? raw.containerId : undefined,
-    description: str(raw.description),
-    excludes: [],
-    includes: (raw.elements ?? []).map((e) => str(e.id)).filter(Boolean),
-    key: str(raw.key),
-    softwareSystemId: typeof raw.softwareSystemId === 'string' ? raw.softwareSystemId : undefined,
-    title: str(raw.title),
+    components,
+    description: desc || '',
+    id: parsed.varName,
+    name: name || parsed.varName,
+    tags: splitTags(tags),
+    technology: tech || ''
+  };
+}
+
+function parseSoftwareSystem(block: Block, ctx: ParserContext): C4SoftwareSystem | null {
+  const parsed = parseElementLine(block.fullLine);
+  if (!parsed || parsed.type !== 'softwareSystem') return null;
+
+  const [name, desc, tags] = parsed.args;
+  ctx.variables.set(parsed.varName, parsed.varName);
+
+  const containers: C4Container[] = [];
+
+  for (const child of block.children) {
+    const childParsed = parseElementLine(child.fullLine);
+    if (childParsed?.type === 'container') {
+      const cont = parseContainer(child, ctx);
+      if (cont) containers.push(cont);
+    } else if (child.keyword === 'group') {
+      for (const gc of child.children) {
+        const gcParsed = parseElementLine(gc.fullLine);
+        if (gcParsed?.type === 'container') {
+          const cont = parseContainer(gc, ctx);
+          if (cont) containers.push(cont);
+        }
+      }
+      parseBodyRelationships(child, ctx);
+    }
+  }
+
+  // Parse body-line containers (no braces)
+  for (const bodyLine of block.bodyLines) {
+    const bp = parseElementLine(bodyLine.text);
+    if (bp?.type === 'container') {
+      const [cName, cDesc, cTech, cTags] = bp.args;
+      ctx.variables.set(bp.varName, bp.varName);
+      containers.push({
+        components: [],
+        description: cDesc || '',
+        id: bp.varName,
+        name: cName || bp.varName,
+        tags: splitTags(cTags),
+        technology: cTech || ''
+      });
+    }
+  }
+
+  parseBodyRelationships(block, ctx);
+
+  return {
+    containers,
+    description: desc || '',
+    id: parsed.varName,
+    name: name || parsed.varName,
+    tags: splitTags(tags)
+  };
+}
+
+function parseBodyRelationships(block: Block, ctx: ParserContext): void {
+  for (const bodyLine of block.bodyLines) {
+    const rm = RELATIONSHIP_RE.exec(bodyLine.text);
+    if (rm) {
+      const quoted = extractQuoted(bodyLine.text);
+      ctx.relationships.push({
+        description: quoted[0] || '',
+        sourceId: rm[1],
+        tags: splitTags(quoted[2]),
+        targetId: rm[2],
+        technology: quoted[1] || ''
+      });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Deployment parsing
+// ---------------------------------------------------------------------------
+
+function parseDeploymentNode(block: Block, ctx: ParserContext): C4DeploymentNode {
+  const args = extractQuoted(block.fullLine);
+  // deploymentNode "Name" "Desc" "Tech" "Tags"
+  const firstWord = block.fullLine.split(/\s+/)[0] || '';
+  // Could be varName = deploymentNode ... or just deploymentNode ...
+  let id: string;
+  const assignMatch = /^(\w+)\s*=\s*deploymentNode/i.exec(block.fullLine);
+  if (assignMatch) {
+    id = assignMatch[1];
+    ctx.variables.set(id, id);
+  } else {
+    id = (args[0] || firstWord).replace(/\s+/g, '_').toLowerCase();
+  }
+
+  const [name, desc, tech, tags] = args;
+
+  const children: C4DeploymentNode[] = [];
+  const instances: string[] = [];
+
+  for (const child of block.children) {
+    if (
+      child.keyword === 'deploymentnode' ||
+      (child.keyword.match(/^\w+$/) && child.fullLine.match(/deploymentNode/i))
+    ) {
+      children.push(parseDeploymentNode(child, ctx));
+    }
+  }
+
+  // Check body lines for containerInstance
+  for (const bodyLine of block.bodyLines) {
+    const ciMatch = CONTAINER_INSTANCE_RE.exec(bodyLine.text);
+    if (ciMatch) {
+      instances.push(ciMatch[1]);
+    }
+  }
+
+  // Also check child blocks for containerInstance (when it has no braces it's a body line,
+  // but some might write it as a block)
+  for (const child of block.children) {
+    if (child.keyword === 'containerinstance') {
+      const ciMatch = CONTAINER_INSTANCE_RE.exec(child.fullLine);
+      if (ciMatch) instances.push(ciMatch[1]);
+    }
+  }
+
+  return {
+    children,
+    description: desc || '',
+    id,
+    instances,
+    name: name || id,
+    tags: splitTags(tags),
+    technology: tech || ''
+  };
+}
+
+function parseDeploymentEnvironment(
+  block: Block,
+  ctx: ParserContext
+): { name: string; deploymentNodes: C4DeploymentNode[] } {
+  const args = extractQuoted(block.fullLine);
+  const name = args[0] || 'Default';
+
+  const deploymentNodes: C4DeploymentNode[] = [];
+  for (const child of block.children) {
+    const lowerLine = child.fullLine.toLowerCase();
+    if (lowerLine.includes('deploymentnode') || child.keyword === 'deploymentnode') {
+      deploymentNodes.push(parseDeploymentNode(child, ctx));
+    } else if (/^\w+\s*=\s*deploymentNode/i.test(child.fullLine)) {
+      deploymentNodes.push(parseDeploymentNode(child, ctx));
+    }
+  }
+
+  return { name, deploymentNodes };
+}
+
+// ---------------------------------------------------------------------------
+// Model parsing
+// ---------------------------------------------------------------------------
+
+function parseModelBlock(block: Block, ctx: ParserContext): C4Model {
+  const people: C4Person[] = [];
+  const softwareSystems: C4SoftwareSystem[] = [];
+  const deploymentEnvironments: C4Model['deploymentEnvironments'] = [];
+
+  for (const child of block.children) {
+    const parsed = parseElementLine(child.fullLine);
+    if (parsed) {
+      switch (parsed.type) {
+        case 'person': {
+          const p = parsePerson(child, ctx);
+          if (p) people.push(p);
+          break;
+        }
+        case 'softwareSystem': {
+          const ss = parseSoftwareSystem(child, ctx);
+          if (ss) softwareSystems.push(ss);
+          break;
+        }
+        // container/component at model level (unusual but possible)
+        default:
+          break;
+      }
+    } else if (
+      child.keyword === 'deploymentenvironment' ||
+      child.fullLine.toLowerCase().startsWith('deploymentenvironment')
+    ) {
+      deploymentEnvironments.push(parseDeploymentEnvironment(child, ctx));
+    } else if (child.keyword === 'group') {
+      // Group at model level: parse children as model elements
+      for (const gc of child.children) {
+        const gcParsed = parseElementLine(gc.fullLine);
+        if (gcParsed) {
+          switch (gcParsed.type) {
+            case 'person': {
+              const p = parsePerson(gc, ctx);
+              if (p) people.push(p);
+              break;
+            }
+            case 'softwareSystem': {
+              const ss = parseSoftwareSystem(gc, ctx);
+              if (ss) softwareSystems.push(ss);
+              break;
+            }
+          }
+        }
+      }
+      parseBodyRelationships(child, ctx);
+    }
+  }
+
+  // Parse relationships in model body lines
+  parseBodyRelationships(block, ctx);
+
+  return {
+    people,
+    softwareSystems,
+    relationships: ctx.relationships,
+    deploymentEnvironments
+  };
+}
+
+// ---------------------------------------------------------------------------
+// View parsing
+// ---------------------------------------------------------------------------
+
+const VIEW_TYPE_RE = /^(systemLandscape|systemContext|container|component|dynamic|deployment)\b/i;
+
+function parseViewBlock(block: Block): C4ViewDefinition | null {
+  const line = block.fullLine;
+  const vtMatch = VIEW_TYPE_RE.exec(line);
+  if (!vtMatch) return null;
+
+  const rawType = vtMatch[1].toLowerCase();
+  let type: C4ViewDefinition['type'];
+  switch (rawType) {
+    case 'systemlandscape':
+      type = 'systemLandscape';
+      break;
+    case 'systemcontext':
+      type = 'systemContext';
+      break;
+    case 'container':
+      type = 'container';
+      break;
+    case 'component':
+      type = 'component';
+      break;
+    case 'dynamic':
+      type = 'dynamic';
+      break;
+    case 'deployment':
+      type = 'deployment';
+      break;
+    default:
+      return null;
+  }
+
+  // Extract the rest after the view type keyword
+  const rest = line.slice(vtMatch[0].length).trim();
+
+  // Parse: varName "ViewKey" or varName "EnvironmentName" "ViewKey" etc.
+  // First token is the variable reference (e.g., softwareSystem var)
+  const tokens = rest.split(/\s+/);
+  const quoted = extractQuoted(line);
+
+  let softwareSystemId: string | undefined;
+  let containerId: string | undefined;
+  let key = '';
+
+  if (type === 'deployment') {
+    // deployment varName "EnvName" "ViewKey"
+    const varRef = tokens[0] && !tokens[0].startsWith('"') ? tokens[0] : undefined;
+    softwareSystemId = varRef;
+    // key is the last quoted string, env name is first
+    key = quoted.length >= 2 ? quoted[quoted.length - 1] : quoted[0] || '';
+  } else if (type === 'systemLandscape') {
+    // systemLandscape "ViewKey"
+    key = quoted[0] || '';
+  } else {
+    // systemContext/container/component varName "ViewKey"
+    const varRef = tokens[0] && !tokens[0].startsWith('"') ? tokens[0] : undefined;
+    if (type === 'systemContext' || type === 'container') {
+      softwareSystemId = varRef;
+    }
+    if (type === 'component') {
+      containerId = varRef;
+    }
+    key = quoted[quoted.length - 1] || '';
+  }
+
+  // Parse body lines for includes, excludes, autoLayout, title, description
+  const includes: string[] = [];
+  const excludes: string[] = [];
+  let autoLayout: C4ViewDefinition['autoLayout'] | undefined;
+  let title = '';
+  let description: string | undefined;
+
+  for (const bodyLine of block.bodyLines) {
+    const text = bodyLine.text;
+
+    if (/^include\s+/i.test(text)) {
+      const includeRest = text.replace(/^include\s+/i, '').trim();
+      if (includeRest === '*') {
+        includes.push('*');
+      } else {
+        includes.push(...includeRest.split(/\s+/));
+      }
+    } else if (/^exclude\s+/i.test(text)) {
+      const excludeRest = text.replace(/^exclude\s+/i, '').trim();
+      excludes.push(...excludeRest.split(/\s+/));
+    } else if (/^autoLayout/i.test(text)) {
+      const dirMatch = /^autoLayout\s+(lr|rl|tb|bt)/i.exec(text);
+      const direction = dirMatch ? (dirMatch[1].toUpperCase() as 'TB' | 'BT' | 'LR' | 'RL') : 'TB';
+      autoLayout = { direction };
+    } else if (/^title\s+/i.test(text)) {
+      const tq = extractQuoted(text);
+      title = tq[0] || text.replace(/^title\s+/i, '').trim();
+    } else if (/^description\s+/i.test(text)) {
+      const dq = extractQuoted(text);
+      description = dq[0] || text.replace(/^description\s+/i, '').trim();
+    }
+  }
+
+  return {
+    autoLayout,
+    containerId,
+    description,
+    excludes,
+    includes,
+    key,
+    softwareSystemId,
+    title,
     type
   };
 }
 
-function mapElementStyle(raw: RawElementStyle): C4ElementStyle {
-  return {
-    background: raw.background ?? undefined,
-    border: raw.stroke ?? undefined,
-    color: raw.color ?? undefined,
-    fontSize: typeof raw.fontSize === 'number' ? raw.fontSize : undefined,
-    opacity: typeof raw.opacity === 'number' ? raw.opacity : undefined,
-    shape: raw.shape ?? undefined,
-    tag: str(raw.tag)
-  };
-}
+// ---------------------------------------------------------------------------
+// Style parsing
+// ---------------------------------------------------------------------------
 
-function mapRelationshipStyle(raw: RawRelationshipStyle): C4RelationshipStyle {
-  return {
-    color: raw.color ?? undefined,
-    dashed: typeof raw.dashed === 'boolean' ? raw.dashed : undefined,
-    fontSize: typeof raw.fontSize === 'number' ? raw.fontSize : undefined,
-    tag: str(raw.tag),
-    thickness: typeof raw.thickness === 'number' ? raw.thickness : undefined
-  };
-}
+function parseElementStyleBlock(block: Block): C4ElementStyle {
+  const args = extractQuoted(block.fullLine);
+  const tag = args[0] || '';
 
-function mapDeploymentEnvironments(
-  rawNodes: RawDeploymentNode[]
-): C4Model['deploymentEnvironments'] {
-  // The raw model flattens deployment nodes at the top level; group by environment.
-  const envMap = new Map<string, C4DeploymentNode[]>();
-  for (const dn of rawNodes) {
-    const env = str(dn.environment, 'Default');
-    if (!envMap.has(env)) envMap.set(env, []);
-    const envNodes = envMap.get(env);
-    if (envNodes) envNodes.push(mapDeploymentNode(dn));
+  const style: C4ElementStyle = { tag };
+
+  for (const bodyLine of block.bodyLines) {
+    const text = bodyLine.text;
+    const parts = text.split(/\s+/);
+    const prop = parts[0]?.toLowerCase();
+    const value = parts.slice(1).join(' ');
+
+    switch (prop) {
+      case 'shape':
+        style.shape = value;
+        break;
+      case 'background':
+        style.background = value;
+        break;
+      case 'color':
+      case 'colour':
+        style.color = value;
+        break;
+      case 'border':
+        style.border = value;
+        break;
+      case 'fontsize':
+        style.fontSize = parseInt(value, 10) || undefined;
+        break;
+      case 'opacity':
+        style.opacity = parseInt(value, 10) || undefined;
+        break;
+    }
   }
-  return Array.from(envMap.entries()).map(([name, deploymentNodes]) => ({ name, deploymentNodes }));
+
+  return style;
 }
 
-/** Map raw interpreter output → C4Workspace */
-function mapWorkspace(raw: RawWorkspace): C4Workspace {
-  const rawModel = raw.model ?? {};
-  const rawViews = raw.views ?? {};
-  const rawConfig = rawViews.configuration ?? {};
-  const rawStyles = rawConfig.styles ?? {};
+function parseRelationshipStyleBlock(block: Block): C4RelationshipStyle {
+  const args = extractQuoted(block.fullLine);
+  const tag = args[0] || '';
 
-  const model: C4Model = {
-    deploymentEnvironments: mapDeploymentEnvironments(rawModel.deploymentNodes ?? []),
-    people: (rawModel.people ?? []).map(mapPerson),
-    relationships: extractAllRelationships(rawModel),
-    softwareSystems: (rawModel.softwareSystems ?? []).map(mapSoftwareSystem)
+  const style: C4RelationshipStyle = { tag };
+
+  for (const bodyLine of block.bodyLines) {
+    const text = bodyLine.text;
+    const parts = text.split(/\s+/);
+    const prop = parts[0]?.toLowerCase();
+    const value = parts.slice(1).join(' ');
+
+    switch (prop) {
+      case 'color':
+      case 'colour':
+        style.color = value;
+        break;
+      case 'thickness':
+        style.thickness = parseInt(value, 10) || undefined;
+        break;
+      case 'dashed':
+        style.dashed = value.toLowerCase() === 'true';
+        break;
+      case 'fontsize':
+        style.fontSize = parseInt(value, 10) || undefined;
+        break;
+    }
+  }
+
+  return style;
+}
+
+function parseStylesBlock(block: Block): {
+  elementStyles: C4ElementStyle[];
+  relationshipStyles: C4RelationshipStyle[];
+} {
+  const elementStyles: C4ElementStyle[] = [];
+  const relationshipStyles: C4RelationshipStyle[] = [];
+
+  for (const child of block.children) {
+    if (child.keyword === 'element') {
+      elementStyles.push(parseElementStyleBlock(child));
+    } else if (child.keyword === 'relationship') {
+      relationshipStyles.push(parseRelationshipStyleBlock(child));
+    }
+  }
+
+  return { elementStyles, relationshipStyles };
+}
+
+// ---------------------------------------------------------------------------
+// Views block parsing
+// ---------------------------------------------------------------------------
+
+function parseViewsBlock(block: Block): {
+  views: C4ViewDefinition[];
+  elementStyles: C4ElementStyle[];
+  relationshipStyles: C4RelationshipStyle[];
+} {
+  const views: C4ViewDefinition[] = [];
+  let elementStyles: C4ElementStyle[] = [];
+  let relationshipStyles: C4RelationshipStyle[] = [];
+
+  for (const child of block.children) {
+    if (child.keyword === 'styles') {
+      const styles = parseStylesBlock(child);
+      elementStyles = styles.elementStyles;
+      relationshipStyles = styles.relationshipStyles;
+    } else {
+      const view = parseViewBlock(child);
+      if (view) views.push(view);
+    }
+  }
+
+  return { views, elementStyles, relationshipStyles };
+}
+
+// ---------------------------------------------------------------------------
+// Main workspace parsing
+// ---------------------------------------------------------------------------
+
+function parseWorkspaceBlock(root: Block): C4Workspace {
+  // Find the workspace block (should be a child of root)
+  const wsBlock = root.children.find((b) => b.keyword === 'workspace') || root;
+
+  const args = extractQuoted(wsBlock.fullLine);
+  const name = args[0] || 'Untitled Workspace';
+  const description = args[1] || '';
+
+  let model: C4Model = {
+    people: [],
+    softwareSystems: [],
+    relationships: [],
+    deploymentEnvironments: []
   };
 
-  const views: C4ViewDefinition[] = [
-    ...(rawViews.systemLandscapeViews ?? []).map((v) => mapView(v, 'systemLandscape')),
-    ...(rawViews.systemContextViews ?? []).map((v) => mapView(v, 'systemContext')),
-    ...(rawViews.containerViews ?? []).map((v) => mapView(v, 'container')),
-    ...(rawViews.componentViews ?? []).map((v) => mapView(v, 'component')),
-    ...(rawViews.dynamicViews ?? []).map((v) => mapView(v, 'dynamic')),
-    ...(rawViews.deploymentViews ?? []).map((v) => mapView(v, 'deployment'))
-  ];
+  let views: C4ViewDefinition[] = [];
+  let elementStyles: C4ElementStyle[] = [];
+  let relationshipStyles: C4RelationshipStyle[] = [];
+
+  const ctx: ParserContext = {
+    variables: new Map(),
+    relationships: [],
+    errors: []
+  };
+
+  for (const child of wsBlock.children) {
+    if (child.keyword === 'model') {
+      model = parseModelBlock(child, ctx);
+    } else if (child.keyword === 'views') {
+      const viewResult = parseViewsBlock(child);
+      views = viewResult.views;
+      elementStyles = viewResult.elementStyles;
+      relationshipStyles = viewResult.relationshipStyles;
+    }
+  }
 
   return {
-    description: str(raw.description),
+    name,
+    description,
     model,
-    name: str(raw.name, 'Untitled Workspace'),
     views: {
-      elementStyles: (rawStyles.elements ?? []).map(mapElementStyle),
-      relationshipStyles: (rawStyles.relationships ?? []).map(mapRelationshipStyle),
-      views
+      views,
+      elementStyles,
+      relationshipStyles
     }
   };
 }
@@ -431,10 +822,6 @@ function mapWorkspace(raw: RawWorkspace): C4Workspace {
 
 /**
  * Parse a Structurizr DSL files map into a C4Workspace.
- *
- * @param files      Map of filename → DSL content
- * @param entryFile  The entry point file (defaults to the first key in `files`)
- * @returns          ParseResult with either a workspace or a structured error
  */
 export async function parseStructurizrDSL(
   files: Record<string, string>,
@@ -459,59 +846,20 @@ export async function parseStructurizrDSL(
     };
   }
 
-  // Step 2: Lex
-  const lexResult = StructurizrLexer.tokenize(dsl);
-  if (lexResult.errors.length > 0) {
-    const first = lexResult.errors[0];
-    return {
-      workspace: null,
-      error: {
-        message: `Lexer error: ${first.message}`,
-        line: first.line,
-        column: first.column
-      }
-    };
-  }
+  // Step 2: Strip comments
+  dsl = stripComments(dsl);
 
-  // Step 3: Parse
-  StructurizrParser.input = lexResult.tokens;
-  const cst = StructurizrParser.workspaceWrapper();
-
-  if (StructurizrParser.errors.length > 0) {
-    const first = StructurizrParser.errors[0];
-    const token = first.token;
-    return {
-      workspace: null,
-      error: {
-        message: `Parse error: ${first.message}`,
-        line: token?.startLine ?? undefined,
-        column: token?.startColumn ?? undefined
-      }
-    };
-  }
-
-  // Step 4: Interpret CST → raw workspace JSON
-  let raw: RawWorkspace;
+  // Step 3: Build block tree
   try {
-    raw = RawInterpreter.visit(cst) as RawWorkspace;
-  } catch (err) {
-    return {
-      workspace: null,
-      error: {
-        message: `Interpreter error: ${err instanceof Error ? err.message : String(err)}`
-      }
-    };
-  }
-
-  // Step 5: Map raw → strongly-typed C4Workspace
-  try {
-    const workspace = mapWorkspace(raw);
+    const lines = dsl.split('\n');
+    const root = buildBlockTree(lines);
+    const workspace = parseWorkspaceBlock(root);
     return { workspace, error: null };
   } catch (err) {
     return {
       workspace: null,
       error: {
-        message: `Mapping error: ${err instanceof Error ? err.message : String(err)}`
+        message: `Parse error: ${err instanceof Error ? err.message : String(err)}`
       }
     };
   }
