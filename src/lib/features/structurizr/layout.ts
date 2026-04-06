@@ -121,6 +121,7 @@ export async function applyElkLayout(
     string,
     {
       sections?: {
+        bendPoints?: { x: number; y: number }[];
         endPoint?: { x: number; y: number };
         startPoint?: { x: number; y: number };
       }[];
@@ -132,6 +133,7 @@ export async function applyElkLayout(
 
   // First pass: compute handle positions for each edge
   interface EdgeHandleInfo {
+    bendPoints: { x: number; y: number }[];
     sourceHandleId: string;
     targetHandleId: string;
   }
@@ -144,7 +146,11 @@ export async function applyElkLayout(
     const tgtNode = elkNodeMap.get(edge.target);
 
     if (!section?.startPoint || !section?.endPoint || !srcNode || !tgtNode) {
-      edgeHandleInfoMap.set(edge.id, { sourceHandleId: 'bottom', targetHandleId: 'top' });
+      edgeHandleInfoMap.set(edge.id, {
+        bendPoints: [],
+        sourceHandleId: 'bottom',
+        targetHandleId: 'top'
+      });
       continue;
     }
 
@@ -157,6 +163,7 @@ export async function applyElkLayout(
     ensureHandleList(edge.target).push(tgtHandle);
 
     edgeHandleInfoMap.set(edge.id, {
+      bendPoints: section.bendPoints ?? [],
       sourceHandleId: srcHandle.id,
       targetHandleId: tgtHandle.id
     });
@@ -183,19 +190,24 @@ export async function applyElkLayout(
     };
   });
 
-  // --- Build edges with unique handle IDs ---
+  // --- Build edges with unique handle IDs and ELK bend points ---
   const layoutedEdges = edges.map((edge) => {
     const info = edgeHandleInfoMap.get(edge.id) ?? {
+      bendPoints: [],
       sourceHandleId: 'bottom',
       targetHandleId: 'top'
     };
 
     return {
       ...edge,
+      data: {
+        ...((edge.data as Record<string, unknown>) ?? {}),
+        bendPoints: info.bendPoints
+      },
       markerEnd: { height: 15, type: MarkerType.ArrowClosed, width: 15 },
       sourceHandle: info.sourceHandleId,
       targetHandle: info.targetHandleId,
-      type: 'smoothstep'
+      type: info.bendPoints.length > 0 ? 'elk' : 'smoothstep'
     };
   });
 
