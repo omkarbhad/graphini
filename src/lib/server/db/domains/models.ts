@@ -118,13 +118,12 @@ export async function createDiagramWorkspace(
     title: string;
     description?: string;
     document?: Record<string, unknown>;
+    engine?: string;
   }
 ): Promise<DiagramWorkspaceRow> {
   const [row] = await db
     .insert(schema.diagramWorkspaces)
     .values({
-      user_id: data.user_id,
-      title: data.title,
       description: data.description ?? null,
       document: data.document ?? {
         canvas: {
@@ -139,7 +138,10 @@ export async function createDiagramWorkspace(
         documentMarkdown: '',
         mermaidCode: '',
         version: 1
-      }
+      },
+      engine: data.engine ?? 'mermaid',
+      title: data.title,
+      user_id: data.user_id
     })
     .returning();
   return mapDiagramWorkspace(row);

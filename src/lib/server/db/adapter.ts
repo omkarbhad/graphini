@@ -240,6 +240,7 @@ export interface DatabaseAdapter {
     title: string;
     description?: string;
     document?: Record<string, unknown>;
+    engine?: string;
   }): Promise<DiagramWorkspaceRow>;
   getDiagramWorkspace(id: string): Promise<DiagramWorkspaceRow | null>;
   listDiagramWorkspaces(

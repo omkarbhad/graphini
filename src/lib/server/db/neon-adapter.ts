@@ -470,6 +470,7 @@ export class NeonAdapter implements DatabaseAdapter {
     title: string;
     description?: string;
     document?: Record<string, unknown>;
+    engine?: string;
   }): Promise<DiagramWorkspaceRow> {
     return modelsDomain.createDiagramWorkspace(this.db, data);
   }

@@ -46,6 +46,8 @@ const SAVE_DEBOUNCE_MS = 5000;
 function collectDocument(): WorkspaceDocument {
   const mermaidState = get(inputStateStore);
   const docMarkdown = documentMarkdownStore.value;
+  const existingDoc = state.workspace?.document;
+  const engine = existingDoc?.engine ?? 'mermaid';
 
   return {
     canvas: {
@@ -56,9 +58,11 @@ function collectDocument(): WorkspaceDocument {
       snapToGrid: true,
       viewport: { x: 0, y: 0, zoom: 1 }
     },
-    chat: state.workspace?.document?.chat || { messages: [] },
+    chat: existingDoc?.chat || { messages: [] },
     documentMarkdown: docMarkdown || '',
-    mermaidCode: mermaidState?.code || '',
+    engine,
+    files: existingDoc?.files ?? {},
+    mermaidCode: engine === 'mermaid' ? mermaidState?.code || '' : '',
     version: 1
   };
 }
@@ -204,6 +208,53 @@ function addChatMessage(message: {
   markDirty();
 }
 
+function updateFile(filename: string, content: string) {
+  if (!state.workspace?.document) return;
+  state.workspace = {
+    ...state.workspace,
+    document: {
+      ...state.workspace.document,
+      files: {
+        ...state.workspace.document.files,
+        [filename]: content
+      }
+    }
+  };
+  markDirty();
+}
+
+function deleteFile(filename: string) {
+  if (!state.workspace?.document) return;
+  const files = { ...state.workspace.document.files };
+  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+  delete files[filename];
+  state.workspace = {
+    ...state.workspace,
+    document: {
+      ...state.workspace.document,
+      files
+    }
+  };
+  markDirty();
+}
+
+function renameFile(oldName: string, newName: string) {
+  if (!state.workspace?.document) return;
+  const files = { ...state.workspace.document.files };
+  if (!(oldName in files)) return;
+  files[newName] = files[oldName];
+  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+  delete files[oldName];
+  state.workspace = {
+    ...state.workspace,
+    document: {
+      ...state.workspace.document,
+      files
+    }
+  };
+  markDirty();
+}
+
 async function updateMeta(
   updates: Partial<Pick<DiagramWorkspace, 'title' | 'description' | 'is_starred' | 'tags'>>
 ): Promise<boolean> {
@@ -256,13 +307,16 @@ function unload() {
 
 // ── Dashboard Helpers ──────────────────────────────────────────────────────
 
-async function createWorkspace(title?: string): Promise<DiagramWorkspace | null> {
+async function createWorkspace(
+  title?: string,
+  engine: 'mermaid' | 'structurizr' = 'mermaid'
+): Promise<DiagramWorkspace | null> {
   try {
     const res = await fetch('/api/workspaces', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ title: title || 'Untitled Workspace' })
+      body: JSON.stringify({ title: title || 'Untitled Workspace', engine })
     });
     if (res.ok) return res.json();
     return null;
@@ -342,6 +396,7 @@ export const workspaceStore = {
   // Dashboard operations
   create: createWorkspace,
   delete: deleteWorkspace,
+  deleteFile,
   duplicate: duplicateWorkspace,
   get isActive() {
     return !!state.workspace;
@@ -359,12 +414,14 @@ export const workspaceStore = {
   list: listWorkspaces,
   load,
   markDirty,
+  renameFile,
   save,
   get state() {
     return state;
   },
   toggleStar,
   unload,
+  updateFile,
   updateMeta,
   get workspace() {
     return state.workspace;
