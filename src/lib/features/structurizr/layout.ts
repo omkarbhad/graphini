@@ -213,13 +213,12 @@ export async function applyElkLayout(
       ...edge,
       data: {
         ...((edge.data as Record<string, unknown>) ?? {}),
-        pathOptions: { offset }
+        offset
       },
       markerEnd: { height: 15, type: MarkerType.ArrowClosed, width: 15 },
-      pathOptions: { offset },
       sourceHandle: info.sourceHandleId,
       targetHandle: info.targetHandleId,
-      type: 'smoothstep'
+      type: 'staggered'
     };
   });
 
