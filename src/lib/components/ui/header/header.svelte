@@ -53,7 +53,7 @@
     },
     {
       title: 'Infinite Canvas',
-      href: '/canvas',
+      href: '/dashboard',
       description: 'Pan, zoom, and arrange freely',
       icon: Globe
     },
@@ -65,7 +65,7 @@
     },
     {
       title: 'Collaboration',
-      href: '/canvas',
+      href: '/dashboard',
       description: 'Work together in real-time',
       icon: UserPlus
     },
@@ -145,14 +145,9 @@
           Dashboard
         </a>
         <a
-          href={resolve('/canvas')}
-          class="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
-          Canvas
-        </a>
-        <a
           href={resolve('/dashboard')}
           class="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
-          Dashboard
+          Workspaces
         </a>
         <a
           href="https://github.com/omkarbhad/graphini"
@@ -202,9 +197,7 @@
           <span class="text-sm font-medium text-muted-foreground">Product</span>
           {#each productLinks as link (link.title)}
             <a
-              href={link.href.startsWith('http')
-                ? link.href
-                : resolve(link.href as '/canvas' | '/dashboard')}
+              href={link.href.startsWith('http') ? link.href : resolve(link.href as '/dashboard')}
               class="flex flex-row items-center gap-x-2 rounded-md p-2 hover:bg-accent"
               onclick={() => (mobileOpen = false)}>
               <div

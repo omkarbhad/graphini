@@ -23,7 +23,7 @@
     <!-- Badge -->
     <a
       class="group flex w-fit animate-in items-center gap-3 rounded-md border bg-card p-1 shadow-xs transition-all delay-500 duration-500 ease-out fill-mode-backwards slide-in-from-bottom-10 fade-in"
-      href={resolve('/canvas')}>
+      href={resolve('/dashboard')}>
       <div class="rounded-sm border bg-card px-1.5 py-0.5 shadow-sm">
         <p class="font-mono text-xs font-medium">NEW</p>
       </div>

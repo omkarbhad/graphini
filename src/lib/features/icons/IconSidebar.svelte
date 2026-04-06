@@ -14,16 +14,14 @@
   let {
     collapsed = false,
     position = 'left',
-    onToggle,
-    onAction
+    onToggle
   }: {
     collapsed?: boolean;
     position?: 'left' | 'right';
     onToggle?: () => void;
-    onAction?: (action: string) => void;
   } = $props();
 
-  const toggleCollapsed = (e: MouseEvent) => {
+  const toggleCollapsed = () => {
     collapsed = !collapsed;
     onToggle?.();
   };
@@ -32,7 +30,7 @@
     {
       title: 'Editor',
       icon: FileText,
-      href: '/editor',
+      href: '/dashboard',
       description: 'Open diagram editor'
     },
     {
@@ -92,7 +90,7 @@
     }
   };
 
-  const handleActionClick = (action: string) => (e: MouseEvent) => {
+  const handleActionClick = (action: string) => () => {
     handleAction(action);
   };
 
@@ -141,7 +139,7 @@
 
     <!-- Navigation Items -->
     <nav class="flex-1 space-y-2 p-4">
-      {#each navigationItems as item}
+      {#each navigationItems as item (item.title)}
         <Tooltip delayDuration={collapsed ? 0 : Infinity}>
           <TooltipTrigger>
             <a
@@ -167,7 +165,7 @@
 
     <!-- Action Items -->
     <div class="space-y-2 p-4">
-      {#each actionItems as item}
+      {#each actionItems as item (item.title)}
         <Tooltip delayDuration={collapsed ? 0 : Infinity}>
           <TooltipTrigger>
             {#if item.action}

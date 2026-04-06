@@ -1,6 +1,14 @@
 <script lang="ts">
-  // /canvas is the main editor page — re-exports the full editor
-  import EditPage from '../edit/+page.svelte';
+  import { goto } from '$app/navigation';
+  import { resolve } from '$app/paths';
+  import { onMount } from 'svelte';
+
+  // /canvas is deprecated — editor lives at /workspace/{id}
+  onMount(() => {
+    goto(resolve('/dashboard'), { replaceState: true });
+  });
 </script>
 
-<EditPage />
+<div class="flex h-screen items-center justify-center bg-background">
+  <span class="text-sm text-muted-foreground">Redirecting to dashboard...</span>
+</div>

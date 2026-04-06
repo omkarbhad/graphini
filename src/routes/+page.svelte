@@ -289,7 +289,7 @@
           <ul class="space-y-2.5">
             <li><a href={resolve('/dashboard')} class="footer-link">Dashboard</a></li>
             <li><a href={resolve('/dashboard')} class="footer-link">Dashboard</a></li>
-            <li><a href={resolve('/canvas')} class="footer-link">Canvas</a></li>
+            <li><a href={resolve('/dashboard')} class="footer-link">Workspaces</a></li>
           </ul>
         </div>
         <div>
