@@ -224,8 +224,9 @@
     {nodeTypes}
     {colorMode}
     defaultEdgeOptions={{
-      style: 'stroke: #94a3b8; stroke-width: 1.5px;',
-      animated: false
+      animated: false,
+      labelStyle: 'font-size: 9px; max-width: 120px; overflow: hidden; text-overflow: ellipsis;',
+      style: 'stroke: #94a3b8; stroke-width: 1.5px;'
     }}
     connectionMode="loose"
     fitView

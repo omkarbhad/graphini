@@ -180,15 +180,19 @@ function buildEdges(
         }
       }
 
+      const fullDescription = r.description || '';
+      const label =
+        fullDescription.length > 40 ? fullDescription.slice(0, 37) + '...' : fullDescription;
       const edgeId = `${r.sourceId}-${r.targetId}-${index}`;
       return {
         data: {
           color: edgeColor,
           dashed,
+          fullDescription,
           technology: r.technology
         },
         id: edgeId,
-        label: r.description || undefined,
+        label: label || undefined,
         source: r.sourceId,
         target: r.targetId
       } as Edge;

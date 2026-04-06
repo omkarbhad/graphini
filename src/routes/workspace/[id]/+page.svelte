@@ -1158,7 +1158,7 @@
 
                 <!-- Minimal render status indicator (top-right) -->
                 <div class="absolute top-3 right-3 z-20">
-                  {#if viewRenderError}
+                  {#if !isStructurizr && viewRenderError}
                     <button
                       type="button"
                       class="flex cursor-pointer items-center gap-1.5 rounded-full bg-red-500/15 px-2.5 py-1 transition-colors hover:bg-red-500/25"
@@ -1254,6 +1254,7 @@
                       ensureFileExists();
                       workspaceStore.markDirty();
                     }}
+                    {isStructurizr}
                     isMobile={width < 768}
                     sendChatMessage={handleSendChatMessage} />
                 </div>
