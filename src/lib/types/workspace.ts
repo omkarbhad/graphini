@@ -5,7 +5,11 @@
  */
 
 /** Canvas viewport position */
-interface CanvasViewport { x: number; y: number; zoom: number; }
+interface CanvasViewport {
+  x: number;
+  y: number;
+  zoom: number;
+}
 
 /** Canvas element placeholder — workspace documents can store element data */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -19,6 +23,9 @@ export interface WorkspaceDocument {
   /** Schema version for future migrations */
   version: number;
 
+  /** Rendering engine for this workspace */
+  engine: 'mermaid' | 'structurizr';
+
   /** Canvas state — elements, connections, viewport, grid */
   canvas: {
     elements: CanvasElement[];
@@ -31,6 +38,9 @@ export interface WorkspaceDocument {
 
   /** Mermaid code from the code editor panel */
   mermaidCode: string;
+
+  /** Multi-file DSL content (used by Structurizr workspaces) */
+  files: Record<string, string>;
 
   /** Chat messages stored inline */
   chat: {
@@ -65,6 +75,7 @@ export interface DiagramWorkspace {
   document: WorkspaceDocument;
   element_count: number;
   diagram_type: string | null;
+  engine: string;
   created_at: string;
   updated_at: string;
 }
@@ -81,6 +92,7 @@ export interface DiagramWorkspaceSummary {
   tags: string[];
   element_count: number;
   diagram_type: string | null;
+  engine: string;
   created_at: string;
   updated_at: string;
 }
@@ -98,6 +110,51 @@ export const DEFAULT_WORKSPACE_DOCUMENT: WorkspaceDocument = {
   },
   chat: { messages: [] },
   documentMarkdown: '',
+  engine: 'mermaid',
+  files: {},
+  mermaidCode: '',
+  version: 1
+};
+
+export const DEFAULT_STRUCTURIZR_DOCUMENT: WorkspaceDocument = {
+  canvas: {
+    connections: [],
+    elements: [],
+    gridEnabled: true,
+    gridSize: 20,
+    snapToGrid: true,
+    viewport: { x: 0, y: 0, zoom: 1 }
+  },
+  chat: { messages: [] },
+  documentMarkdown: '',
+  engine: 'structurizr',
+  files: {
+    'workspace.dsl': `workspace "Untitled" "Description" {
+
+    model {
+        user = person "User" "A user of the system"
+        system = softwareSystem "System" "Description" {
+            webapp = container "Web App" "" "React"
+            api = container "API" "" "Node.js"
+            db = container "Database" "" "PostgreSQL"
+        }
+        user -> webapp "Uses"
+        webapp -> api "Calls"
+        api -> db "Reads/Writes"
+    }
+
+    views {
+        systemContext system "Context" {
+            include *
+            autoLayout
+        }
+        container system "Containers" {
+            include *
+            autoLayout
+        }
+    }
+}`
+  },
   mermaidCode: '',
   version: 1
 };
