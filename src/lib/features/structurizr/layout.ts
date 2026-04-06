@@ -191,23 +191,39 @@ export async function applyElkLayout(
   });
 
   // --- Build edges with unique handle IDs ---
-  // Group edges by source node to stagger bend offsets for parallel edges
-  const sourceEdgeCount = new Map<string, number>();
+  // Group edges by source handle side to stagger bend corridors.
+  // Edges sharing the same source side need different offsets so their
+  // horizontal/vertical corridors don't overlap.
+  const sideGroupCount = new Map<string, number>();
 
-  const layoutedEdges = edges.map((edge) => {
+  // First pass: count edges per source-side group
+  const edgeInfoList = edges.map((edge) => {
     const info = edgeHandleInfoMap.get(edge.id) ?? {
       bendPoints: [],
       sourceHandleId: 'bottom',
       targetHandleId: 'top'
     };
+    const srcHandle = handleDefsPerNode.get(edge.source)?.find((h) => h.id === info.sourceHandleId);
+    const side = srcHandle?.side ?? 'bottom';
+    const groupKey = `${edge.source}:${side}`;
 
-    // Stagger: count how many edges already left this source node
-    const idx = sourceEdgeCount.get(edge.source) ?? 0;
-    sourceEdgeCount.set(edge.source, idx + 1);
+    const count = sideGroupCount.get(groupKey) ?? 0;
+    sideGroupCount.set(groupKey, count + 1);
 
-    // Offset the smoothstep bend point so parallel edges don't overlap
-    // Each subsequent edge bends 20px further from the midpoint
-    const offset = idx * 20;
+    return { ...info, groupKey, side };
+  });
+
+  // Second pass: compute total per group for centering
+  const sideGroupIdx = new Map<string, number>();
+
+  const layoutedEdges = edges.map((edge, i) => {
+    const info = edgeInfoList[i];
+    const total = sideGroupCount.get(info.groupKey) ?? 1;
+    const idx = sideGroupIdx.get(info.groupKey) ?? 0;
+    sideGroupIdx.set(info.groupKey, idx + 1);
+
+    // Center offsets around 0: for 5 edges → -40, -20, 0, 20, 40
+    const offset = (idx - (total - 1) / 2) * 20;
 
     return {
       ...edge,
