@@ -191,39 +191,39 @@ export async function applyElkLayout(
   });
 
   // --- Build edges with unique handle IDs ---
-  // Group edges by source handle side to stagger bend corridors.
-  // Edges sharing the same source side need different offsets so their
-  // horizontal/vertical corridors don't overlap.
-  const sideGroupCount = new Map<string, number>();
+  // Group edges that share the SAME corridor (same target node + target side)
+  // so their bends are staggered. Edges going to the same node from different
+  // sources all need to bend at different heights to avoid overlapping.
+  const corridorCount = new Map<string, number>();
 
-  // First pass: count edges per source-side group
+  // First pass: group by target node + target side (the convergence point)
   const edgeInfoList = edges.map((edge) => {
     const info = edgeHandleInfoMap.get(edge.id) ?? {
       bendPoints: [],
       sourceHandleId: 'bottom',
       targetHandleId: 'top'
     };
-    const srcHandle = handleDefsPerNode.get(edge.source)?.find((h) => h.id === info.sourceHandleId);
-    const side = srcHandle?.side ?? 'bottom';
-    const groupKey = `${edge.source}:${side}`;
+    const tgtHandle = handleDefsPerNode.get(edge.target)?.find((h) => h.id === info.targetHandleId);
+    const tgtSide = tgtHandle?.side ?? 'top';
+    const corridorKey = `${edge.target}:${tgtSide}`;
 
-    const count = sideGroupCount.get(groupKey) ?? 0;
-    sideGroupCount.set(groupKey, count + 1);
+    const count = corridorCount.get(corridorKey) ?? 0;
+    corridorCount.set(corridorKey, count + 1);
 
-    return { ...info, groupKey, side };
+    return { ...info, corridorKey };
   });
 
-  // Second pass: compute total per group for centering
-  const sideGroupIdx = new Map<string, number>();
+  // Second pass: assign centered offsets within each corridor group
+  const corridorIdx = new Map<string, number>();
 
   const layoutedEdges = edges.map((edge, i) => {
     const info = edgeInfoList[i];
-    const total = sideGroupCount.get(info.groupKey) ?? 1;
-    const idx = sideGroupIdx.get(info.groupKey) ?? 0;
-    sideGroupIdx.set(info.groupKey, idx + 1);
+    const total = corridorCount.get(info.corridorKey) ?? 1;
+    const idx = corridorIdx.get(info.corridorKey) ?? 0;
+    corridorIdx.set(info.corridorKey, idx + 1);
 
-    // Center offsets around 0: for 5 edges → -40, -20, 0, 20, 40
-    const offset = (idx - (total - 1) / 2) * 20;
+    // Center offsets: for 5 edges → -40, -20, 0, 20, 40
+    const offset = (idx - (total - 1) / 2) * 25;
 
     return {
       ...edge,
