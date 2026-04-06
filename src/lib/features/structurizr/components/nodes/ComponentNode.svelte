@@ -20,9 +20,26 @@
   const techSuffix = $derived(c4.technology ? `: ${c4.technology}` : '');
 </script>
 
-<Handle type="target" position={Position.Top} id="top" />
-<Handle type="source" position={Position.Right} id="right" />
-<Handle type="target" position={Position.Left} id="left" />
+<Handle
+  type="source"
+  position={Position.Top}
+  id="top"
+  style="width: 100%; height: 2px; top: 0; left: 0; transform: none; border-radius: 0; opacity: 0;" />
+<Handle
+  type="source"
+  position={Position.Bottom}
+  id="bottom"
+  style="width: 100%; height: 2px; bottom: 0; left: 0; top: auto; transform: none; border-radius: 0; opacity: 0;" />
+<Handle
+  type="source"
+  position={Position.Left}
+  id="left"
+  style="height: 100%; width: 2px; left: 0; top: 0; transform: none; border-radius: 0; opacity: 0;" />
+<Handle
+  type="source"
+  position={Position.Right}
+  id="right"
+  style="height: 100%; width: 2px; right: 0; left: auto; top: 0; transform: none; border-radius: 0; opacity: 0;" />
 
 <div class="node-wrapper" style="--bg: {bg}; --text: {text};">
   <div class="node-label">{c4.label}</div>
@@ -31,8 +48,6 @@
     <div class="node-description">{c4.description}</div>
   {/if}
 </div>
-
-<Handle type="source" position={Position.Bottom} id="bottom" />
 
 <style>
   .node-wrapper {

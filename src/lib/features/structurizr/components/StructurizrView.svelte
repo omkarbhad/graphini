@@ -228,6 +228,7 @@
     bind:edges
     {nodeTypes}
     {colorMode}
+    connectionMode="loose"
     fitView
     onnodedragstop={handleNodeDragStop}>
     {#if gridEnabled}
