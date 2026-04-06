@@ -52,21 +52,28 @@
     initMermaid();
     let cancelled = false;
     const id = `preview-${Math.random().toString(36).slice(2, 9)}`;
-    mermaid.render(id, code).then(({ svg }) => {
-      if (cancelled) return;
-      node.innerHTML = svg;
-      // Scale SVG to fit
-      const svgEl = node.querySelector('svg');
-      if (svgEl) {
-        svgEl.style.maxWidth = '100%';
-        svgEl.style.maxHeight = '100%';
-        svgEl.style.width = 'auto';
-        svgEl.style.height = 'auto';
+    mermaid
+      .render(id, code)
+      .then(({ svg }) => {
+        if (cancelled) return;
+        node.innerHTML = svg;
+        // Scale SVG to fit
+        const svgEl = node.querySelector('svg');
+        if (svgEl) {
+          svgEl.style.maxWidth = '100%';
+          svgEl.style.maxHeight = '100%';
+          svgEl.style.width = 'auto';
+          svgEl.style.height = 'auto';
+        }
+      })
+      .catch(() => {
+        // Render failed — leave preview empty (icon fallback stays)
+      });
+    return {
+      destroy() {
+        cancelled = true;
       }
-    }).catch(() => {
-      // Render failed — leave preview empty (icon fallback stays)
-    });
-    return { destroy() { cancelled = true; } };
+    };
   }
 
   const typeIcons: Record<string, ComponentType> = {
@@ -192,13 +199,13 @@
     searchTimeout = setTimeout(() => loadWorkspaces(), 400);
   }
 
-  async function handleNewWorkspace() {
+  async function handleNewWorkspace(engine: 'mermaid' | 'structurizr' = 'mermaid') {
     if (!authStore.isLoggedIn) {
       authStore.login();
       return;
     }
     creating = true;
-    const ws = await workspaceStore.create();
+    const ws = await workspaceStore.create(undefined, engine);
     creating = false;
     if (ws) goto(resolve(`/workspace/${ws.id}`));
   }
@@ -293,7 +300,6 @@
             </button>
           {/each}
         </div>
-
       </nav>
 
       <div class="sidebar-footer">
@@ -385,7 +391,6 @@
                   <Command class="size-2.5" />K
                 </kbd>
               </div>
-
             </div>
           </div>
         {/if}
@@ -393,7 +398,8 @@
         <!-- Auth banner -->
         {#if !authStore.isLoggedIn && authStore.isInitialized}
           <div class="auth-banner" in:fade={{ duration: 150 }}>
-            <div class="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div
+              class="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 class="text-[14px] font-semibold text-foreground">Sign in to save your work</h3>
                 <p class="mt-1 text-[12px] text-muted-foreground/70">
@@ -418,30 +424,41 @@
         {:else if workspaces.length > 0}
           <div class="card-grid">
             <!-- New diagram card -->
-            <button
-              class="new-card group"
-              disabled={creating}
-              onclick={handleNewWorkspace}
-              aria-label="Create new workspace">
-              <div class="new-card-inner">
-                {#if creating}
-                  <Loader2 class="size-6 animate-spin text-muted-foreground" />
-                {:else}
-                  <div class="new-card-icon">
-                    <Plus class="size-5" />
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger>
+                <button
+                  class="new-card group"
+                  disabled={creating}
+                  aria-label="Create new workspace">
+                  <div class="new-card-inner">
+                    {#if creating}
+                      <Loader2 class="size-6 animate-spin text-muted-foreground" />
+                    {:else}
+                      <div class="new-card-icon">
+                        <Plus class="size-5" />
+                      </div>
+                    {/if}
+                    <span class="new-card-label">New Diagram</span>
                   </div>
-                {/if}
-                <span class="new-card-label">New Diagram</span>
-              </div>
-            </button>
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Content align="start" class="min-w-[200px]">
+                <DropdownMenu.Item onclick={() => handleNewWorkspace('mermaid')}>
+                  <Workflow class="mr-2 size-4" />
+                  Mermaid Diagram
+                </DropdownMenu.Item>
+                <DropdownMenu.Item onclick={() => handleNewWorkspace('structurizr')}>
+                  <Network class="mr-2 size-4" />
+                  C4 Architecture
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Root>
 
             <!-- Workspace cards -->
             {#each workspaces as ws (ws.id)}
               {@const Icon = typeIcons[ws.diagram_type || ''] || typeIcons.default}
               {@const style = getTypeStyle(ws.diagram_type)}
-              <div
-                class="ws-card group"
-                in:fade={{ duration: 150 }}>
+              <div class="ws-card group" in:fade={{ duration: 150 }}>
                 <button
                   class="ws-preview"
                   style="background: {style.bg}"
@@ -470,9 +487,7 @@
                         onclick={() => handleStar(ws)}
                         aria-label={ws.is_starred ? 'Unstar' : 'Star'}>
                         <Star
-                          class="size-3.5 {ws.is_starred
-                            ? 'fill-amber-400 text-amber-400'
-                            : ''}" />
+                          class="size-3.5 {ws.is_starred ? 'fill-amber-400 text-amber-400' : ''}" />
                       </button>
                       <DropdownMenu.Root>
                         <DropdownMenu.Trigger>
@@ -501,6 +516,13 @@
                   {/if}
 
                   <div class="ws-meta">
+                    {#if ws.engine === 'structurizr'}
+                      <span
+                        class="ws-type-badge"
+                        style="color: #1168BD; background: rgba(17,104,189,0.08); border-color: rgba(17,104,189,0.15);">
+                        C4
+                      </span>
+                    {/if}
                     {#if ws.diagram_type}
                       <span
                         class="ws-type-badge"
@@ -533,7 +555,10 @@
                 : 'Create your first diagram to get started. Describe it in plain English or write Mermaid DSL directly.'}
             </p>
             {#if !searchQuery}
-              <button class="new-btn mt-6" disabled={creating} onclick={handleNewWorkspace}>
+              <button
+                class="new-btn mt-6"
+                disabled={creating}
+                onclick={() => handleNewWorkspace('mermaid')}>
                 <Plus class="size-4" />Create your first diagram
               </button>
             {/if}
@@ -577,7 +602,9 @@
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
     color: var(--dash-text-secondary);
     cursor: pointer;
-    transition: background 150ms ease, color 150ms ease;
+    transition:
+      background 150ms ease,
+      color 150ms ease;
   }
   .sidebar-nav-item:hover {
     background: var(--dash-hover-bg);
@@ -611,7 +638,9 @@
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
     color: var(--dash-text-faint);
     cursor: pointer;
-    transition: background 150ms ease, color 150ms ease;
+    transition:
+      background 150ms ease,
+      color 150ms ease;
   }
   .sidebar-icon-btn:hover {
     background: var(--dash-hover-bg);
@@ -625,7 +654,9 @@
     background: var(--surface-overlay);
     border: 1px solid var(--surface-border);
     cursor: pointer;
-    transition: background 150ms ease, color 150ms ease;
+    transition:
+      background 150ms ease,
+      color 150ms ease;
   }
   .signin-btn:hover {
     background: var(--dash-hover-bg);
@@ -664,7 +695,9 @@
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
     color: var(--dash-text-secondary);
     cursor: pointer;
-    transition: background 150ms ease, color 150ms ease;
+    transition:
+      background 150ms ease,
+      color 150ms ease;
   }
   .mobile-filter-btn.active {
     background: var(--dash-hover-bg);
@@ -756,7 +789,9 @@
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
     border: 1.5px dashed var(--surface-border);
     cursor: pointer;
-    transition: border-color 150ms ease, background 150ms ease;
+    transition:
+      border-color 150ms ease,
+      background 150ms ease;
   }
   .new-card:hover {
     border-color: var(--dash-text-faint);
@@ -784,7 +819,9 @@
     @apply relative flex min-h-[200px] flex-col rounded-xl;
     background: var(--surface-overlay);
     border: 1px solid var(--surface-border);
-    transition: border-color 150ms ease, box-shadow 150ms ease;
+    transition:
+      border-color 150ms ease,
+      box-shadow 150ms ease;
   }
   .ws-card:hover {
     border-color: var(--dash-text-faint);
@@ -835,7 +872,9 @@
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
     color: var(--dash-text-tertiary);
     cursor: pointer;
-    transition: background 150ms ease, color 150ms ease;
+    transition:
+      background 150ms ease,
+      color 150ms ease;
   }
   .ws-action-btn:hover {
     background: var(--dash-hover-bg);
