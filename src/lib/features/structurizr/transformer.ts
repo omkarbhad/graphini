@@ -181,8 +181,6 @@ function buildEdges(
       }
 
       const fullDescription = r.description || '';
-      const label =
-        fullDescription.length > 40 ? fullDescription.slice(0, 37) + '...' : fullDescription;
       const edgeId = `${r.sourceId}-${r.targetId}-${index}`;
       return {
         data: {
@@ -192,7 +190,6 @@ function buildEdges(
           technology: r.technology
         },
         id: edgeId,
-        label: label || undefined,
         source: r.sourceId,
         target: r.targetId
       } as Edge;

@@ -225,8 +225,7 @@
     {colorMode}
     defaultEdgeOptions={{
       animated: false,
-      labelStyle: 'font-size: 9px; max-width: 120px; overflow: hidden; text-overflow: ellipsis;',
-      style: 'stroke: #94a3b8; stroke-width: 1.5px;'
+      style: 'stroke: #94a3b8; stroke-width: 1px;'
     }}
     connectionMode="loose"
     fitView
@@ -245,6 +244,23 @@
   :global(.canvas-wrapper .svelte-flow) {
     width: 100%;
     height: 100%;
+  }
+
+  /* Edge styling: thin by default, highlight on hover */
+  :global(.canvas-wrapper .svelte-flow .svelte-flow__edge path) {
+    stroke-width: 1px;
+    transition:
+      stroke-width 150ms ease,
+      stroke 150ms ease;
+  }
+  :global(.canvas-wrapper .svelte-flow .svelte-flow__edge:hover path) {
+    stroke-width: 2.5px;
+    stroke: #3b82f6;
+  }
+
+  /* Hide default edge labels — too noisy for dense diagrams */
+  :global(.canvas-wrapper .svelte-flow .svelte-flow__edge-textwrapper) {
+    display: none;
   }
 
   .error-bar {
