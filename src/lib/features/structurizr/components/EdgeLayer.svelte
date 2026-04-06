@@ -63,7 +63,7 @@
 
 <svg
   class="elk-edge-layer"
-  style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible;">
+  style="position: absolute; top: 0; left: 0; width: 0; height: 0; pointer-events: none; overflow: visible; z-index: -1;">
   <defs>
     <marker
       id="elk-arrowhead"
