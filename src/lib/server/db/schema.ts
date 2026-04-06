@@ -409,6 +409,7 @@ export const diagramWorkspaces = pgTable(
     diagram_type: text('diagram_type'),
     document: jsonb('document').notNull().default({}),
     element_count: integer('element_count').notNull().default(0),
+    engine: text('engine').notNull().default('mermaid'),
     id: uuid('id').primaryKey().defaultRandom(),
     is_starred: boolean('is_starred').notNull().default(false),
     tags: text('tags')

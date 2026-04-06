@@ -183,6 +183,7 @@ export interface DiagramWorkspaceRow {
   title: string;
   description: string | null;
   diagram_type: string | null;
+  engine: string;
   is_starred: boolean;
   tags: string[];
   document: Record<string, unknown>;
@@ -198,6 +199,7 @@ export interface DiagramWorkspaceSummaryRow {
   title: string;
   description: string | null;
   diagram_type: string | null;
+  engine: string;
   mermaid_preview: string | null;
   is_starred: boolean;
   tags: string[];
