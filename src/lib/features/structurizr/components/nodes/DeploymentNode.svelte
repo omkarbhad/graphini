@@ -19,26 +19,10 @@
   const techSuffix = $derived(c4.technology ? `: ${c4.technology}` : '');
 </script>
 
-<Handle
-  type="source"
-  position={Position.Top}
-  id="top"
-  style="width: 100%; height: 2px; top: 0; left: 0; transform: none; border-radius: 0; opacity: 0;" />
-<Handle
-  type="source"
-  position={Position.Bottom}
-  id="bottom"
-  style="width: 100%; height: 2px; bottom: 0; left: 0; top: auto; transform: none; border-radius: 0; opacity: 0;" />
-<Handle
-  type="source"
-  position={Position.Left}
-  id="left"
-  style="height: 100%; width: 2px; left: 0; top: 0; transform: none; border-radius: 0; opacity: 0;" />
-<Handle
-  type="source"
-  position={Position.Right}
-  id="right"
-  style="height: 100%; width: 2px; right: 0; left: auto; top: 0; transform: none; border-radius: 0; opacity: 0;" />
+<Handle type="source" position={Position.Top} id="top" class="c4-handle" />
+<Handle type="source" position={Position.Bottom} id="bottom" class="c4-handle" />
+<Handle type="source" position={Position.Left} id="left" class="c4-handle" />
+<Handle type="source" position={Position.Right} id="right" class="c4-handle" />
 
 <div class="node-wrapper" style="--text: {text};">
   <div class="node-label">{c4.label}</div>

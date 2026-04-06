@@ -263,6 +263,16 @@
     display: none;
   }
 
+  /* Invisible handles — small dots at center of each side */
+  :global(.canvas-wrapper .c4-handle) {
+    width: 6px !important;
+    height: 6px !important;
+    background: transparent !important;
+    border: none !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+  }
+
   .error-bar {
     display: flex;
     align-items: flex-start;
