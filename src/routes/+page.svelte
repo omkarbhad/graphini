@@ -174,13 +174,10 @@
     </section>
 
     <!-- Features -->
-    <section class="mx-auto max-w-6xl px-5 py-28 sm:px-8 md:px-10">
-      <div class="mb-20 text-center">
+    <section class="mx-auto max-w-6xl px-5 py-24 sm:px-8 md:px-10">
+      <div class="mb-16 text-center">
         <h2 class="section-heading">Everything you need to diagram</h2>
-        <div
-          class="mx-auto mt-5 h-px w-16 bg-gradient-to-r from-transparent via-primary to-transparent">
-        </div>
-        <p class="mx-auto mt-5 max-w-lg text-sm text-muted-foreground">
+        <p class="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-muted-foreground">
           From quick sketches to production architecture docs.
         </p>
       </div>
@@ -194,10 +191,10 @@
               style="--card-glow: {feature.glow}"
               in:fly={{ y: 20, duration: 450, delay: 120 + i * 80, easing: cubicOut }}>
               <div
-                class="mb-5 flex size-12 items-center justify-center rounded-xl bg-gradient-to-br {feature.color} shadow-lg shadow-black/10 transition-all duration-300 group-hover:scale-105 group-hover:shadow-xl">
-                <Icon class="size-5 text-white" />
+                class="mb-5 flex size-11 items-center justify-center rounded-xl bg-gradient-to-br {feature.color} shadow-lg shadow-black/10 transition-all duration-300 group-hover:scale-105 group-hover:shadow-xl">
+                <Icon class="size-[18px] text-white" />
               </div>
-              <h3 class="mb-2.5 text-base font-semibold text-foreground">{feature.title}</h3>
+              <h3 class="mb-2 text-[15px] font-semibold text-foreground">{feature.title}</h3>
               <p class="text-sm leading-relaxed text-muted-foreground">{feature.description}</p>
             </div>
           {/if}
@@ -206,12 +203,12 @@
     </section>
 
     <!-- How it works -->
-    <section class="mx-auto max-w-5xl border-t border-border px-5 py-28 sm:px-8 md:px-10">
-      <div class="mb-20 text-center">
+    <section class="mx-auto max-w-5xl border-t border-border px-5 py-24 sm:px-8 md:px-10">
+      <div class="mb-16 text-center">
         <h2 class="section-heading">How it works</h2>
-        <div
-          class="mx-auto mt-5 h-px w-16 bg-gradient-to-r from-transparent via-primary to-transparent">
-        </div>
+        <p class="mx-auto mt-4 max-w-md text-sm leading-relaxed text-muted-foreground">
+          Three steps from idea to shareable diagram.
+        </p>
       </div>
 
       <div class="grid gap-12 md:grid-cols-3 md:gap-8">
@@ -221,7 +218,7 @@
               class="relative"
               in:fly={{ y: 20, duration: 450, delay: 200 + i * 120, easing: cubicOut }}>
               <span class="step-number">{item.step}</span>
-              <h3 class="mt-4 mb-3 text-base font-semibold text-foreground">{item.title}</h3>
+              <h3 class="mt-4 mb-2 text-[15px] font-semibold text-foreground">{item.title}</h3>
               <p class="text-sm leading-relaxed text-muted-foreground">{item.desc}</p>
             </div>
           {/if}
@@ -231,10 +228,10 @@
 
     <!-- Built with -->
     <section
-      class="mx-auto max-w-5xl border-t border-border px-5 py-28 text-center sm:px-8 md:px-10">
-      <h2 class="mb-3 text-xl font-bold tracking-tight text-foreground">Built with</h2>
-      <p class="mb-12 text-sm text-muted-foreground">Modern stack, open source all the way down.</p>
-      <div class="flex flex-wrap items-center justify-center gap-3">
+      class="mx-auto max-w-5xl border-t border-border px-5 py-20 text-center sm:px-8 md:px-10">
+      <h2 class="mb-3 text-lg font-bold tracking-tight text-foreground">Built with</h2>
+      <p class="mb-8 text-sm text-muted-foreground">Modern stack, open source all the way down.</p>
+      <div class="flex flex-wrap items-center justify-center gap-2.5">
         {#each stack as tech (tech.name)}
           <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
           <a href={tech.url} target="_blank" rel="noopener noreferrer" class="tech-chip"
@@ -245,17 +242,17 @@
 
     <!-- CTA -->
     <section
-      class="mx-auto max-w-4xl border-t border-border px-5 py-28 text-center sm:px-8 md:px-10">
-      <h2 class="text-[clamp(1.5rem,5vw,2.5rem)] font-bold tracking-tight text-foreground">
+      class="mx-auto max-w-4xl border-t border-border px-5 py-24 text-center sm:px-8 md:px-10">
+      <h2 class="text-[clamp(1.5rem,5vw,2.25rem)] font-bold tracking-tight text-foreground">
         Ready to diagram?
       </h2>
-      <p class="mt-5 text-base text-muted-foreground">
+      <p class="mt-4 text-base text-muted-foreground">
         Sign in, create a workspace, and start building.
       </p>
-      <div class="mt-10 flex flex-col items-center gap-3 sm:flex-row sm:justify-center sm:gap-4">
+      <div class="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center sm:gap-4">
         <a
           href={resolve('/dashboard')}
-          class="btn-primary min-w-[220px] justify-center py-3 text-sm">
+          class="btn-primary min-w-[200px] justify-center py-3 text-sm">
           Go to Dashboard
           <ArrowRight class="size-4" />
         </a>
@@ -263,7 +260,7 @@
           href="https://github.com/omkarbhad/graphini"
           target="_blank"
           rel="noopener"
-          class="btn-glass min-w-[220px] justify-center">
+          class="btn-glass min-w-[200px] justify-center">
           <Github class="size-4" />
           View Source
         </a>
@@ -288,8 +285,14 @@
           <h4 class="footer-heading">Product</h4>
           <ul class="space-y-2.5">
             <li><a href={resolve('/dashboard')} class="footer-link">Dashboard</a></li>
-            <li><a href={resolve('/dashboard')} class="footer-link">Dashboard</a></li>
             <li><a href={resolve('/dashboard')} class="footer-link">Workspaces</a></li>
+            <li>
+              <a
+                href="https://github.com/omkarbhad/graphini#features"
+                target="_blank"
+                rel="noopener"
+                class="footer-link">Features</a>
+            </li>
           </ul>
         </div>
         <div>
@@ -427,16 +430,16 @@
 
   /* ── Feature Cards ── */
   .feature-card {
-    @apply relative rounded-xl p-6 transition-all duration-500;
+    @apply relative rounded-xl p-6 transition-all duration-300;
     background: var(--color-card);
     border: 1px solid var(--color-border);
   }
   .feature-card:hover {
-    border-color: var(--color-primary);
-    transform: translateY(-4px);
+    border-color: color-mix(in srgb, var(--color-primary) 30%, var(--color-border));
+    transform: translateY(-2px);
     box-shadow:
-      0 20px 40px rgba(0, 0, 0, 0.08),
-      0 0 60px var(--card-glow);
+      0 12px 32px rgba(0, 0, 0, 0.06),
+      0 0 40px var(--card-glow);
   }
 
   /* ── Tech chips ── */

@@ -35,6 +35,7 @@
   import { onMount, onDestroy, type ComponentType } from 'svelte';
   import { fly, fade, scale } from 'svelte/transition';
   import { cubicOut, backOut } from 'svelte/easing';
+  import { mode } from 'mode-watcher';
 
   const typeIcons: Record<string, ComponentType> = {
     class: Network,
@@ -64,55 +65,109 @@
     { id: 'shared', label: 'Shared with me', icon: Share2, count: 0 }
   ];
 
-  const typeGradients: Record<string, { bg: string; border: string; text: string; glow: string }> =
-    {
-      class: {
-        bg: 'rgba(6, 182, 212, 0.06)',
-        border: 'rgba(6, 182, 212, 0.12)',
-        text: '#67e8f9',
-        glow: 'rgba(6, 182, 212, 0.08)'
-      },
-      erd: {
-        bg: 'rgba(59, 130, 246, 0.06)',
-        border: 'rgba(59, 130, 246, 0.12)',
-        text: '#93c5fd',
-        glow: 'rgba(59, 130, 246, 0.08)'
-      },
-      flowchart: {
-        bg: 'rgba(139, 92, 246, 0.06)',
-        border: 'rgba(139, 92, 246, 0.12)',
-        text: '#c4b5fd',
-        glow: 'rgba(139, 92, 246, 0.08)'
-      },
-      gantt: {
-        bg: 'rgba(245, 158, 11, 0.06)',
-        border: 'rgba(245, 158, 11, 0.12)',
-        text: '#fcd34d',
-        glow: 'rgba(245, 158, 11, 0.08)'
-      },
-      sequence: {
-        bg: 'rgba(16, 185, 129, 0.06)',
-        border: 'rgba(16, 185, 129, 0.12)',
-        text: '#6ee7b7',
-        glow: 'rgba(16, 185, 129, 0.08)'
-      },
-      state: {
-        bg: 'rgba(244, 63, 94, 0.06)',
-        border: 'rgba(244, 63, 94, 0.12)',
-        text: '#fda4af',
-        glow: 'rgba(244, 63, 94, 0.08)'
-      }
-    };
+  const typeGradientsDark: Record<
+    string,
+    { bg: string; border: string; text: string; glow: string }
+  > = {
+    class: {
+      bg: 'rgba(6, 182, 212, 0.06)',
+      border: 'rgba(6, 182, 212, 0.12)',
+      text: '#67e8f9',
+      glow: 'rgba(6, 182, 212, 0.08)'
+    },
+    erd: {
+      bg: 'rgba(59, 130, 246, 0.06)',
+      border: 'rgba(59, 130, 246, 0.12)',
+      text: '#93c5fd',
+      glow: 'rgba(59, 130, 246, 0.08)'
+    },
+    flowchart: {
+      bg: 'rgba(139, 92, 246, 0.06)',
+      border: 'rgba(139, 92, 246, 0.12)',
+      text: '#c4b5fd',
+      glow: 'rgba(139, 92, 246, 0.08)'
+    },
+    gantt: {
+      bg: 'rgba(245, 158, 11, 0.06)',
+      border: 'rgba(245, 158, 11, 0.12)',
+      text: '#fcd34d',
+      glow: 'rgba(245, 158, 11, 0.08)'
+    },
+    sequence: {
+      bg: 'rgba(16, 185, 129, 0.06)',
+      border: 'rgba(16, 185, 129, 0.12)',
+      text: '#6ee7b7',
+      glow: 'rgba(16, 185, 129, 0.08)'
+    },
+    state: {
+      bg: 'rgba(244, 63, 94, 0.06)',
+      border: 'rgba(244, 63, 94, 0.12)',
+      text: '#fda4af',
+      glow: 'rgba(244, 63, 94, 0.08)'
+    }
+  };
 
-  const defaultGradient = {
+  const typeGradientsLight: Record<
+    string,
+    { bg: string; border: string; text: string; glow: string }
+  > = {
+    class: {
+      bg: 'rgba(6, 182, 212, 0.06)',
+      border: 'rgba(6, 182, 212, 0.18)',
+      text: '#0891b2',
+      glow: 'rgba(6, 182, 212, 0.08)'
+    },
+    erd: {
+      bg: 'rgba(59, 130, 246, 0.06)',
+      border: 'rgba(59, 130, 246, 0.18)',
+      text: '#2563eb',
+      glow: 'rgba(59, 130, 246, 0.08)'
+    },
+    flowchart: {
+      bg: 'rgba(139, 92, 246, 0.06)',
+      border: 'rgba(139, 92, 246, 0.18)',
+      text: '#7c3aed',
+      glow: 'rgba(139, 92, 246, 0.08)'
+    },
+    gantt: {
+      bg: 'rgba(245, 158, 11, 0.06)',
+      border: 'rgba(245, 158, 11, 0.18)',
+      text: '#d97706',
+      glow: 'rgba(245, 158, 11, 0.08)'
+    },
+    sequence: {
+      bg: 'rgba(16, 185, 129, 0.06)',
+      border: 'rgba(16, 185, 129, 0.18)',
+      text: '#059669',
+      glow: 'rgba(16, 185, 129, 0.08)'
+    },
+    state: {
+      bg: 'rgba(244, 63, 94, 0.06)',
+      border: 'rgba(244, 63, 94, 0.18)',
+      text: '#e11d48',
+      glow: 'rgba(244, 63, 94, 0.08)'
+    }
+  };
+
+  const defaultGradientDark = {
     bg: 'rgba(255, 255, 255, 0.02)',
     border: 'rgba(255, 255, 255, 0.06)',
     text: 'rgba(255, 255, 255, 0.4)',
     glow: 'rgba(255, 255, 255, 0.02)'
   };
 
+  const defaultGradientLight = {
+    bg: 'rgba(0, 0, 0, 0.02)',
+    border: 'rgba(0, 0, 0, 0.06)',
+    text: 'rgba(0, 0, 0, 0.4)',
+    glow: 'rgba(0, 0, 0, 0.02)'
+  };
+
   function getTypeStyle(type: string | null) {
-    return typeGradients[type || ''] || defaultGradient;
+    const isDark = $mode === 'dark';
+    const gradients = isDark ? typeGradientsDark : typeGradientsLight;
+    const fallback = isDark ? defaultGradientDark : defaultGradientLight;
+    return gradients[type || ''] || fallback;
   }
 
   async function loadWorkspaces() {
@@ -218,7 +273,7 @@
       <Dialog.Header>
         <Dialog.Title class="text-[15px] font-semibold text-foreground"
           >Delete workspace</Dialog.Title>
-        <Dialog.Description class="text-[13px] text-muted-foreground/60">
+        <Dialog.Description class="text-[13px] text-muted-foreground">
           Are you sure you want to delete <strong class="text-foreground/80"
             >"{deleteTarget.title}"</strong
           >? This action cannot be undone.
@@ -255,9 +310,7 @@
 
       <!-- Navigation -->
       <nav class="flex-1 px-3 py-3">
-        <div class="mb-2 px-3 text-[10px] font-semibold tracking-[0.08em] text-white/20 uppercase">
-          Workspace
-        </div>
+        <div class="dash-section-label">Workspace</div>
         <div class="space-y-0.5">
           {#each sidebarItems as item (item.id)}
             {@const Icon = item.icon}
@@ -274,10 +327,11 @@
 
         <div class="sidebar-divider"></div>
 
-        <div class="mb-2 px-3 text-[10px] font-semibold tracking-[0.08em] text-white/20 uppercase">
-          Quick Access
-        </div>
-        <button class="sidebar-nav-item" onclick={() => handleNew()} aria-label="New workspace">
+        <div class="dash-section-label">Quick Access</div>
+        <button
+          class="sidebar-nav-item"
+          onclick={() => handleNewWorkspace()}
+          aria-label="New workspace">
           <Sparkles class="size-[15px]" />
           <span class="flex-1 text-left">New Workspace</span>
           <ArrowUpRight class="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
@@ -292,7 +346,7 @@
               <img
                 src={authStore.user.avatar_url}
                 alt={authStore.user.display_name || 'User'}
-                class="size-8 rounded-full ring-1 ring-white/10" />
+                class="size-8 rounded-full ring-1 ring-border" />
             {:else}
               <div class="user-avatar-badge">
                 {(authStore.user.display_name || authStore.user.email || '?')[0].toUpperCase()}
@@ -303,7 +357,7 @@
                 {authStore.user.display_name || authStore.user.email}
               </p>
               {#if authStore.user.display_name}
-                <p class="truncate text-[10px] text-muted-foreground/40">{authStore.user.email}</p>
+                <p class="truncate text-[10px] text-muted-foreground/60">{authStore.user.email}</p>
               {/if}
             </div>
             <button
@@ -411,7 +465,7 @@
               class="relative flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 class="text-[14px] font-semibold text-foreground">Sign in to save your work</h3>
-                <p class="mt-1 text-[12px] text-muted-foreground/50">
+                <p class="mt-1 text-[12px] text-muted-foreground/70">
                   Create an account to save diagrams, star favorites, and access them from anywhere.
                 </p>
               </div>
@@ -425,7 +479,7 @@
           <div class="flex flex-1 items-center justify-center py-32">
             <div class="text-center" in:fade={{ duration: 200 }}>
               <div class="loading-spinner mx-auto"></div>
-              <p class="mt-4 text-[12px] text-muted-foreground/40">Loading workspaces...</p>
+              <p class="mt-4 text-[12px] text-muted-foreground/60">Loading workspaces...</p>
             </div>
           </div>
 
@@ -441,16 +495,14 @@
               aria-label="Create new workspace">
               <div class="new-card-inner">
                 {#if creating}
-                  <Loader2 class="size-7 animate-spin text-violet-400/60" />
+                  <Loader2 class="size-7 animate-spin text-violet-400/80" />
                 {:else}
                   <div class="new-card-icon">
                     <Plus class="size-5 text-violet-400" />
                   </div>
                 {/if}
-                <span
-                  class="mt-3 text-[12px] font-medium text-white/40 transition-colors group-hover:text-white/60"
-                  >New Diagram</span>
-                <span class="mt-0.5 text-[10px] text-white/20">Start from scratch</span>
+                <span class="new-card-label">New Diagram</span>
+                <span class="new-card-sub">Start from scratch</span>
               </div>
             </button>
 
@@ -519,7 +571,7 @@
                     <!-- Star indicator (when hovered actions hidden) -->
                     {#if ws.is_starred}
                       <Star
-                        class="absolute top-4 right-4 size-3 fill-amber-400/60 text-amber-400/60 transition-opacity group-hover:opacity-0" />
+                        class="absolute top-4 right-4 size-3 fill-amber-400 text-amber-400 transition-opacity group-hover:opacity-0" />
                     {/if}
 
                     <!-- Meta row -->
@@ -546,12 +598,12 @@
         {:else}
           <div class="empty-state" in:fade={{ duration: 350 }}>
             <div class="empty-icon-wrap">
-              <Folder class="size-8 text-violet-400/30" />
+              <Folder class="size-8 text-violet-400/50" />
             </div>
             <h3 class="mt-5 text-[15px] font-semibold text-foreground/80">
               {searchQuery ? 'No matches found' : 'No workspaces yet'}
             </h3>
-            <p class="mt-2 max-w-xs text-[12px] leading-relaxed text-muted-foreground/40">
+            <p class="mt-2 max-w-xs text-[12px] leading-relaxed text-muted-foreground/60">
               {searchQuery
                 ? 'Try a different search term or clear your filters.'
                 : 'Create your first diagram to get started. Describe it in plain English or write Mermaid DSL directly.'}
@@ -581,8 +633,8 @@
   .ambient-grid {
     position: absolute;
     inset: 0;
-    background-image: linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+    background-image: linear-gradient(var(--dash-grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--dash-grid-line) 1px, transparent 1px);
     background-size: 80px 80px;
     mask-image: radial-gradient(ellipse at 30% 20%, black 0%, transparent 70%);
   }
@@ -649,10 +701,14 @@
   }
 
   .sidebar-nav-item {
-    @apply flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[12px] font-medium text-white/35 transition-all duration-200;
-    @apply hover:bg-white/[0.03] hover:text-white/70;
+    @apply flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[12px] font-medium transition-all duration-200;
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
+    color: var(--dash-text-secondary);
     cursor: pointer;
+  }
+  .sidebar-nav-item:hover {
+    background: var(--dash-hover-bg);
+    color: var(--dash-hover-text);
   }
 
   .sidebar-nav-item.active {
@@ -684,15 +740,20 @@
   }
 
   .sidebar-icon-btn {
-    @apply flex size-7 items-center justify-center rounded-md text-white/20 transition-all duration-200;
-    @apply hover:bg-white/[0.04] hover:text-white/60;
+    @apply flex size-7 items-center justify-center rounded-md transition-all duration-200;
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
+    color: var(--dash-text-faint);
     cursor: pointer;
+  }
+  .sidebar-icon-btn:hover {
+    background: var(--dash-hover-bg);
+    color: var(--dash-hover-text);
   }
 
   .signin-pill {
-    @apply flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium text-white/40 transition-all duration-200;
+    @apply flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium transition-all duration-200;
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
+    color: var(--dash-text-secondary);
     background: var(--surface-overlay);
     border: 1px solid var(--surface-border);
     cursor: pointer;
@@ -719,7 +780,8 @@
   }
 
   .mobile-new-btn {
-    @apply flex size-9 items-center justify-center rounded-lg text-white;
+    @apply flex size-9 items-center justify-center rounded-lg;
+    color: #fff;
     background: linear-gradient(135deg, var(--gradient-from), var(--gradient-via));
     cursor: pointer;
   }
@@ -730,8 +792,9 @@
   }
 
   .mobile-filter-pill {
-    @apply shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium text-white/35 transition-all duration-200;
+    @apply shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all duration-200;
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
+    color: var(--dash-text-secondary);
     cursor: pointer;
   }
   .mobile-filter-pill.active {
@@ -752,7 +815,7 @@
   .count-badge {
     @apply inline-flex items-center justify-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums;
     background: var(--surface-border);
-    color: rgba(255, 255, 255, 0.3);
+    color: var(--dash-text-tertiary);
     min-width: 20px;
   }
 
@@ -767,15 +830,19 @@
   }
 
   .search-wrapper :global(.search-icon) {
-    @apply absolute left-2.5 size-3.5 text-white/20;
+    @apply absolute left-2.5 size-3.5;
+    color: var(--dash-text-faint);
     pointer-events: none;
   }
 
   .search-input {
-    @apply w-full rounded-lg py-2 pr-12 pl-8 text-[12px] text-white transition-all duration-200 outline-none;
-    @apply placeholder:text-white/20;
+    @apply w-full rounded-lg py-2 pr-12 pl-8 text-[12px] transition-all duration-200 outline-none;
+    color: var(--foreground);
     background: var(--surface-overlay);
     border: 1px solid var(--surface-border);
+  }
+  .search-input::placeholder {
+    color: var(--dash-text-faint);
   }
   .search-input:focus {
     background: var(--surface-border);
@@ -784,7 +851,8 @@
   }
 
   .search-kbd {
-    @apply absolute right-2 flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-medium text-white/15;
+    @apply absolute right-2 flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-medium;
+    color: var(--dash-text-faint);
     background: var(--surface-overlay);
     border: 1px solid var(--surface-border);
     pointer-events: none;
@@ -792,8 +860,9 @@
 
   /* ── New Button ── */
   .new-btn {
-    @apply inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-[12px] font-semibold text-white transition-all duration-250;
-    @apply focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black focus-visible:outline-none;
+    @apply inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-[12px] font-semibold transition-all duration-250;
+    @apply focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none;
+    color: #fff;
     background: linear-gradient(
       135deg,
       var(--gradient-from) 0%,
@@ -808,8 +877,27 @@
   .new-btn:hover {
     box-shadow:
       0 0 24px color-mix(in srgb, var(--gradient-to) 35%, transparent),
-      0 4px 16px rgba(0, 0, 0, 0.4);
+      0 4px 16px var(--dash-card-hover-shadow);
     transform: translateY(-1px);
+  }
+
+  /* ── Section Labels ── */
+  .dash-section-label {
+    @apply mb-2 px-3 text-[10px] font-semibold tracking-[0.08em] uppercase;
+    color: var(--dash-text-faint);
+  }
+
+  /* ── New Card Labels ── */
+  .new-card-label {
+    @apply mt-3 text-[12px] font-medium transition-colors;
+    color: var(--dash-text-secondary);
+  }
+  .new-card:hover .new-card-label {
+    color: var(--dash-hover-text);
+  }
+  .new-card-sub {
+    @apply mt-0.5 text-[10px];
+    color: var(--dash-text-faint);
   }
 
   /* ── Auth Banner ── */
@@ -874,10 +962,10 @@
     border: 1px solid var(--surface-border);
   }
   .ws-card:hover {
-    border-color: var(--card-border, rgba(255, 255, 255, 0.08));
+    border-color: var(--card-border, var(--surface-border));
     transform: translateY(-2px);
     box-shadow:
-      0 8px 24px rgba(0, 0, 0, 0.35),
+      0 8px 24px var(--dash-card-shadow),
       0 0 32px var(--card-glow, transparent);
   }
 
@@ -902,10 +990,10 @@
     inset: 0;
     background-image: radial-gradient(
         circle at 20% 30%,
-        rgba(255, 255, 255, 0.015) 1px,
+        var(--dash-pattern-dot) 1px,
         transparent 1px
       ),
-      radial-gradient(circle at 80% 70%, rgba(255, 255, 255, 0.01) 1px, transparent 1px);
+      radial-gradient(circle at 80% 70%, var(--dash-pattern-dot-alt) 1px, transparent 1px);
     background-size:
       20px 20px,
       30px 30px;
@@ -917,16 +1005,25 @@
   }
 
   .ws-title {
-    @apply text-left text-[12px] leading-snug font-medium text-white/75 transition-colors;
-    @apply hover:text-white focus-visible:text-white focus-visible:outline-none;
+    @apply text-left text-[12px] leading-snug font-medium transition-colors;
+    @apply focus-visible:outline-none;
+    color: var(--dash-text-primary);
     cursor: pointer;
+  }
+  .ws-title:hover,
+  .ws-title:focus-visible {
+    color: var(--foreground);
   }
 
   .ws-action-btn {
-    @apply flex size-6 items-center justify-center rounded-md text-white/25 transition-all duration-150;
-    @apply hover:bg-white/[0.05] hover:text-white/70;
+    @apply flex size-6 items-center justify-center rounded-md transition-all duration-150;
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
+    color: var(--dash-text-tertiary);
     cursor: pointer;
+  }
+  .ws-action-btn:hover {
+    background: var(--dash-hover-bg);
+    color: var(--dash-hover-text);
   }
 
   .ws-meta {
@@ -939,7 +1036,8 @@
   }
 
   .ws-time {
-    @apply flex items-center gap-1 text-[10px] text-muted-foreground/30;
+    @apply flex items-center gap-1 text-[10px];
+    color: var(--dash-text-tertiary);
   }
 
   /* ── Empty State ── */

@@ -58,13 +58,26 @@
   --gradient-to: #3b82f6;
 
   /* Surface overlays — for glass, cards on dark backgrounds */
-  --surface-overlay: rgba(255, 255, 255, 0.03);
-  --surface-border: rgba(0, 0, 0, 0.06);
-  --surface-elevated: rgba(255, 255, 255, 0.06);
+  --surface-overlay: rgba(0, 0, 0, 0.025);
+  --surface-border: rgba(0, 0, 0, 0.08);
+  --surface-elevated: rgba(0, 0, 0, 0.05);
 
   /* Grid pattern */
   --grid-dot: rgba(107, 114, 128, 0.2);
   --grid-line: rgba(229, 231, 235, 0.27);
+
+  /* Dashboard semantic tokens */
+  --dash-text-primary: rgba(0, 0, 0, 0.85);
+  --dash-text-secondary: rgba(0, 0, 0, 0.55);
+  --dash-text-tertiary: rgba(0, 0, 0, 0.4);
+  --dash-text-faint: rgba(0, 0, 0, 0.3);
+  --dash-hover-bg: rgba(0, 0, 0, 0.04);
+  --dash-hover-text: rgba(0, 0, 0, 0.8);
+  --dash-grid-line: rgba(0, 0, 0, 0.03);
+  --dash-pattern-dot: rgba(0, 0, 0, 0.03);
+  --dash-pattern-dot-alt: rgba(0, 0, 0, 0.02);
+  --dash-card-shadow: rgba(0, 0, 0, 0.08);
+  --dash-card-hover-shadow: rgba(0, 0, 0, 0.14);
 }
 
 .dark {
@@ -120,13 +133,26 @@
   --gradient-to: #6366f1;
 
   /* Surface overlays */
-  --surface-overlay: rgba(255, 255, 255, 0.03);
-  --surface-border: rgba(255, 255, 255, 0.04);
-  --surface-elevated: rgba(255, 255, 255, 0.06);
+  --surface-overlay: rgba(255, 255, 255, 0.035);
+  --surface-border: rgba(255, 255, 255, 0.06);
+  --surface-elevated: rgba(255, 255, 255, 0.08);
 
   /* Grid pattern */
   --grid-dot: rgba(156, 163, 175, 0.2);
   --grid-line: rgba(55, 65, 81, 0.27);
+
+  /* Dashboard semantic tokens */
+  --dash-text-primary: rgba(255, 255, 255, 0.85);
+  --dash-text-secondary: rgba(255, 255, 255, 0.55);
+  --dash-text-tertiary: rgba(255, 255, 255, 0.4);
+  --dash-text-faint: rgba(255, 255, 255, 0.3);
+  --dash-hover-bg: rgba(255, 255, 255, 0.04);
+  --dash-hover-text: rgba(255, 255, 255, 0.8);
+  --dash-grid-line: rgba(255, 255, 255, 0.015);
+  --dash-pattern-dot: rgba(255, 255, 255, 0.02);
+  --dash-pattern-dot-alt: rgba(255, 255, 255, 0.012);
+  --dash-card-shadow: rgba(0, 0, 0, 0.4);
+  --dash-card-hover-shadow: rgba(0, 0, 0, 0.5);
 }
 
 @theme inline {
@@ -219,7 +245,12 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family:
+      'DM Sans',
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      sans-serif;
     font-size: 14px;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
@@ -231,7 +262,12 @@
   h4,
   h5,
   h6 {
-    font-family: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-family:
+      'Space Grotesk',
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      sans-serif;
     letter-spacing: -0.02em;
   }
   code,
