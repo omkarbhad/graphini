@@ -1,16 +1,23 @@
 <script lang="ts">
   import '@xyflow/svelte/dist/style.css';
-  import { SvelteFlow, Background, Controls, MiniMap, type Node, type Edge } from '@xyflow/svelte';
+  import {
+    ConnectionMode,
+    SvelteFlow,
+    Background,
+    Controls,
+    MiniMap,
+    type Node,
+    type Edge
+  } from '@xyflow/svelte';
   import { mode } from 'mode-watcher';
   import { LayoutDashboard } from 'lucide-svelte';
 
   import { parseStructurizrDSL } from '../parser.js';
   import { getAvailableViews, transformToSvelteFlow, type ViewSummary } from '../transformer.js';
-  import { applyElkLayout, normalizeDirection, type ElkRoute } from '../layout.js';
+  import { applyElkLayout, normalizeDirection } from '../layout.js';
   import type { C4Workspace } from '../types.js';
 
   import ViewSelector from './ViewSelector.svelte';
-  import EdgeLayer from './EdgeLayer.svelte';
   import PersonNode from './nodes/PersonNode.svelte';
   import SoftwareSystemNode from './nodes/SoftwareSystemNode.svelte';
   import ContainerNode from './nodes/ContainerNode.svelte';
@@ -46,7 +53,6 @@
 
   let nodes = $state<Node[]>([]);
   let edges = $state<Edge[]>([]);
-  let elkRoutes = $state<ElkRoute[]>([]);
   let workspace = $state<C4Workspace | null>(null);
   let parseError = $state<string | null>(null);
   let activeViewKey = $state<string>('');
@@ -94,10 +100,14 @@
 
     const result = transformToSvelteFlow(ws, viewKey);
     const remapped = remapNodeData(result.nodes);
-    const laid = await applyElkLayout(remapped, result.edges, { direction }, overrides);
+    const laid = await applyElkLayout(
+      remapped,
+      result.edges,
+      { direction: direction as 'DOWN' | 'UP' | 'RIGHT' | 'LEFT' },
+      overrides
+    );
     nodes = laid.nodes;
-    edges = []; // Don't pass edges to SvelteFlow — we render them ourselves
-    elkRoutes = laid.routes;
+    edges = laid.edges;
   }
 
   // ---------------------------------------------------------------------------
@@ -226,14 +236,15 @@
     bind:edges
     {nodeTypes}
     {colorMode}
+    connectionMode={ConnectionMode.Loose}
+    defaultEdgeOptions={{ style: 'stroke: #94a3b8; stroke-width: 1px;' }}
     fitView
-    minZoom={0.05}
     maxZoom={4}
+    minZoom={0.05}
     onnodedragstop={handleNodeDragStop}>
     {#if gridEnabled}
       <Background />
     {/if}
-    <EdgeLayer routes={elkRoutes} />
     <Controls />
     <MiniMap />
   </SvelteFlow>
