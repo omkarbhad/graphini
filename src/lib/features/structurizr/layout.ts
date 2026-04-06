@@ -1,33 +1,21 @@
 /**
  * ELK-based layout for C4 diagrams.
- *
- * Uses the Eclipse Layout Kernel (elkjs) with its `layered` algorithm and
- * ORTHOGONAL edge routing. ELK computes both node positions and edge bend
- * points that guarantee:
- *   - No edge-edge crossings (crossing minimisation)
- *   - No edge-node overlaps (orthogonal routing avoids nodes)
- *   - Edges connect at distributed ports along node borders
  */
 
 import ELK from 'elkjs/lib/elk.bundled.js';
 import type { Node, Edge } from '@xyflow/svelte';
+import { MarkerType } from '@xyflow/svelte';
 
 const elk = new ELK();
 
 export interface LayoutOptions {
-  /** Graph direction. Default: 'DOWN' */
   direction?: 'DOWN' | 'UP' | 'RIGHT' | 'LEFT';
-  /** Node width for layout. Default: 280 */
   nodeWidth?: number;
-  /** Node height for layout. Default: 160 */
   nodeHeight?: number;
-  /** Spacing between layers/ranks. Default: 80 */
   layerSpacing?: number;
-  /** Spacing between nodes in the same layer. Default: 60 */
   nodeSpacing?: number;
 }
 
-/** Map from C4 autoLayout directions to ELK directions. */
 const DIRECTION_MAP: Record<string, string> = {
   BT: 'UP',
   DOWN: 'DOWN',
@@ -44,12 +32,6 @@ export function normalizeDirection(dir?: string): string {
   return DIRECTION_MAP[dir.toUpperCase()] ?? 'DOWN';
 }
 
-/**
- * Apply ELK layout to SvelteFlow nodes and edges.
- *
- * Returns positioned nodes and edges with bend-point paths that avoid
- * all crossings and node overlaps.
- */
 export async function applyElkLayout(
   nodes: Node[],
   edges: Edge[],
@@ -60,38 +42,26 @@ export async function applyElkLayout(
     direction = 'DOWN',
     nodeWidth = 280,
     nodeHeight = 180,
-    layerSpacing = 150,
-    nodeSpacing = 100
+    layerSpacing = 200,
+    nodeSpacing = 120
   } = options;
 
-  if (nodes.length === 0) {
-    return { nodes: [], edges: [] };
-  }
+  if (nodes.length === 0) return { nodes: [], edges: [] };
 
-  // Build the ELK graph
   const elkGraph = {
     id: 'root',
     layoutOptions: {
       'elk.algorithm': 'layered',
       'elk.direction': direction,
-      // Orthogonal edge routing — edges bend at right angles and avoid nodes
       'elk.edgeRouting': 'ORTHOGONAL',
-      // Crossing minimisation
       'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
-      // Node placement to reduce edge length
       'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
-      // Spacing
-      'elk.layered.spacing.baseValue': String(nodeSpacing),
-      'elk.layered.spacing.edgeEdgeBetweenLayers': '50',
-      'elk.layered.spacing.edgeNodeBetweenLayers': '60',
+      'elk.layered.spacing.edgeEdgeBetweenLayers': '60',
+      'elk.layered.spacing.edgeNodeBetweenLayers': '80',
       'elk.layered.spacing.nodeNodeBetweenLayers': String(layerSpacing),
-      // Distribute ports along node edges (not just center)
       'elk.portConstraints': 'FREE',
-      // Edge spacing — generous to prevent label overlap
-      'elk.spacing.edgeEdge': '40',
-      // Label spacing
-      'elk.spacing.edgeLabel': '15',
-      'elk.spacing.edgeNode': '50',
+      'elk.spacing.edgeEdge': '50',
+      'elk.spacing.edgeNode': '60',
       'elk.spacing.nodeNode': String(nodeSpacing)
     },
     children: nodes.map((node) => ({
@@ -100,11 +70,7 @@ export async function applyElkLayout(
       height: nodeHeight
     })),
     edges: edges
-      .filter((e) => {
-        const hasSource = nodes.some((n) => n.id === e.source);
-        const hasTarget = nodes.some((n) => n.id === e.target);
-        return hasSource && hasTarget;
-      })
+      .filter((e) => nodes.some((n) => n.id === e.source) && nodes.some((n) => n.id === e.target))
       .map((e) => ({
         id: e.id,
         sources: [e.source],
@@ -114,11 +80,15 @@ export async function applyElkLayout(
 
   const layoutResult = await elk.layout(elkGraph);
 
-  // --- Map ELK results back to SvelteFlow ---
-
-  const elkNodeMap = new Map<string, { x: number; y: number }>();
+  // Position nodes
+  const elkNodeMap = new Map<string, { height: number; width: number; x: number; y: number }>();
   for (const child of layoutResult.children ?? []) {
-    elkNodeMap.set(child.id, { x: child.x ?? 0, y: child.y ?? 0 });
+    elkNodeMap.set(child.id, {
+      height: child.height ?? nodeHeight,
+      width: child.width ?? nodeWidth,
+      x: child.x ?? 0,
+      y: child.y ?? 0
+    });
   }
 
   const layoutedNodes = nodes.map((node) => {
@@ -130,14 +100,13 @@ export async function applyElkLayout(
     return { ...node, position: { x: pos.x, y: pos.y } };
   });
 
-  // Build edge lookup from ELK result
+  // Process edges - determine handles from ELK's edge sections
   const elkEdgeMap = new Map<
     string,
     {
       sections?: {
-        bendPoints?: { x: number; y: number }[];
-        startPoint?: { x: number; y: number };
         endPoint?: { x: number; y: number };
+        startPoint?: { x: number; y: number };
       }[];
     }
   >();
@@ -145,56 +114,53 @@ export async function applyElkLayout(
     elkEdgeMap.set(elkEdge.id, elkEdge);
   }
 
-  // Convert ELK bend points to SVG path for each edge
   const layoutedEdges = edges.map((edge) => {
     const elkEdge = elkEdgeMap.get(edge.id);
     const section = elkEdge?.sections?.[0];
 
-    if (!section?.startPoint || !section?.endPoint) {
-      // Fallback: no routing data
-      return { ...edge, type: 'elk' };
+    const srcNode = elkNodeMap.get(edge.source);
+    const tgtNode = elkNodeMap.get(edge.target);
+
+    let sourceHandle = 'bottom';
+    let targetHandle = 'top';
+
+    if (section?.startPoint && srcNode) {
+      sourceHandle = getHandleFromPort(section.startPoint, srcNode);
     }
-
-    const start = section.startPoint;
-    const end = section.endPoint;
-    const bends = section.bendPoints ?? [];
-
-    // Build SVG path: M start L bend1 L bend2 ... L end
-    let d = `M ${start.x} ${start.y}`;
-    for (const bp of bends) {
-      d += ` L ${bp.x} ${bp.y}`;
+    if (section?.endPoint && tgtNode) {
+      targetHandle = getHandleFromPort(section.endPoint, tgtNode);
     }
-    d += ` L ${end.x} ${end.y}`;
-
-    // Compute source/target handles based on edge direction at endpoints
-    const sourceHandle = getHandleFromDirection(start, bends[0] ?? end);
-    const targetHandle = getHandleFromDirection(end, bends[bends.length - 1] ?? start);
 
     return {
       ...edge,
-      data: { ...((edge.data as Record<string, unknown>) ?? {}), elkPath: d },
+      markerEnd: { height: 15, type: MarkerType.ArrowClosed, width: 15 },
       sourceHandle,
       targetHandle,
-      type: 'elk'
+      type: 'smoothstep'
     };
   });
 
   return { nodes: layoutedNodes, edges: layoutedEdges };
 }
 
-/** Determine which handle (top/bottom/left/right) an edge enters/exits from. */
-function getHandleFromDirection(
+/** Determine which side of a node a port point is on. */
+function getHandleFromPort(
   point: { x: number; y: number },
-  otherPoint: { x: number; y: number }
+  node: { height: number; width: number; x: number; y: number }
 ): string {
-  const dx = otherPoint.x - point.x;
-  const dy = otherPoint.y - point.y;
+  const cx = node.x + node.width / 2;
+  const cy = node.y + node.height / 2;
+  const dx = point.x - cx;
+  const dy = point.y - cy;
 
-  if (Math.abs(dx) > Math.abs(dy)) {
-    return dx > 0 ? 'right' : 'left';
+  // Normalize by node dimensions to handle non-square nodes
+  const normalizedDx = dx / (node.width / 2);
+  const normalizedDy = dy / (node.height / 2);
+
+  if (Math.abs(normalizedDx) > Math.abs(normalizedDy)) {
+    return normalizedDx > 0 ? 'right' : 'left';
   }
-  return dy > 0 ? 'bottom' : 'top';
+  return normalizedDy > 0 ? 'bottom' : 'top';
 }
 
-// Keep the old function name as an alias for backwards compatibility
 export const applyDagreLayout = applyElkLayout;

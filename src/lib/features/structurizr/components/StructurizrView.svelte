@@ -10,7 +10,6 @@
   import type { C4Workspace } from '../types.js';
 
   import ViewSelector from './ViewSelector.svelte';
-  import ElkEdge from './edges/ElkEdge.svelte';
   import PersonNode from './nodes/PersonNode.svelte';
   import SoftwareSystemNode from './nodes/SoftwareSystemNode.svelte';
   import ContainerNode from './nodes/ContainerNode.svelte';
@@ -38,10 +37,6 @@
     deploymentNode: DeploymentNode,
     person: PersonNode,
     softwareSystem: SoftwareSystemNode
-  };
-
-  const edgeTypes = {
-    elk: ElkEdge
   };
 
   // ---------------------------------------------------------------------------
@@ -227,8 +222,11 @@
     bind:nodes
     bind:edges
     {nodeTypes}
-    {edgeTypes}
     {colorMode}
+    defaultEdgeOptions={{
+      style: 'stroke: #94a3b8; stroke-width: 1.5px;',
+      animated: false
+    }}
     connectionMode="loose"
     fitView
     minZoom={0.05}
