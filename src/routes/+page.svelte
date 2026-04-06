@@ -1,7 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
-  import { authStore } from '$lib/stores/auth.svelte';
   import { Header } from '$lib/components/ui/header/index.js';
   import { HeroSection } from '$lib/components/ui/hero-section/index.js';
   import {
@@ -13,8 +12,7 @@
     Users,
     Globe,
     Github,
-    Heart,
-    Zap
+    Heart
   } from 'lucide-svelte';
   import { onMount } from 'svelte';
   import { fly, fade } from 'svelte/transition';
@@ -26,54 +24,53 @@
   });
 
   function gotoEdit(prompt: string) {
-    // eslint-disable-next-line svelte/no-navigation-without-resolve
-    goto(resolve('/edit') + `?prompt=${encodeURIComponent(prompt)}`);
+    goto(resolve('/dashboard') + `?prompt=${encodeURIComponent(prompt)}`);
   }
 
   const features = [
     {
-      icon: Sparkles,
-      title: 'AI Generation',
+      color: 'from-blue-600 to-blue-400',
       description:
         'Describe your diagram in plain English. Graphini turns words into production-ready Mermaid code.',
-      color: 'from-blue-600 to-blue-400',
-      glow: 'rgba(37, 99, 235, 0.15)'
+      glow: 'rgba(37, 99, 235, 0.15)',
+      icon: Sparkles,
+      title: 'AI Generation'
     },
     {
-      icon: Code2,
-      title: 'Mermaid DSL',
+      color: 'from-cyan-500 to-blue-500',
       description:
         'Full Mermaid.js support. Syntax highlighting, live preview, intelligent auto-complete.',
-      color: 'from-cyan-500 to-blue-500',
-      glow: 'rgba(6, 182, 212, 0.15)'
+      glow: 'rgba(6, 182, 212, 0.15)',
+      icon: Code2,
+      title: 'Mermaid DSL'
     },
     {
-      icon: Paintbrush,
-      title: 'Infinite Canvas',
-      description: 'Pan, zoom, arrange. Your workspace, your layout. No constraints.',
       color: 'from-indigo-500 to-blue-500',
-      glow: 'rgba(99, 102, 241, 0.15)'
+      description: 'Pan, zoom, arrange. Your workspace, your layout. No constraints.',
+      glow: 'rgba(99, 102, 241, 0.15)',
+      icon: Paintbrush,
+      title: 'Infinite Canvas'
     },
     {
-      icon: Download,
-      title: 'Export Anything',
-      description: 'SVG, PNG, or raw Mermaid code. Embed diagrams in docs, slides, READMEs.',
       color: 'from-amber-500 to-orange-500',
-      glow: 'rgba(245, 158, 11, 0.15)'
+      description: 'SVG, PNG, or raw Mermaid code. Embed diagrams in docs, slides, READMEs.',
+      glow: 'rgba(245, 158, 11, 0.15)',
+      icon: Download,
+      title: 'Export Anything'
     },
     {
-      icon: Users,
-      title: 'Workspaces',
-      description: 'Save, organize, revisit. Auto-save keeps your work safe as you go.',
       color: 'from-emerald-500 to-teal-500',
-      glow: 'rgba(16, 185, 129, 0.15)'
+      description: 'Save, organize, revisit. Auto-save keeps your work safe as you go.',
+      glow: 'rgba(16, 185, 129, 0.15)',
+      icon: Users,
+      title: 'Workspaces'
     },
     {
-      icon: Globe,
-      title: 'Open Source',
-      description: 'Built in the open. Fork it, extend it, self-host it. MIT licensed.',
       color: 'from-rose-500 to-pink-500',
-      glow: 'rgba(244, 63, 94, 0.15)'
+      description: 'Built in the open. Fork it, extend it, self-host it. MIT licensed.',
+      glow: 'rgba(244, 63, 94, 0.15)',
+      icon: Globe,
+      title: 'Open Source'
     }
   ];
 
@@ -180,7 +177,9 @@
     <section class="mx-auto max-w-6xl px-5 py-28 sm:px-8 md:px-10">
       <div class="mb-20 text-center">
         <h2 class="section-heading">Everything you need to diagram</h2>
-        <div class="mx-auto mt-5 h-px w-16 bg-gradient-to-r from-transparent via-primary to-transparent"></div>
+        <div
+          class="mx-auto mt-5 h-px w-16 bg-gradient-to-r from-transparent via-primary to-transparent">
+        </div>
         <p class="mx-auto mt-5 max-w-lg text-sm text-muted-foreground">
           From quick sketches to production architecture docs.
         </p>
@@ -195,7 +194,7 @@
               style="--card-glow: {feature.glow}"
               in:fly={{ y: 20, duration: 450, delay: 120 + i * 80, easing: cubicOut }}>
               <div
-                class="mb-5 flex size-12 items-center justify-center rounded-xl bg-gradient-to-br {feature.color} shadow-lg shadow-black/10 transition-all duration-300 group-hover:shadow-xl group-hover:scale-105">
+                class="mb-5 flex size-12 items-center justify-center rounded-xl bg-gradient-to-br {feature.color} shadow-lg shadow-black/10 transition-all duration-300 group-hover:scale-105 group-hover:shadow-xl">
                 <Icon class="size-5 text-white" />
               </div>
               <h3 class="mb-2.5 text-base font-semibold text-foreground">{feature.title}</h3>
@@ -210,7 +209,9 @@
     <section class="mx-auto max-w-5xl border-t border-border px-5 py-28 sm:px-8 md:px-10">
       <div class="mb-20 text-center">
         <h2 class="section-heading">How it works</h2>
-        <div class="mx-auto mt-5 h-px w-16 bg-gradient-to-r from-transparent via-primary to-transparent"></div>
+        <div
+          class="mx-auto mt-5 h-px w-16 bg-gradient-to-r from-transparent via-primary to-transparent">
+        </div>
       </div>
 
       <div class="grid gap-12 md:grid-cols-3 md:gap-8">
@@ -229,11 +230,10 @@
     </section>
 
     <!-- Built with -->
-    <section class="mx-auto max-w-5xl border-t border-border px-5 py-28 text-center sm:px-8 md:px-10">
+    <section
+      class="mx-auto max-w-5xl border-t border-border px-5 py-28 text-center sm:px-8 md:px-10">
       <h2 class="mb-3 text-xl font-bold tracking-tight text-foreground">Built with</h2>
-      <p class="mb-12 text-sm text-muted-foreground">
-        Modern stack, open source all the way down.
-      </p>
+      <p class="mb-12 text-sm text-muted-foreground">Modern stack, open source all the way down.</p>
       <div class="flex flex-wrap items-center justify-center gap-3">
         {#each stack as tech (tech.name)}
           <!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
@@ -244,13 +244,18 @@
     </section>
 
     <!-- CTA -->
-    <section class="mx-auto max-w-4xl border-t border-border px-5 py-28 text-center sm:px-8 md:px-10">
-      <h2 class="text-[clamp(1.5rem,5vw,2.5rem)] font-bold tracking-tight text-foreground">Ready to diagram?</h2>
+    <section
+      class="mx-auto max-w-4xl border-t border-border px-5 py-28 text-center sm:px-8 md:px-10">
+      <h2 class="text-[clamp(1.5rem,5vw,2.5rem)] font-bold tracking-tight text-foreground">
+        Ready to diagram?
+      </h2>
       <p class="mt-5 text-base text-muted-foreground">
         Sign in, create a workspace, and start building.
       </p>
       <div class="mt-10 flex flex-col items-center gap-3 sm:flex-row sm:justify-center sm:gap-4">
-        <a href={resolve('/dashboard')} class="btn-primary min-w-[220px] justify-center py-3 text-sm">
+        <a
+          href={resolve('/dashboard')}
+          class="btn-primary min-w-[220px] justify-center py-3 text-sm">
           Go to Dashboard
           <ArrowRight class="size-4" />
         </a>
@@ -282,7 +287,7 @@
         <div>
           <h4 class="footer-heading">Product</h4>
           <ul class="space-y-2.5">
-            <li><a href={resolve('/edit')} class="footer-link">Editor</a></li>
+            <li><a href={resolve('/dashboard')} class="footer-link">Dashboard</a></li>
             <li><a href={resolve('/dashboard')} class="footer-link">Dashboard</a></li>
             <li><a href={resolve('/canvas')} class="footer-link">Canvas</a></li>
           </ul>
@@ -330,7 +335,8 @@
           </ul>
         </div>
       </div>
-      <div class="mt-12 flex flex-col items-center justify-between gap-4 border-t border-border pt-8 sm:flex-row">
+      <div
+        class="mt-12 flex flex-col items-center justify-between gap-4 border-t border-border pt-8 sm:flex-row">
         <p class="text-xs text-muted-foreground">
           © {new Date().getFullYear()} Graphini by
           <a
@@ -360,7 +366,12 @@
   .btn-primary {
     @apply inline-flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-semibold text-white transition-all duration-300;
     @apply focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none;
-    background: linear-gradient(135deg, var(--gradient-from) 0%, var(--gradient-via) 50%, var(--gradient-to) 100%);
+    background: linear-gradient(
+      135deg,
+      var(--gradient-from) 0%,
+      var(--gradient-via) 50%,
+      var(--gradient-to) 100%
+    );
     box-shadow:
       0 0 20px color-mix(in srgb, var(--gradient-from) 25%, transparent),
       0 4px 16px rgba(0, 0, 0, 0.15);
@@ -423,7 +434,9 @@
   .feature-card:hover {
     border-color: var(--color-primary);
     transform: translateY(-4px);
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08), 0 0 60px var(--card-glow);
+    box-shadow:
+      0 20px 40px rgba(0, 0, 0, 0.08),
+      0 0 60px var(--card-glow);
   }
 
   /* ── Tech chips ── */

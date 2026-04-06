@@ -2,7 +2,6 @@
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
   import { Button } from '$lib/components/ui/button';
-  import { WORKSPACE_CATEGORIES } from '$lib/design-tokens';
   import { authStore } from '$lib/stores/auth.svelte';
   import { workspaceStore } from '$lib/stores/workspace.svelte';
   import type { DiagramWorkspaceSummary } from '$lib/types/workspace';
@@ -65,44 +64,45 @@
     { id: 'shared', label: 'Shared with me', icon: Share2, count: 0 }
   ];
 
-  const typeGradients: Record<string, { bg: string; border: string; text: string; glow: string }> = {
-    flowchart: {
-      bg: 'rgba(139, 92, 246, 0.06)',
-      border: 'rgba(139, 92, 246, 0.12)',
-      text: '#c4b5fd',
-      glow: 'rgba(139, 92, 246, 0.08)'
-    },
-    sequence: {
-      bg: 'rgba(16, 185, 129, 0.06)',
-      border: 'rgba(16, 185, 129, 0.12)',
-      text: '#6ee7b7',
-      glow: 'rgba(16, 185, 129, 0.08)'
-    },
-    class: {
-      bg: 'rgba(6, 182, 212, 0.06)',
-      border: 'rgba(6, 182, 212, 0.12)',
-      text: '#67e8f9',
-      glow: 'rgba(6, 182, 212, 0.08)'
-    },
-    erd: {
-      bg: 'rgba(59, 130, 246, 0.06)',
-      border: 'rgba(59, 130, 246, 0.12)',
-      text: '#93c5fd',
-      glow: 'rgba(59, 130, 246, 0.08)'
-    },
-    gantt: {
-      bg: 'rgba(245, 158, 11, 0.06)',
-      border: 'rgba(245, 158, 11, 0.12)',
-      text: '#fcd34d',
-      glow: 'rgba(245, 158, 11, 0.08)'
-    },
-    state: {
-      bg: 'rgba(244, 63, 94, 0.06)',
-      border: 'rgba(244, 63, 94, 0.12)',
-      text: '#fda4af',
-      glow: 'rgba(244, 63, 94, 0.08)'
-    }
-  };
+  const typeGradients: Record<string, { bg: string; border: string; text: string; glow: string }> =
+    {
+      class: {
+        bg: 'rgba(6, 182, 212, 0.06)',
+        border: 'rgba(6, 182, 212, 0.12)',
+        text: '#67e8f9',
+        glow: 'rgba(6, 182, 212, 0.08)'
+      },
+      erd: {
+        bg: 'rgba(59, 130, 246, 0.06)',
+        border: 'rgba(59, 130, 246, 0.12)',
+        text: '#93c5fd',
+        glow: 'rgba(59, 130, 246, 0.08)'
+      },
+      flowchart: {
+        bg: 'rgba(139, 92, 246, 0.06)',
+        border: 'rgba(139, 92, 246, 0.12)',
+        text: '#c4b5fd',
+        glow: 'rgba(139, 92, 246, 0.08)'
+      },
+      gantt: {
+        bg: 'rgba(245, 158, 11, 0.06)',
+        border: 'rgba(245, 158, 11, 0.12)',
+        text: '#fcd34d',
+        glow: 'rgba(245, 158, 11, 0.08)'
+      },
+      sequence: {
+        bg: 'rgba(16, 185, 129, 0.06)',
+        border: 'rgba(16, 185, 129, 0.12)',
+        text: '#6ee7b7',
+        glow: 'rgba(16, 185, 129, 0.08)'
+      },
+      state: {
+        bg: 'rgba(244, 63, 94, 0.06)',
+        border: 'rgba(244, 63, 94, 0.12)',
+        text: '#fda4af',
+        glow: 'rgba(244, 63, 94, 0.08)'
+      }
+    };
 
   const defaultGradient = {
     bg: 'rgba(255, 255, 255, 0.02)',
@@ -216,9 +216,12 @@
     }}>
     <Dialog.Content class="delete-dialog max-w-sm">
       <Dialog.Header>
-        <Dialog.Title class="text-[15px] font-semibold text-foreground">Delete workspace</Dialog.Title>
+        <Dialog.Title class="text-[15px] font-semibold text-foreground"
+          >Delete workspace</Dialog.Title>
         <Dialog.Description class="text-[13px] text-muted-foreground/60">
-          Are you sure you want to delete <strong class="text-foreground/80">"{deleteTarget.title}"</strong>? This action cannot be undone.
+          Are you sure you want to delete <strong class="text-foreground/80"
+            >"{deleteTarget.title}"</strong
+          >? This action cannot be undone.
         </Dialog.Description>
       </Dialog.Header>
       <div class="flex justify-end gap-2.5 pt-5">
@@ -252,7 +255,9 @@
 
       <!-- Navigation -->
       <nav class="flex-1 px-3 py-3">
-        <div class="mb-2 px-3 text-[10px] font-semibold tracking-[0.08em] text-white/20 uppercase">Workspace</div>
+        <div class="mb-2 px-3 text-[10px] font-semibold tracking-[0.08em] text-white/20 uppercase">
+          Workspace
+        </div>
         <div class="space-y-0.5">
           {#each sidebarItems as item (item.id)}
             {@const Icon = item.icon}
@@ -269,13 +274,12 @@
 
         <div class="sidebar-divider"></div>
 
-        <div class="mb-2 px-3 text-[10px] font-semibold tracking-[0.08em] text-white/20 uppercase">Quick Access</div>
-        <button
-          class="sidebar-nav-item"
-          onclick={() => goto(resolve('/edit'))}
-          aria-label="Open editor">
+        <div class="mb-2 px-3 text-[10px] font-semibold tracking-[0.08em] text-white/20 uppercase">
+          Quick Access
+        </div>
+        <button class="sidebar-nav-item" onclick={() => handleNew()} aria-label="New workspace">
           <Sparkles class="size-[15px]" />
-          <span class="flex-1 text-left">Open Editor</span>
+          <span class="flex-1 text-left">New Workspace</span>
           <ArrowUpRight class="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
         </button>
       </nav>
@@ -354,9 +358,7 @@
       <div class="mx-auto max-w-[1200px]">
         {#if mounted}
           <!-- Top bar: title + search + new -->
-          <div
-            class="content-header"
-            in:fly={{ y: 10, duration: 350, easing: cubicOut }}>
+          <div class="content-header" in:fly={{ y: 10, duration: 350, easing: cubicOut }}>
             <div class="flex items-center gap-4">
               <h1 class="content-title">
                 {activeFilter === 'starred'
@@ -405,7 +407,8 @@
         {#if !authStore.isLoggedIn && authStore.isInitialized}
           <div class="auth-cta" in:fade={{ duration: 300, delay: 200 }}>
             <div class="auth-cta-glow"></div>
-            <div class="relative flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div
+              class="relative flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 class="text-[14px] font-semibold text-foreground">Sign in to save your work</h3>
                 <p class="mt-1 text-[12px] text-muted-foreground/50">
@@ -426,7 +429,7 @@
             </div>
           </div>
 
-        <!-- Populated grid -->
+          <!-- Populated grid -->
         {:else if workspaces.length > 0}
           <div class="card-grid">
             <!-- New diagram card -->
@@ -444,7 +447,9 @@
                     <Plus class="size-5 text-violet-400" />
                   </div>
                 {/if}
-                <span class="mt-3 text-[12px] font-medium text-white/40 transition-colors group-hover:text-white/60">New Diagram</span>
+                <span
+                  class="mt-3 text-[12px] font-medium text-white/40 transition-colors group-hover:text-white/60"
+                  >New Diagram</span>
                 <span class="mt-0.5 text-[10px] text-white/20">Start from scratch</span>
               </div>
             </button>
@@ -458,14 +463,15 @@
                   class="ws-card group"
                   style="--card-accent: {style.text}; --card-glow: {style.glow}; --card-border: {style.border}"
                   in:fly={{ y: 16, duration: 350, delay: 60 + i * 35, easing: cubicOut }}>
-
                   <!-- Preview area -->
                   <button
                     class="ws-preview"
                     style="background: {style.bg}"
                     onclick={() => goto(resolve(`/workspace/${ws.id}`))}
                     aria-label="Open {ws.title}">
-                    <div class="ws-preview-icon" style="background: {style.bg}; border-color: {style.border}; color: {style.text}">
+                    <div
+                      class="ws-preview-icon"
+                      style="background: {style.bg}; border-color: {style.border}; color: {style.text}">
                       <Icon class="size-6" />
                     </div>
                     <!-- Subtle grid pattern in preview -->
@@ -475,18 +481,19 @@
                   <!-- Card body -->
                   <div class="ws-body">
                     <div class="flex items-start justify-between gap-2">
-                      <button
-                        class="ws-title"
-                        onclick={() => goto(resolve(`/workspace/${ws.id}`))}>
+                      <button class="ws-title" onclick={() => goto(resolve(`/workspace/${ws.id}`))}>
                         {ws.title}
                       </button>
-                      <div class="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                      <div
+                        class="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                         <button
                           class="ws-action-btn"
                           onclick={() => handleStar(ws)}
                           aria-label={ws.is_starred ? 'Unstar' : 'Star'}>
                           <Star
-                            class="size-3.5 {ws.is_starred ? 'fill-amber-400 text-amber-400' : ''}" />
+                            class="size-3.5 {ws.is_starred
+                              ? 'fill-amber-400 text-amber-400'
+                              : ''}" />
                         </button>
                         <DropdownMenu.Root>
                           <DropdownMenu.Trigger>
@@ -511,13 +518,16 @@
 
                     <!-- Star indicator (when hovered actions hidden) -->
                     {#if ws.is_starred}
-                      <Star class="absolute top-4 right-4 size-3 fill-amber-400/60 text-amber-400/60 transition-opacity group-hover:opacity-0" />
+                      <Star
+                        class="absolute top-4 right-4 size-3 fill-amber-400/60 text-amber-400/60 transition-opacity group-hover:opacity-0" />
                     {/if}
 
                     <!-- Meta row -->
                     <div class="ws-meta">
                       {#if ws.diagram_type}
-                        <span class="ws-type-badge" style="color: {style.text}; background: {style.bg}; border-color: {style.border}">
+                        <span
+                          class="ws-type-badge"
+                          style="color: {style.text}; background: {style.bg}; border-color: {style.border}">
                           {ws.diagram_type}
                         </span>
                       {/if}
@@ -532,11 +542,9 @@
             {/each}
           </div>
 
-        <!-- Empty state -->
+          <!-- Empty state -->
         {:else}
-          <div
-            class="empty-state"
-            in:fade={{ duration: 350 }}>
+          <div class="empty-state" in:fade={{ duration: 350 }}>
             <div class="empty-icon-wrap">
               <Folder class="size-8 text-violet-400/30" />
             </div>
@@ -573,8 +581,7 @@
   .ambient-grid {
     position: absolute;
     inset: 0;
-    background-image:
-      linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+    background-image: linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
     background-size: 80px 80px;
     mask-image: radial-gradient(ellipse at 30% 20%, black 0%, transparent 70%);
@@ -593,7 +600,11 @@
     height: 500px;
     top: -5%;
     left: 20%;
-    background: radial-gradient(circle, color-mix(in srgb, var(--gradient-from) 7%, transparent) 0%, transparent 70%);
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--gradient-from) 7%, transparent) 0%,
+      transparent 70%
+    );
   }
 
   .ambient-orb-2 {
@@ -601,15 +612,26 @@
     height: 400px;
     bottom: 10%;
     right: 15%;
-    background: radial-gradient(circle, color-mix(in srgb, var(--gradient-to) 5%, transparent) 0%, transparent 70%);
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--gradient-to) 5%, transparent) 0%,
+      transparent 70%
+    );
     animation-delay: -12s;
     animation-direction: reverse;
   }
 
   @keyframes drift {
-    0%, 100% { transform: translate(0, 0) scale(1); }
-    33% { transform: translate(20px, -15px) scale(1.03); }
-    66% { transform: translate(-15px, 10px) scale(0.97); }
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+    }
+    33% {
+      transform: translate(20px, -15px) scale(1.03);
+    }
+    66% {
+      transform: translate(-15px, 10px) scale(0.97);
+    }
   }
 
   /* ── Sidebar ── */
@@ -640,7 +662,7 @@
   }
 
   .sidebar-divider {
-    @apply my-3 mx-3;
+    @apply mx-3 my-3;
     height: 1px;
     background: var(--surface-border);
   }
@@ -652,7 +674,11 @@
 
   .user-avatar-badge {
     @apply flex size-8 items-center justify-center rounded-full text-[11px] font-semibold;
-    background: linear-gradient(135deg, color-mix(in srgb, var(--gradient-from) 15%, transparent), color-mix(in srgb, var(--gradient-to) 10%, transparent));
+    background: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--gradient-from) 15%, transparent),
+      color-mix(in srgb, var(--gradient-to) 10%, transparent)
+    );
     color: var(--gradient-to);
     border: 1px solid color-mix(in srgb, var(--gradient-from) 12%, transparent);
   }
@@ -768,7 +794,12 @@
   .new-btn {
     @apply inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-[12px] font-semibold text-white transition-all duration-250;
     @apply focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black focus-visible:outline-none;
-    background: linear-gradient(135deg, var(--gradient-from) 0%, var(--gradient-via) 50%, var(--gradient-to) 100%);
+    background: linear-gradient(
+      135deg,
+      var(--gradient-from) 0%,
+      var(--gradient-via) 50%,
+      var(--gradient-to) 100%
+    );
     box-shadow:
       0 0 16px color-mix(in srgb, var(--gradient-to) 20%, transparent),
       0 2px 8px rgba(0, 0, 0, 0.3);
@@ -795,7 +826,11 @@
     width: 300px;
     height: 300px;
     border-radius: 50%;
-    background: radial-gradient(circle, color-mix(in srgb, var(--gradient-from) 6%, transparent) 0%, transparent 70%);
+    background: radial-gradient(
+      circle,
+      color-mix(in srgb, var(--gradient-from) 6%, transparent) 0%,
+      transparent 70%
+    );
     pointer-events: none;
   }
 
@@ -847,7 +882,7 @@
   }
 
   .ws-preview {
-    @apply relative flex h-[100px] w-full items-center justify-center rounded-t-xl overflow-hidden;
+    @apply relative flex h-[100px] w-full items-center justify-center overflow-hidden rounded-t-xl;
     border-bottom: 1px solid var(--surface-overlay);
     cursor: pointer;
   }
@@ -865,10 +900,15 @@
   .ws-preview-pattern {
     position: absolute;
     inset: 0;
-    background-image:
-      radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+    background-image: radial-gradient(
+        circle at 20% 30%,
+        rgba(255, 255, 255, 0.015) 1px,
+        transparent 1px
+      ),
       radial-gradient(circle at 80% 70%, rgba(255, 255, 255, 0.01) 1px, transparent 1px);
-    background-size: 20px 20px, 30px 30px;
+    background-size:
+      20px 20px,
+      30px 30px;
     pointer-events: none;
   }
 
@@ -877,7 +917,7 @@
   }
 
   .ws-title {
-    @apply text-left text-[12px] font-medium text-white/75 transition-colors leading-snug;
+    @apply text-left text-[12px] leading-snug font-medium text-white/75 transition-colors;
     @apply hover:text-white focus-visible:text-white focus-visible:outline-none;
     cursor: pointer;
   }
@@ -894,7 +934,7 @@
   }
 
   .ws-type-badge {
-    @apply rounded-md px-1.5 py-0.5 text-[9px] font-semibold capitalize tracking-wide;
+    @apply rounded-md px-1.5 py-0.5 text-[9px] font-semibold tracking-wide capitalize;
     border: 1px solid;
   }
 
@@ -925,6 +965,8 @@
   }
 
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>

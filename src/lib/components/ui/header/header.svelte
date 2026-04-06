@@ -47,7 +47,7 @@
   const productLinks = [
     {
       title: 'AI Diagrams',
-      href: '/edit',
+      href: '/dashboard',
       description: 'Generate diagrams from plain English',
       icon: Code2
     },
@@ -71,7 +71,7 @@
     },
     {
       title: 'Export & Share',
-      href: '/edit',
+      href: '/dashboard',
       description: 'SVG, PNG, or raw Mermaid code',
       icon: BarChart3
     },
@@ -105,9 +105,21 @@
   ];
 
   const companyLinks2 = [
-    { title: 'MIT License', href: 'https://github.com/omkarbhad/graphini/blob/main/LICENSE', icon: FileText },
-    { title: 'Security', href: 'https://github.com/omkarbhad/graphini/blob/main/SECURITY.md', icon: Shield },
-    { title: 'Changelog', href: 'https://github.com/omkarbhad/graphini/blob/main/CHANGELOG.md', icon: RotateCcw },
+    {
+      title: 'MIT License',
+      href: 'https://github.com/omkarbhad/graphini/blob/main/LICENSE',
+      icon: FileText
+    },
+    {
+      title: 'Security',
+      href: 'https://github.com/omkarbhad/graphini/blob/main/SECURITY.md',
+      icon: Shield
+    },
+    {
+      title: 'Changelog',
+      href: 'https://github.com/omkarbhad/graphini/blob/main/CHANGELOG.md',
+      icon: RotateCcw
+    },
     { title: 'Blog', href: 'https://magnova.ai', icon: Leaf },
     { title: 'Help', href: 'https://github.com/omkarbhad/graphini/issues', icon: HelpCircle }
   ];
@@ -128,9 +140,9 @@
       <!-- Desktop nav links -->
       <div class="hidden items-center gap-1 md:flex">
         <a
-          href={resolve('/edit')}
+          href={resolve('/dashboard')}
           class="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground">
-          Editor
+          Dashboard
         </a>
         <a
           href={resolve('/canvas')}
@@ -184,13 +196,15 @@
   {#if mobileOpen}
     <div
       id="mobile-menu"
-      class="fixed inset-x-0 top-14 bottom-0 z-40 flex flex-col overflow-y-auto border-y bg-background/95 backdrop-blur-lg md:hidden supports-[backdrop-filter]:bg-background/50">
-      <div class="animate-in zoom-in-97 flex size-full flex-col justify-between gap-2 p-4 ease-out">
+      class="fixed inset-x-0 top-14 bottom-0 z-40 flex flex-col overflow-y-auto border-y bg-background/95 backdrop-blur-lg supports-[backdrop-filter]:bg-background/50 md:hidden">
+      <div class="flex size-full animate-in flex-col justify-between gap-2 p-4 ease-out zoom-in-97">
         <div class="flex w-full flex-col gap-y-2">
           <span class="text-sm font-medium text-muted-foreground">Product</span>
           {#each productLinks as link (link.title)}
             <a
-              href={link.href.startsWith('http') ? link.href : resolve(link.href as '/edit' | '/canvas' | '/dashboard')}
+              href={link.href.startsWith('http')
+                ? link.href
+                : resolve(link.href as '/canvas' | '/dashboard')}
               class="flex flex-row items-center gap-x-2 rounded-md p-2 hover:bg-accent"
               onclick={() => (mobileOpen = false)}>
               <div
