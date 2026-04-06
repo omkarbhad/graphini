@@ -20,6 +20,13 @@ export interface LayoutOptions {
   nodeSpacing?: number;
 }
 
+/** An ELK-computed edge route with all points (start + bends + end). */
+export interface ElkRoute {
+  id: string;
+  label?: string;
+  points: { x: number; y: number }[];
+}
+
 /** Handle definition: a unique connection point on a node's border. */
 export interface HandleDef {
   id: string;
@@ -49,7 +56,7 @@ export async function applyElkLayout(
   edges: Edge[],
   options: LayoutOptions = {},
   positionOverrides: Record<string, { x: number; y: number }> = {}
-): Promise<{ nodes: Node[]; edges: Edge[] }> {
+): Promise<{ edges: Edge[]; nodes: Node[]; routes: ElkRoute[] }> {
   const {
     direction = 'DOWN',
     nodeWidth = 280,
@@ -247,7 +254,29 @@ export async function applyElkLayout(
     };
   });
 
-  return { nodes: layoutedNodes, edges: layoutedEdges };
+  // --- Build ELK routes for direct SVG rendering ---
+  const routes: ElkRoute[] = edges
+    .map((edge) => {
+      const elkEdge = elkEdgeMap.get(edge.id);
+      const section = elkEdge?.sections?.[0];
+      if (!section?.startPoint || !section?.endPoint) return null;
+
+      const points: { x: number; y: number }[] = [
+        section.startPoint,
+        ...(section.bendPoints ?? []),
+        section.endPoint
+      ];
+
+      const edgeData = (edge.data ?? {}) as Record<string, unknown>;
+      return {
+        id: edge.id,
+        label: (edgeData.fullDescription as string) ?? undefined,
+        points
+      };
+    })
+    .filter((r): r is ElkRoute => r !== null);
+
+  return { edges: layoutedEdges, nodes: layoutedNodes, routes };
 }
 
 /**

@@ -6,12 +6,11 @@
 
   import { parseStructurizrDSL } from '../parser.js';
   import { getAvailableViews, transformToSvelteFlow, type ViewSummary } from '../transformer.js';
-  import { applyElkLayout, normalizeDirection } from '../layout.js';
+  import { applyElkLayout, normalizeDirection, type ElkRoute } from '../layout.js';
   import type { C4Workspace } from '../types.js';
 
   import ViewSelector from './ViewSelector.svelte';
-  import ElkEdge from './edges/ElkEdge.svelte';
-  import StaggeredEdge from './edges/StaggeredEdge.svelte';
+  import EdgeLayer from './EdgeLayer.svelte';
   import PersonNode from './nodes/PersonNode.svelte';
   import SoftwareSystemNode from './nodes/SoftwareSystemNode.svelte';
   import ContainerNode from './nodes/ContainerNode.svelte';
@@ -41,21 +40,13 @@
     softwareSystem: SoftwareSystemNode
   };
 
-  const edgeTypes = {
-    elk: ElkEdge,
-    staggered: StaggeredEdge
-  };
-
-  const edgeTypes = {
-    staggered: StaggeredEdge
-  };
-
   // ---------------------------------------------------------------------------
   // Internal state
   // ---------------------------------------------------------------------------
 
   let nodes = $state<Node[]>([]);
   let edges = $state<Edge[]>([]);
+  let elkRoutes = $state<ElkRoute[]>([]);
   let workspace = $state<C4Workspace | null>(null);
   let parseError = $state<string | null>(null);
   let activeViewKey = $state<string>('');
@@ -105,7 +96,8 @@
     const remapped = remapNodeData(result.nodes);
     const laid = await applyElkLayout(remapped, result.edges, { direction }, overrides);
     nodes = laid.nodes;
-    edges = laid.edges;
+    edges = []; // Don't pass edges to SvelteFlow — we render them ourselves
+    elkRoutes = laid.routes;
   }
 
   // ---------------------------------------------------------------------------
@@ -233,13 +225,7 @@
     bind:nodes
     bind:edges
     {nodeTypes}
-    {edgeTypes}
     {colorMode}
-    defaultEdgeOptions={{
-      animated: false,
-      style: 'stroke: #94a3b8; stroke-width: 1px;'
-    }}
-    connectionMode="loose"
     fitView
     minZoom={0.05}
     maxZoom={4}
@@ -247,6 +233,7 @@
     {#if gridEnabled}
       <Background />
     {/if}
+    <EdgeLayer routes={elkRoutes} />
     <Controls />
     <MiniMap />
   </SvelteFlow>
