@@ -190,7 +190,10 @@ export async function applyElkLayout(
     };
   });
 
-  // --- Build edges with unique handle IDs and ELK bend points ---
+  // --- Build edges with unique handle IDs ---
+  // Group edges by source node to stagger bend offsets for parallel edges
+  const sourceEdgeCount = new Map<string, number>();
+
   const layoutedEdges = edges.map((edge) => {
     const info = edgeHandleInfoMap.get(edge.id) ?? {
       bendPoints: [],
@@ -198,9 +201,22 @@ export async function applyElkLayout(
       targetHandleId: 'top'
     };
 
+    // Stagger: count how many edges already left this source node
+    const idx = sourceEdgeCount.get(edge.source) ?? 0;
+    sourceEdgeCount.set(edge.source, idx + 1);
+
+    // Offset the smoothstep bend point so parallel edges don't overlap
+    // Each subsequent edge bends 20px further from the midpoint
+    const offset = idx * 20;
+
     return {
       ...edge,
+      data: {
+        ...((edge.data as Record<string, unknown>) ?? {}),
+        pathOptions: { offset }
+      },
       markerEnd: { height: 15, type: MarkerType.ArrowClosed, width: 15 },
+      pathOptions: { offset },
       sourceHandle: info.sourceHandleId,
       targetHandle: info.targetHandleId,
       type: 'smoothstep'
