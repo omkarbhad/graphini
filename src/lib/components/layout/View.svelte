@@ -664,13 +664,10 @@
     }
     const renderTime = Date.now() - startTime;
     saveStatistics({ code, diagramType, isRough: state.rough, renderTime });
-    recordRenderTime(renderTime, () => {
-      // Only trigger a re-render if the code/config actually changed during this render
-      const current = get(inputStateStore);
-      if (current.code !== code || current.mermaid !== config || current.rough !== rough) {
-        inputStateStore.update((s) => ({ ...s, updateDiagram: true }));
-      }
-    });
+    // Record render time for throttling but use a no-op updater.
+    // Re-renders are already triggered by code/config changes via the stateStore subscription.
+    // Passing an updater that sets updateDiagram:true caused an infinite render loop.
+    recordRenderTime(renderTime, () => {});
   };
 
   onMount(() => {
@@ -705,8 +702,8 @@
       if (document.visibilityState === 'visible') {
         // Small delay to let the browser finish layout
         requestAnimationFrame(() => {
-          panZoomState.resize();
-          // Force a re-render to restore the canvas fully
+          try { panZoomState.resize(); } catch { /* svg may not exist yet */ }
+          // Force a single re-render to restore the canvas
           updateCodeStore({ updateDiagram: true });
         });
       }
