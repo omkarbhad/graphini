@@ -225,6 +225,8 @@
     {colorMode}
     connectionMode="loose"
     fitView
+    minZoom={0.05}
+    maxZoom={4}
     onnodedragstop={handleNodeDragStop}>
     {#if gridEnabled}
       <Background />

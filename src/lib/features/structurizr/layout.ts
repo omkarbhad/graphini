@@ -59,9 +59,9 @@ export async function applyElkLayout(
   const {
     direction = 'DOWN',
     nodeWidth = 280,
-    nodeHeight = 160,
-    layerSpacing = 80,
-    nodeSpacing = 60
+    nodeHeight = 180,
+    layerSpacing = 150,
+    nodeSpacing = 100
   } = options;
 
   if (nodes.length === 0) {
@@ -82,14 +82,17 @@ export async function applyElkLayout(
       'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
       // Spacing
       'elk.layered.spacing.baseValue': String(nodeSpacing),
-      'elk.layered.spacing.edgeEdgeBetweenLayers': '30',
-      'elk.layered.spacing.edgeNodeBetweenLayers': '40',
+      'elk.layered.spacing.edgeEdgeBetweenLayers': '50',
+      'elk.layered.spacing.edgeNodeBetweenLayers': '60',
       'elk.layered.spacing.nodeNodeBetweenLayers': String(layerSpacing),
       // Distribute ports along node edges (not just center)
       'elk.portConstraints': 'FREE',
-      // Edge spacing
-      'elk.spacing.edgeEdge': '20',
-      'elk.spacing.edgeNode': '30'
+      // Edge spacing — generous to prevent label overlap
+      'elk.spacing.edgeEdge': '40',
+      // Label spacing
+      'elk.spacing.edgeLabel': '15',
+      'elk.spacing.edgeNode': '50',
+      'elk.spacing.nodeNode': String(nodeSpacing)
     },
     children: nodes.map((node) => ({
       id: node.id,
