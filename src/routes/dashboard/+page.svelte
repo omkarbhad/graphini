@@ -26,16 +26,48 @@
     Share2,
     LogOut,
     User,
-    Sparkles,
-    Command,
-    ArrowUpRight
+    Command
   } from 'lucide-svelte';
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
   import * as Dialog from '$lib/components/ui/dialog';
   import { onMount, onDestroy, type ComponentType } from 'svelte';
-  import { fly, fade, scale } from 'svelte/transition';
-  import { cubicOut, backOut } from 'svelte/easing';
+  import { fade } from 'svelte/transition';
   import { mode } from 'mode-watcher';
+  import mermaid from 'mermaid';
+
+  let mermaidInitialized = false;
+  function initMermaid() {
+    if (mermaidInitialized) return;
+    mermaidInitialized = true;
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: $mode === 'dark' ? 'dark' : 'default',
+      securityLevel: 'loose',
+      fontFamily: 'inherit'
+    });
+  }
+
+  function mermaidPreview(node: HTMLElement, code: string | null) {
+    if (!code?.trim()) return;
+    initMermaid();
+    let cancelled = false;
+    const id = `preview-${Math.random().toString(36).slice(2, 9)}`;
+    mermaid.render(id, code).then(({ svg }) => {
+      if (cancelled) return;
+      node.innerHTML = svg;
+      // Scale SVG to fit
+      const svgEl = node.querySelector('svg');
+      if (svgEl) {
+        svgEl.style.maxWidth = '100%';
+        svgEl.style.maxHeight = '100%';
+        svgEl.style.width = 'auto';
+        svgEl.style.height = 'auto';
+      }
+    }).catch(() => {
+      // Render failed — leave preview empty (icon fallback stays)
+    });
+    return { destroy() { cancelled = true; } };
+  }
 
   const typeIcons: Record<string, ComponentType> = {
     class: Network,
@@ -60,114 +92,62 @@
   let searchFocused = $state(false);
 
   const sidebarItems = [
-    { id: 'all', label: 'All Diagrams', icon: LayoutDashboard, count: 0 },
-    { id: 'starred', label: 'Starred', icon: Star, count: 0 },
-    { id: 'shared', label: 'Shared with me', icon: Share2, count: 0 }
+    { id: 'all', label: 'All Diagrams', icon: LayoutDashboard },
+    { id: 'starred', label: 'Starred', icon: Star },
+    { id: 'shared', label: 'Shared with me', icon: Share2 }
   ];
 
-  const typeGradientsDark: Record<
-    string,
-    { bg: string; border: string; text: string; glow: string }
-  > = {
-    class: {
-      bg: 'rgba(6, 182, 212, 0.06)',
-      border: 'rgba(6, 182, 212, 0.12)',
-      text: '#67e8f9',
-      glow: 'rgba(6, 182, 212, 0.08)'
-    },
-    erd: {
-      bg: 'rgba(59, 130, 246, 0.06)',
-      border: 'rgba(59, 130, 246, 0.12)',
-      text: '#93c5fd',
-      glow: 'rgba(59, 130, 246, 0.08)'
-    },
+  const typeColorsDark: Record<string, { bg: string; border: string; text: string }> = {
+    class: { bg: 'rgba(6, 182, 212, 0.06)', border: 'rgba(6, 182, 212, 0.12)', text: '#67e8f9' },
+    erd: { bg: 'rgba(59, 130, 246, 0.06)', border: 'rgba(59, 130, 246, 0.12)', text: '#93c5fd' },
     flowchart: {
       bg: 'rgba(139, 92, 246, 0.06)',
       border: 'rgba(139, 92, 246, 0.12)',
-      text: '#c4b5fd',
-      glow: 'rgba(139, 92, 246, 0.08)'
+      text: '#c4b5fd'
     },
-    gantt: {
-      bg: 'rgba(245, 158, 11, 0.06)',
-      border: 'rgba(245, 158, 11, 0.12)',
-      text: '#fcd34d',
-      glow: 'rgba(245, 158, 11, 0.08)'
-    },
+    gantt: { bg: 'rgba(245, 158, 11, 0.06)', border: 'rgba(245, 158, 11, 0.12)', text: '#fcd34d' },
     sequence: {
       bg: 'rgba(16, 185, 129, 0.06)',
       border: 'rgba(16, 185, 129, 0.12)',
-      text: '#6ee7b7',
-      glow: 'rgba(16, 185, 129, 0.08)'
+      text: '#6ee7b7'
     },
-    state: {
-      bg: 'rgba(244, 63, 94, 0.06)',
-      border: 'rgba(244, 63, 94, 0.12)',
-      text: '#fda4af',
-      glow: 'rgba(244, 63, 94, 0.08)'
-    }
+    state: { bg: 'rgba(244, 63, 94, 0.06)', border: 'rgba(244, 63, 94, 0.12)', text: '#fda4af' }
   };
 
-  const typeGradientsLight: Record<
-    string,
-    { bg: string; border: string; text: string; glow: string }
-  > = {
-    class: {
-      bg: 'rgba(6, 182, 212, 0.06)',
-      border: 'rgba(6, 182, 212, 0.18)',
-      text: '#0891b2',
-      glow: 'rgba(6, 182, 212, 0.08)'
-    },
-    erd: {
-      bg: 'rgba(59, 130, 246, 0.06)',
-      border: 'rgba(59, 130, 246, 0.18)',
-      text: '#2563eb',
-      glow: 'rgba(59, 130, 246, 0.08)'
-    },
+  const typeColorsLight: Record<string, { bg: string; border: string; text: string }> = {
+    class: { bg: 'rgba(6, 182, 212, 0.06)', border: 'rgba(6, 182, 212, 0.18)', text: '#0891b2' },
+    erd: { bg: 'rgba(59, 130, 246, 0.06)', border: 'rgba(59, 130, 246, 0.18)', text: '#2563eb' },
     flowchart: {
       bg: 'rgba(139, 92, 246, 0.06)',
       border: 'rgba(139, 92, 246, 0.18)',
-      text: '#7c3aed',
-      glow: 'rgba(139, 92, 246, 0.08)'
+      text: '#7c3aed'
     },
-    gantt: {
-      bg: 'rgba(245, 158, 11, 0.06)',
-      border: 'rgba(245, 158, 11, 0.18)',
-      text: '#d97706',
-      glow: 'rgba(245, 158, 11, 0.08)'
-    },
+    gantt: { bg: 'rgba(245, 158, 11, 0.06)', border: 'rgba(245, 158, 11, 0.18)', text: '#d97706' },
     sequence: {
       bg: 'rgba(16, 185, 129, 0.06)',
       border: 'rgba(16, 185, 129, 0.18)',
-      text: '#059669',
-      glow: 'rgba(16, 185, 129, 0.08)'
+      text: '#059669'
     },
-    state: {
-      bg: 'rgba(244, 63, 94, 0.06)',
-      border: 'rgba(244, 63, 94, 0.18)',
-      text: '#e11d48',
-      glow: 'rgba(244, 63, 94, 0.08)'
-    }
+    state: { bg: 'rgba(244, 63, 94, 0.06)', border: 'rgba(244, 63, 94, 0.18)', text: '#e11d48' }
   };
 
-  const defaultGradientDark = {
+  const defaultDark = {
     bg: 'rgba(255, 255, 255, 0.02)',
     border: 'rgba(255, 255, 255, 0.06)',
-    text: 'rgba(255, 255, 255, 0.4)',
-    glow: 'rgba(255, 255, 255, 0.02)'
+    text: 'rgba(255, 255, 255, 0.4)'
   };
 
-  const defaultGradientLight = {
+  const defaultLight = {
     bg: 'rgba(0, 0, 0, 0.02)',
     border: 'rgba(0, 0, 0, 0.06)',
-    text: 'rgba(0, 0, 0, 0.4)',
-    glow: 'rgba(0, 0, 0, 0.02)'
+    text: 'rgba(0, 0, 0, 0.4)'
   };
 
   function getTypeStyle(type: string | null) {
     const isDark = $mode === 'dark';
-    const gradients = isDark ? typeGradientsDark : typeGradientsLight;
-    const fallback = isDark ? defaultGradientDark : defaultGradientLight;
-    return gradients[type || ''] || fallback;
+    const colors = isDark ? typeColorsDark : typeColorsLight;
+    const fallback = isDark ? defaultDark : defaultLight;
+    return colors[type || ''] || fallback;
   }
 
   async function loadWorkspaces() {
@@ -186,7 +166,6 @@
     authStore.init();
     loadWorkspaces();
 
-    // Global keyboard shortcut for search
     function handleKeydown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
@@ -262,14 +241,13 @@
 
 <svelte:head><title>Dashboard — Graphini</title></svelte:head>
 
-<!-- Delete Confirmation Dialog -->
 {#if deleteTarget}
   <Dialog.Root
     open={!!deleteTarget}
     onOpenChange={(o) => {
       if (!o) deleteTarget = null;
     }}>
-    <Dialog.Content class="delete-dialog max-w-sm">
+    <Dialog.Content class="max-w-sm">
       <Dialog.Header>
         <Dialog.Title class="text-[15px] font-semibold text-foreground"
           >Delete workspace</Dialog.Title>
@@ -290,17 +268,9 @@
 {/if}
 
 <div class="dash-root">
-  <!-- Ambient background -->
-  <div class="pointer-events-none fixed inset-0 z-0">
-    <div class="ambient-grid"></div>
-    <div class="ambient-orb ambient-orb-1"></div>
-    <div class="ambient-orb ambient-orb-2"></div>
-  </div>
-
   <!-- Sidebar -->
   <aside class="dash-sidebar">
     <div class="flex h-full flex-col">
-      <!-- Logo -->
       <div class="sidebar-header">
         <a href={resolve('/')} class="flex items-center gap-2.5">
           <img src="/brand/logo.png" alt="Graphini" class="size-7 rounded-lg" />
@@ -308,9 +278,8 @@
         </a>
       </div>
 
-      <!-- Navigation -->
       <nav class="flex-1 px-3 py-3">
-        <div class="dash-section-label">Workspace</div>
+        <p class="sidebar-label">Workspace</p>
         <div class="space-y-0.5">
           {#each sidebarItems as item (item.id)}
             {@const Icon = item.icon}
@@ -325,20 +294,8 @@
           {/each}
         </div>
 
-        <div class="sidebar-divider"></div>
-
-        <div class="dash-section-label">Quick Access</div>
-        <button
-          class="sidebar-nav-item"
-          onclick={() => handleNewWorkspace()}
-          aria-label="New workspace">
-          <Sparkles class="size-[15px]" />
-          <span class="flex-1 text-left">New Workspace</span>
-          <ArrowUpRight class="size-3 opacity-0 transition-opacity group-hover:opacity-100" />
-        </button>
       </nav>
 
-      <!-- User section -->
       <div class="sidebar-footer">
         {#if authStore.isLoggedIn && authStore.user}
           <div class="flex items-center gap-2.5">
@@ -369,7 +326,7 @@
             </button>
           </div>
         {:else}
-          <button class="signin-pill" onclick={() => authStore.login()}>
+          <button class="signin-btn" onclick={() => authStore.login()}>
             <User class="size-3.5" />
             Sign in to save work
           </button>
@@ -382,24 +339,14 @@
   <div class="dash-main">
     <!-- Mobile header -->
     <header class="mobile-header md:hidden">
-      <a href={resolve('/')} class="flex items-center gap-2">
-        <img src="/brand/logo.png" alt="Graphini" class="size-7 rounded-lg" />
-        <span class="text-[13px] font-semibold text-foreground/90">Dashboard</span>
-      </a>
-      <button
-        class="mobile-new-btn"
-        disabled={creating}
-        onclick={handleNewWorkspace}
-        aria-label="New workspace">
-        {#if creating}<Loader2 class="size-4 animate-spin" />{:else}<Plus class="size-4" />{/if}
-      </button>
+      <span class="text-[13px] font-semibold text-foreground/90">Dashboard</span>
     </header>
 
     <!-- Mobile filters -->
     <div class="mobile-filters md:hidden">
       {#each sidebarItems as item (item.id)}
         <button
-          class="mobile-filter-pill"
+          class="mobile-filter-btn"
           class:active={activeFilter === item.id}
           onclick={() => (activeFilter = item.id)}>
           {item.label}
@@ -411,9 +358,8 @@
     <div class="content-scroll">
       <div class="mx-auto max-w-[1200px]">
         {#if mounted}
-          <!-- Top bar: title + search + new -->
-          <div class="content-header" in:fly={{ y: 10, duration: 350, easing: cubicOut }}>
-            <div class="flex items-center gap-4">
+          <div class="content-header" in:fade={{ duration: 150 }}>
+            <div class="flex items-center gap-3">
               <h1 class="content-title">
                 {activeFilter === 'starred'
                   ? 'Starred'
@@ -425,7 +371,6 @@
             </div>
 
             <div class="flex items-center gap-3">
-              <!-- Search -->
               <div class="search-wrapper" class:focused={searchFocused}>
                 <Search class="search-icon" />
                 <input
@@ -441,28 +386,14 @@
                 </kbd>
               </div>
 
-              <!-- New diagram button -->
-              <button
-                class="new-btn hidden sm:flex"
-                disabled={creating}
-                onclick={handleNewWorkspace}>
-                {#if creating}
-                  <Loader2 class="size-4 animate-spin" />
-                {:else}
-                  <Plus class="size-4" />
-                {/if}
-                <span>New Diagram</span>
-              </button>
             </div>
           </div>
         {/if}
 
         <!-- Auth banner -->
         {#if !authStore.isLoggedIn && authStore.isInitialized}
-          <div class="auth-cta" in:fade={{ duration: 300, delay: 200 }}>
-            <div class="auth-cta-glow"></div>
-            <div
-              class="relative flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div class="auth-banner" in:fade={{ duration: 150 }}>
+            <div class="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 class="text-[14px] font-semibold text-foreground">Sign in to save your work</h3>
                 <p class="mt-1 text-[12px] text-muted-foreground/70">
@@ -477,7 +408,7 @@
         <!-- Loading state -->
         {#if loading}
           <div class="flex flex-1 items-center justify-center py-32">
-            <div class="text-center" in:fade={{ duration: 200 }}>
+            <div class="text-center" in:fade={{ duration: 150 }}>
               <div class="loading-spinner mx-auto"></div>
               <p class="mt-4 text-[12px] text-muted-foreground/60">Loading workspaces...</p>
             </div>
@@ -491,114 +422,107 @@
               class="new-card group"
               disabled={creating}
               onclick={handleNewWorkspace}
-              in:scale={{ start: 0.95, duration: 300, easing: backOut }}
               aria-label="Create new workspace">
               <div class="new-card-inner">
                 {#if creating}
-                  <Loader2 class="size-7 animate-spin text-violet-400/80" />
+                  <Loader2 class="size-6 animate-spin text-muted-foreground" />
                 {:else}
                   <div class="new-card-icon">
-                    <Plus class="size-5 text-violet-400" />
+                    <Plus class="size-5" />
                   </div>
                 {/if}
                 <span class="new-card-label">New Diagram</span>
-                <span class="new-card-sub">Start from scratch</span>
               </div>
             </button>
 
             <!-- Workspace cards -->
-            {#each workspaces as ws, i (ws.id)}
+            {#each workspaces as ws (ws.id)}
               {@const Icon = typeIcons[ws.diagram_type || ''] || typeIcons.default}
               {@const style = getTypeStyle(ws.diagram_type)}
-              {#if mounted}
-                <div
-                  class="ws-card group"
-                  style="--card-accent: {style.text}; --card-glow: {style.glow}; --card-border: {style.border}"
-                  in:fly={{ y: 16, duration: 350, delay: 60 + i * 35, easing: cubicOut }}>
-                  <!-- Preview area -->
-                  <button
-                    class="ws-preview"
-                    style="background: {style.bg}"
-                    onclick={() => goto(resolve(`/workspace/${ws.id}`))}
-                    aria-label="Open {ws.title}">
+              <div
+                class="ws-card group"
+                in:fade={{ duration: 150 }}>
+                <button
+                  class="ws-preview"
+                  style="background: {style.bg}"
+                  onclick={() => goto(resolve(`/workspace/${ws.id}`))}
+                  aria-label="Open {ws.title}">
+                  {#if ws.mermaid_preview}
+                    <div class="ws-preview-mermaid" use:mermaidPreview={ws.mermaid_preview}></div>
+                  {:else}
                     <div
                       class="ws-preview-icon"
                       style="background: {style.bg}; border-color: {style.border}; color: {style.text}">
                       <Icon class="size-6" />
                     </div>
-                    <!-- Subtle grid pattern in preview -->
-                    <div class="ws-preview-pattern"></div>
-                  </button>
+                  {/if}
+                </button>
 
-                  <!-- Card body -->
-                  <div class="ws-body">
-                    <div class="flex items-start justify-between gap-2">
-                      <button class="ws-title" onclick={() => goto(resolve(`/workspace/${ws.id}`))}>
-                        {ws.title}
+                <div class="ws-body">
+                  <div class="flex items-start justify-between gap-2">
+                    <button class="ws-title" onclick={() => goto(resolve(`/workspace/${ws.id}`))}>
+                      {ws.title}
+                    </button>
+                    <div
+                      class="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                      <button
+                        class="ws-action-btn"
+                        onclick={() => handleStar(ws)}
+                        aria-label={ws.is_starred ? 'Unstar' : 'Star'}>
+                        <Star
+                          class="size-3.5 {ws.is_starred
+                            ? 'fill-amber-400 text-amber-400'
+                            : ''}" />
                       </button>
-                      <div
-                        class="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                        <button
-                          class="ws-action-btn"
-                          onclick={() => handleStar(ws)}
-                          aria-label={ws.is_starred ? 'Unstar' : 'Star'}>
-                          <Star
-                            class="size-3.5 {ws.is_starred
-                              ? 'fill-amber-400 text-amber-400'
-                              : ''}" />
-                        </button>
-                        <DropdownMenu.Root>
-                          <DropdownMenu.Trigger>
-                            <button class="ws-action-btn" aria-label="More options">
-                              <MoreHorizontal class="size-3.5" />
-                            </button>
-                          </DropdownMenu.Trigger>
-                          <DropdownMenu.Content align="end" class="min-w-[160px]">
-                            <DropdownMenu.Item onclick={() => handleDuplicate(ws)}>
-                              <Copy class="mr-2 size-3.5" />Duplicate
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Separator />
-                            <DropdownMenu.Item
-                              class="text-destructive"
-                              onclick={() => (deleteTarget = { id: ws.id, title: ws.title })}>
-                              <Trash2 class="mr-2 size-3.5" />Delete
-                            </DropdownMenu.Item>
-                          </DropdownMenu.Content>
-                        </DropdownMenu.Root>
-                      </div>
-                    </div>
-
-                    <!-- Star indicator (when hovered actions hidden) -->
-                    {#if ws.is_starred}
-                      <Star
-                        class="absolute top-4 right-4 size-3 fill-amber-400 text-amber-400 transition-opacity group-hover:opacity-0" />
-                    {/if}
-
-                    <!-- Meta row -->
-                    <div class="ws-meta">
-                      {#if ws.diagram_type}
-                        <span
-                          class="ws-type-badge"
-                          style="color: {style.text}; background: {style.bg}; border-color: {style.border}">
-                          {ws.diagram_type}
-                        </span>
-                      {/if}
-                      <span class="ws-time">
-                        <Clock class="size-3" />
-                        {formatTime(ws.updated_at)}
-                      </span>
+                      <DropdownMenu.Root>
+                        <DropdownMenu.Trigger>
+                          <button class="ws-action-btn" aria-label="More options">
+                            <MoreHorizontal class="size-3.5" />
+                          </button>
+                        </DropdownMenu.Trigger>
+                        <DropdownMenu.Content align="end" class="min-w-[160px]">
+                          <DropdownMenu.Item onclick={() => handleDuplicate(ws)}>
+                            <Copy class="mr-2 size-3.5" />Duplicate
+                          </DropdownMenu.Item>
+                          <DropdownMenu.Separator />
+                          <DropdownMenu.Item
+                            class="text-destructive"
+                            onclick={() => (deleteTarget = { id: ws.id, title: ws.title })}>
+                            <Trash2 class="mr-2 size-3.5" />Delete
+                          </DropdownMenu.Item>
+                        </DropdownMenu.Content>
+                      </DropdownMenu.Root>
                     </div>
                   </div>
+
+                  {#if ws.is_starred}
+                    <Star
+                      class="absolute top-4 right-4 size-3 fill-amber-400 text-amber-400 transition-opacity group-hover:opacity-0" />
+                  {/if}
+
+                  <div class="ws-meta">
+                    {#if ws.diagram_type}
+                      <span
+                        class="ws-type-badge"
+                        style="color: {style.text}; background: {style.bg}; border-color: {style.border}">
+                        {ws.diagram_type}
+                      </span>
+                    {/if}
+                    <span class="ws-time">
+                      <Clock class="size-3" />
+                      {formatTime(ws.updated_at)}
+                    </span>
+                  </div>
                 </div>
-              {/if}
+              </div>
             {/each}
           </div>
 
           <!-- Empty state -->
         {:else}
-          <div class="empty-state" in:fade={{ duration: 350 }}>
+          <div class="empty-state" in:fade={{ duration: 150 }}>
             <div class="empty-icon-wrap">
-              <Folder class="size-8 text-violet-400/50" />
+              <Folder class="size-7 text-muted-foreground/50" />
             </div>
             <h3 class="mt-5 text-[15px] font-semibold text-foreground/80">
               {searchQuery ? 'No matches found' : 'No workspaces yet'}
@@ -609,7 +533,7 @@
                 : 'Create your first diagram to get started. Describe it in plain English or write Mermaid DSL directly.'}
             </p>
             {#if !searchQuery}
-              <button class="new-btn mt-8" disabled={creating} onclick={handleNewWorkspace}>
+              <button class="new-btn mt-6" disabled={creating} onclick={handleNewWorkspace}>
                 <Plus class="size-4" />Create your first diagram
               </button>
             {/if}
@@ -623,67 +547,10 @@
 <style>
   @reference "../../app.css";
 
-  /* ── Layout Shell ── */
+  /* ── Layout ── */
   .dash-root {
     @apply relative flex min-h-[100dvh];
     background: var(--background);
-  }
-
-  /* ── Ambient Background ── */
-  .ambient-grid {
-    position: absolute;
-    inset: 0;
-    background-image: linear-gradient(var(--dash-grid-line) 1px, transparent 1px),
-      linear-gradient(90deg, var(--dash-grid-line) 1px, transparent 1px);
-    background-size: 80px 80px;
-    mask-image: radial-gradient(ellipse at 30% 20%, black 0%, transparent 70%);
-  }
-
-  .ambient-orb {
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(140px);
-    will-change: transform;
-    animation: drift 25s ease-in-out infinite;
-  }
-
-  .ambient-orb-1 {
-    width: 500px;
-    height: 500px;
-    top: -5%;
-    left: 20%;
-    background: radial-gradient(
-      circle,
-      color-mix(in srgb, var(--gradient-from) 7%, transparent) 0%,
-      transparent 70%
-    );
-  }
-
-  .ambient-orb-2 {
-    width: 400px;
-    height: 400px;
-    bottom: 10%;
-    right: 15%;
-    background: radial-gradient(
-      circle,
-      color-mix(in srgb, var(--gradient-to) 5%, transparent) 0%,
-      transparent 70%
-    );
-    animation-delay: -12s;
-    animation-direction: reverse;
-  }
-
-  @keyframes drift {
-    0%,
-    100% {
-      transform: translate(0, 0) scale(1);
-    }
-    33% {
-      transform: translate(20px, -15px) scale(1.03);
-    }
-    66% {
-      transform: translate(-15px, 10px) scale(0.97);
-    }
   }
 
   /* ── Sidebar ── */
@@ -700,21 +567,25 @@
     border-bottom: 1px solid var(--surface-border);
   }
 
+  .sidebar-label {
+    @apply mb-2 px-3 text-[11px] font-medium;
+    color: var(--dash-text-faint);
+  }
+
   .sidebar-nav-item {
-    @apply flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[12px] font-medium transition-all duration-200;
+    @apply flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[12px] font-medium;
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
     color: var(--dash-text-secondary);
     cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
   }
   .sidebar-nav-item:hover {
     background: var(--dash-hover-bg);
     color: var(--dash-hover-text);
   }
-
   .sidebar-nav-item.active {
-    background: color-mix(in srgb, var(--gradient-from) 8%, transparent);
-    color: var(--gradient-to);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gradient-from) 8%, transparent);
+    background: var(--dash-hover-bg);
+    color: var(--foreground);
   }
 
   .sidebar-divider {
@@ -730,41 +601,38 @@
 
   .user-avatar-badge {
     @apply flex size-8 items-center justify-center rounded-full text-[11px] font-semibold;
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--gradient-from) 15%, transparent),
-      color-mix(in srgb, var(--gradient-to) 10%, transparent)
-    );
-    color: var(--gradient-to);
-    border: 1px solid color-mix(in srgb, var(--gradient-from) 12%, transparent);
+    background: var(--dash-hover-bg);
+    color: var(--dash-text-secondary);
+    border: 1px solid var(--surface-border);
   }
 
   .sidebar-icon-btn {
-    @apply flex size-7 items-center justify-center rounded-md transition-all duration-200;
+    @apply flex size-7 items-center justify-center rounded-md;
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
     color: var(--dash-text-faint);
     cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
   }
   .sidebar-icon-btn:hover {
     background: var(--dash-hover-bg);
     color: var(--dash-hover-text);
   }
 
-  .signin-pill {
-    @apply flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium transition-all duration-200;
+  .signin-btn {
+    @apply flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium;
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
     color: var(--dash-text-secondary);
     background: var(--surface-overlay);
     border: 1px solid var(--surface-border);
     cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
   }
-  .signin-pill:hover {
-    background: color-mix(in srgb, var(--gradient-from) 5%, transparent);
-    border-color: color-mix(in srgb, var(--gradient-from) 15%, transparent);
-    color: var(--gradient-to);
+  .signin-btn:hover {
+    background: var(--dash-hover-bg);
+    color: var(--foreground);
   }
 
-  /* ── Main Content ── */
+  /* ── Main ── */
   .dash-main {
     @apply relative z-10 flex flex-1 flex-col;
   }
@@ -782,7 +650,7 @@
   .mobile-new-btn {
     @apply flex size-9 items-center justify-center rounded-lg;
     color: #fff;
-    background: linear-gradient(135deg, var(--gradient-from), var(--gradient-via));
+    background: var(--foreground);
     cursor: pointer;
   }
 
@@ -791,15 +659,16 @@
     border-bottom: 1px solid var(--surface-border);
   }
 
-  .mobile-filter-pill {
-    @apply shrink-0 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all duration-200;
+  .mobile-filter-btn {
+    @apply shrink-0 rounded-md px-3 py-1.5 text-[11px] font-medium;
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
     color: var(--dash-text-secondary);
     cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
   }
-  .mobile-filter-pill.active {
-    background: color-mix(in srgb, var(--gradient-from) 10%, transparent);
-    color: var(--gradient-to);
+  .mobile-filter-btn.active {
+    background: var(--dash-hover-bg);
+    color: var(--foreground);
   }
 
   /* ── Content Header ── */
@@ -809,7 +678,6 @@
 
   .content-title {
     @apply text-xl font-bold tracking-tight text-foreground;
-    font-family: 'Space Grotesk', sans-serif;
   }
 
   .count-badge {
@@ -823,7 +691,7 @@
   .search-wrapper {
     @apply relative flex items-center;
     width: 220px;
-    transition: all 200ms ease;
+    transition: width 150ms ease;
   }
   .search-wrapper.focused {
     width: 280px;
@@ -836,18 +704,17 @@
   }
 
   .search-input {
-    @apply w-full rounded-lg py-2 pr-12 pl-8 text-[12px] transition-all duration-200 outline-none;
+    @apply w-full rounded-lg py-2 pr-12 pl-8 text-[12px] outline-none;
     color: var(--foreground);
     background: var(--surface-overlay);
     border: 1px solid var(--surface-border);
+    transition: border-color 150ms ease;
   }
   .search-input::placeholder {
     color: var(--dash-text-faint);
   }
   .search-input:focus {
-    background: var(--surface-border);
-    border-color: color-mix(in srgb, var(--gradient-from) 25%, transparent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--gradient-from) 6%, transparent);
+    border-color: var(--foreground);
   }
 
   .search-kbd {
@@ -858,68 +725,24 @@
     pointer-events: none;
   }
 
-  /* ── New Button ── */
+  /* ── Primary Button ── */
   .new-btn {
-    @apply inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-[12px] font-semibold transition-all duration-250;
-    @apply focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none;
-    color: #fff;
-    background: linear-gradient(
-      135deg,
-      var(--gradient-from) 0%,
-      var(--gradient-via) 50%,
-      var(--gradient-to) 100%
-    );
-    box-shadow:
-      0 0 16px color-mix(in srgb, var(--gradient-to) 20%, transparent),
-      0 2px 8px rgba(0, 0, 0, 0.3);
+    @apply inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-[12px] font-semibold;
+    @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none;
+    color: var(--primary-foreground);
+    background: var(--foreground);
     cursor: pointer;
+    transition: opacity 150ms ease;
   }
   .new-btn:hover {
-    box-shadow:
-      0 0 24px color-mix(in srgb, var(--gradient-to) 35%, transparent),
-      0 4px 16px var(--dash-card-hover-shadow);
-    transform: translateY(-1px);
-  }
-
-  /* ── Section Labels ── */
-  .dash-section-label {
-    @apply mb-2 px-3 text-[10px] font-semibold tracking-[0.08em] uppercase;
-    color: var(--dash-text-faint);
-  }
-
-  /* ── New Card Labels ── */
-  .new-card-label {
-    @apply mt-3 text-[12px] font-medium transition-colors;
-    color: var(--dash-text-secondary);
-  }
-  .new-card:hover .new-card-label {
-    color: var(--dash-hover-text);
-  }
-  .new-card-sub {
-    @apply mt-0.5 text-[10px];
-    color: var(--dash-text-faint);
+    opacity: 0.85;
   }
 
   /* ── Auth Banner ── */
-  .auth-cta {
-    @apply relative mb-7 overflow-hidden rounded-xl p-5;
-    background: color-mix(in srgb, var(--gradient-from) 3%, transparent);
-    border: 1px solid color-mix(in srgb, var(--gradient-from) 8%, transparent);
-  }
-
-  .auth-cta-glow {
-    position: absolute;
-    top: -50%;
-    right: -20%;
-    width: 300px;
-    height: 300px;
-    border-radius: 50%;
-    background: radial-gradient(
-      circle,
-      color-mix(in srgb, var(--gradient-from) 6%, transparent) 0%,
-      transparent 70%
-    );
-    pointer-events: none;
+  .auth-banner {
+    @apply mb-7 rounded-lg p-5;
+    background: var(--surface-overlay);
+    border: 1px solid var(--surface-border);
   }
 
   /* ── Card Grid ── */
@@ -929,14 +752,15 @@
 
   /* ── New Card ── */
   .new-card {
-    @apply relative flex min-h-[200px] items-center justify-center rounded-xl transition-all duration-300;
+    @apply relative flex min-h-[200px] items-center justify-center rounded-xl;
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
     border: 1.5px dashed var(--surface-border);
     cursor: pointer;
+    transition: border-color 150ms ease, background 150ms ease;
   }
   .new-card:hover {
-    border-color: color-mix(in srgb, var(--gradient-from) 20%, transparent);
-    background: color-mix(in srgb, var(--gradient-from) 2%, transparent);
+    border-color: var(--dash-text-faint);
+    background: var(--surface-overlay);
   }
 
   .new-card-inner {
@@ -944,60 +768,50 @@
   }
 
   .new-card-icon {
-    @apply flex size-12 items-center justify-center rounded-xl transition-all duration-300;
-    background: color-mix(in srgb, var(--gradient-from) 6%, transparent);
-    border: 1px solid color-mix(in srgb, var(--gradient-from) 10%, transparent);
+    @apply flex size-10 items-center justify-center rounded-lg;
+    color: var(--dash-text-secondary);
+    background: var(--surface-overlay);
+    border: 1px solid var(--surface-border);
   }
-  .new-card:hover .new-card-icon {
-    background: color-mix(in srgb, var(--gradient-from) 10%, transparent);
-    border-color: color-mix(in srgb, var(--gradient-from) 20%, transparent);
-    transform: scale(1.05);
-    box-shadow: 0 0 24px color-mix(in srgb, var(--gradient-from) 10%, transparent);
+
+  .new-card-label {
+    @apply mt-3 text-[12px] font-medium;
+    color: var(--dash-text-secondary);
   }
 
   /* ── Workspace Card ── */
   .ws-card {
-    @apply relative flex min-h-[200px] flex-col rounded-xl transition-all duration-300;
+    @apply relative flex min-h-[200px] flex-col rounded-xl;
     background: var(--surface-overlay);
     border: 1px solid var(--surface-border);
+    transition: border-color 150ms ease, box-shadow 150ms ease;
   }
   .ws-card:hover {
-    border-color: var(--card-border, var(--surface-border));
-    transform: translateY(-2px);
-    box-shadow:
-      0 8px 24px var(--dash-card-shadow),
-      0 0 32px var(--card-glow, transparent);
+    border-color: var(--dash-text-faint);
+    box-shadow: 0 2px 8px var(--dash-card-shadow);
   }
 
   .ws-preview {
     @apply relative flex h-[100px] w-full items-center justify-center overflow-hidden rounded-t-xl;
-    border-bottom: 1px solid var(--surface-overlay);
+    border-bottom: 1px solid var(--surface-border);
     cursor: pointer;
   }
 
+  .ws-preview-mermaid {
+    @apply flex size-full items-center justify-center overflow-hidden p-2;
+    opacity: 0.7;
+    pointer-events: none;
+  }
+  .ws-preview-mermaid :global(svg) {
+    max-width: 100%;
+    max-height: 100%;
+  }
+
   .ws-preview-icon {
-    @apply flex size-12 items-center justify-center rounded-xl transition-all duration-300;
+    @apply flex size-12 items-center justify-center rounded-xl;
     border: 1px solid;
     position: relative;
     z-index: 1;
-  }
-  .ws-card:hover .ws-preview-icon {
-    transform: scale(1.08);
-  }
-
-  .ws-preview-pattern {
-    position: absolute;
-    inset: 0;
-    background-image: radial-gradient(
-        circle at 20% 30%,
-        var(--dash-pattern-dot) 1px,
-        transparent 1px
-      ),
-      radial-gradient(circle at 80% 70%, var(--dash-pattern-dot-alt) 1px, transparent 1px);
-    background-size:
-      20px 20px,
-      30px 30px;
-    pointer-events: none;
   }
 
   .ws-body {
@@ -1005,10 +819,11 @@
   }
 
   .ws-title {
-    @apply text-left text-[12px] leading-snug font-medium transition-colors;
+    @apply text-left text-[12px] leading-snug font-medium;
     @apply focus-visible:outline-none;
     color: var(--dash-text-primary);
     cursor: pointer;
+    transition: color 150ms ease;
   }
   .ws-title:hover,
   .ws-title:focus-visible {
@@ -1016,10 +831,11 @@
   }
 
   .ws-action-btn {
-    @apply flex size-6 items-center justify-center rounded-md transition-all duration-150;
+    @apply flex size-6 items-center justify-center rounded-md;
     @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
     color: var(--dash-text-tertiary);
     cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
   }
   .ws-action-btn:hover {
     background: var(--dash-hover-bg);
@@ -1046,20 +862,19 @@
   }
 
   .empty-icon-wrap {
-    @apply flex size-16 items-center justify-center rounded-2xl;
-    background: color-mix(in srgb, var(--gradient-from) 4%, transparent);
-    border: 1px solid color-mix(in srgb, var(--gradient-from) 8%, transparent);
+    @apply flex size-14 items-center justify-center rounded-xl;
+    background: var(--surface-overlay);
+    border: 1px solid var(--surface-border);
   }
 
   /* ── Loading ── */
   .loading-spinner {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
-    border: 2.5px solid var(--surface-border);
-    border-top-color: var(--gradient-from);
+    border: 2px solid var(--surface-border);
+    border-top-color: var(--foreground);
     animation: spin 0.8s linear infinite;
-    box-shadow: 0 0 16px color-mix(in srgb, var(--gradient-from) 15%, transparent);
   }
 
   @keyframes spin {

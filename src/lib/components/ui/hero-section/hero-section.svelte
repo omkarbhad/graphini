@@ -11,14 +11,7 @@
   let { class: className }: Props = $props();
 </script>
 
-<section class={cn('mx-auto w-full max-w-5xl overflow-hidden pt-16', className)}>
-  <!-- Shades -->
-  <div aria-hidden="true" class="absolute inset-0 size-full overflow-hidden">
-    <div
-      class="absolute inset-0 isolate -z-10 bg-[radial-gradient(20%_80%_at_20%_0%,var(--color-foreground)/.08,transparent)]">
-    </div>
-  </div>
-
+<section class={cn('mx-auto w-full max-w-5xl pt-16', className)}>
   <div class="relative z-10 flex max-w-2xl flex-col gap-5 px-4">
     <!-- Badge -->
     <a
@@ -67,80 +60,11 @@
   </div>
 
   <!-- App Preview -->
-  <div class="relative">
-    <div
-      class="absolute -inset-x-20 inset-y-0 -translate-y-1/3 scale-120 rounded-full bg-[radial-gradient(ellipse_at_center,var(--color-foreground)/.08,transparent,transparent)] blur-[50px]">
-    </div>
-    <div
-      class="relative mt-8 animate-in overflow-hidden px-2 delay-100 duration-1000 ease-out fill-mode-backwards slide-in-from-bottom-5 fade-in sm:mt-12 md:mt-20"
-      style="mask-image: linear-gradient(to bottom, black 60%, transparent);">
-      <div
-        class="hero-preview relative mx-auto max-w-5xl overflow-hidden rounded-xl border bg-background/80 p-3 shadow-2xl ring-1 ring-border/50 backdrop-blur-sm">
-        <!-- Mock editor UI -->
-        <div class="flex gap-3">
-          <!-- Editor pane -->
-          <div class="hidden flex-1 rounded-lg border border-border/50 bg-muted/30 p-4 sm:block">
-            <div class="mb-3 flex items-center gap-2">
-              <div class="size-2.5 rounded-full bg-red-400/60"></div>
-              <div class="size-2.5 rounded-full bg-amber-400/60"></div>
-              <div class="size-2.5 rounded-full bg-green-400/60"></div>
-              <span class="ml-2 text-[10px] font-medium text-muted-foreground/50">editor.mmd</span>
-            </div>
-            <div class="space-y-2 font-mono text-[11px] leading-relaxed">
-              <p class="text-muted-foreground/40">graph TD</p>
-              <p class="text-muted-foreground/60">
-                &nbsp;&nbsp;A[<span class="text-blue-500/70">User Request</span>] --&gt; B
-              </p>
-              <p class="text-muted-foreground/60">
-                &nbsp;&nbsp;B --&gt; C[<span class="text-emerald-500/70">Generate</span>]
-              </p>
-              <p class="text-muted-foreground/60">
-                &nbsp;&nbsp;B --&gt; D[<span class="text-amber-500/70">Validate</span>]
-              </p>
-              <p class="text-muted-foreground/60">
-                &nbsp;&nbsp;C --&gt; E[<span class="text-cyan-500/70">Render</span>]
-              </p>
-              <p class="text-muted-foreground/60">&nbsp;&nbsp;D --&gt; E</p>
-            </div>
-          </div>
-          <!-- Preview pane -->
-          <div
-            class="flex flex-1 items-center justify-center rounded-lg border border-border/50 bg-card/50 p-6">
-            <div class="flex flex-col items-center gap-3">
-              <div
-                class="flex size-10 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
-                <span class="text-xs font-semibold text-blue-500/70">A</span>
-              </div>
-              <div class="h-4 w-px bg-border/60"></div>
-              <div
-                class="flex size-10 items-center justify-center rounded-lg bg-purple-500/10 ring-1 ring-purple-500/20">
-                <span class="text-xs font-semibold text-purple-500/70">B</span>
-              </div>
-              <div class="flex gap-6">
-                <div class="flex flex-col items-center gap-3">
-                  <div class="h-4 w-px bg-border/60"></div>
-                  <div
-                    class="flex size-8 items-center justify-center rounded-md bg-emerald-500/10 ring-1 ring-emerald-500/20">
-                    <span class="text-[10px] font-semibold text-emerald-500/70">C</span>
-                  </div>
-                </div>
-                <div class="flex flex-col items-center gap-3">
-                  <div class="h-4 w-px bg-border/60"></div>
-                  <div
-                    class="flex size-8 items-center justify-center rounded-md bg-amber-500/10 ring-1 ring-amber-500/20">
-                    <span class="text-[10px] font-semibold text-amber-500/70">D</span>
-                  </div>
-                </div>
-              </div>
-              <div class="h-4 w-px bg-border/60"></div>
-              <div
-                class="flex size-10 items-center justify-center rounded-lg bg-cyan-500/10 ring-1 ring-cyan-500/20">
-                <span class="text-xs font-semibold text-cyan-500/70">E</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+  <div
+    class="relative mt-8 animate-in overflow-hidden px-2 delay-100 duration-1000 ease-out fill-mode-backwards slide-in-from-bottom-5 fade-in sm:mt-12 md:mt-20"
+    style="mask-image: linear-gradient(to bottom, black 60%, transparent);">
+    <div class="mx-auto max-w-5xl overflow-hidden rounded-xl border border-border">
+      <img src="/brand/app-preview.png" alt="Graphini workspace" class="w-full" />
     </div>
   </div>
 </section>

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Brain, ChevronDown, ChevronRight, Sparkles } from 'lucide-svelte';
+  import { ChevronDown, ChevronRight, Sparkles } from 'lucide-svelte';
 
   interface Props {
     content: string;
@@ -56,10 +56,10 @@
 </script>
 
 <div
-  class="reasoning-container group my-1.5 overflow-hidden rounded-lg border transition-all duration-200
+  class="overflow-hidden rounded-lg border transition-colors duration-150
     {isStreaming
-    ? 'border-violet-500/30 bg-violet-500/[0.03] dark:border-violet-400/20 dark:bg-violet-500/[0.04]'
-    : 'border-border/40 bg-muted/20 hover:border-border/60 dark:bg-muted/10'}">
+    ? 'border-border bg-muted/30'
+    : 'border-border/50 bg-muted/20 hover:border-border'}">
   <!-- Header -->
   <button
     type="button"
@@ -67,42 +67,18 @@
     class="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/30">
     <!-- Icon -->
     <div
-      class="flex size-5 shrink-0 items-center justify-center rounded-md
-        {isStreaming
-        ? 'bg-violet-500/15 text-violet-600 dark:text-violet-400'
-        : 'bg-muted/60 text-muted-foreground/70'}">
-      {#if isStreaming}
-        <Sparkles class="size-3 animate-pulse" />
-      {:else}
-        <Brain class="size-3" />
-      {/if}
+      class="flex size-5 shrink-0 items-center justify-center rounded-md bg-violet-500/10 text-violet-500">
+      <Sparkles class="size-3 {isStreaming ? 'animate-pulse' : ''}" />
     </div>
 
     <!-- Title -->
-    <span
-      class="flex-1 text-xs font-medium
-        {isStreaming ? 'text-violet-700 dark:text-violet-300' : 'text-muted-foreground'}">
+    <span class="flex-1 text-xs font-medium text-muted-foreground">
       {#if isStreaming}
-        Thinking...
+        <span class="reasoning-shimmer">Thinking...</span>
       {:else}
         Thought {formattedDuration ? `for ${formattedDuration}` : ''} · {wordCount} words
       {/if}
     </span>
-
-    <!-- Streaming indicator -->
-    {#if isStreaming}
-      <div class="flex items-center gap-0.5">
-        <span
-          class="inline-block size-1 animate-pulse rounded-full bg-violet-500 [animation-delay:0ms]"
-        ></span>
-        <span
-          class="inline-block size-1 animate-pulse rounded-full bg-violet-500 [animation-delay:150ms]"
-        ></span>
-        <span
-          class="inline-block size-1 animate-pulse rounded-full bg-violet-500 [animation-delay:300ms]"
-        ></span>
-      </div>
-    {/if}
 
     <!-- Chevron -->
     <div class="text-muted-foreground/40 transition-transform">
@@ -118,8 +94,7 @@
   {#if !isCollapsed}
     <div
       bind:this={contentEl}
-      class="reasoning-content border-t px-3 py-2.5 transition-all duration-200
-        {isStreaming ? 'border-violet-500/20' : 'border-border/30'}"
+      class="border-t border-border/30 px-3 py-2.5"
       style="max-height: {isStreaming ? '300px' : '250px'}; overflow-y: auto;">
       <p class="text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground/70">
         {displayContent}{#if isStreaming}<span class="reasoning-cursor"></span>{/if}
@@ -129,17 +104,11 @@
 </div>
 
 <style>
-  /* Streaming glow border */
-  .reasoning-container {
-    position: relative;
-  }
-
-  /* Cursor blink */
   .reasoning-cursor {
     display: inline-block;
     width: 5px;
     height: 13px;
-    background: hsl(263 70% 55%);
+    background: var(--muted-foreground);
     border-radius: 1px;
     animation: reasoning-blink 0.8s ease-in-out infinite;
     vertical-align: text-bottom;
@@ -149,26 +118,29 @@
   @keyframes reasoning-blink {
     0%,
     100% {
-      opacity: 1;
+      opacity: 0.6;
     }
     50% {
-      opacity: 0.2;
+      opacity: 0.1;
     }
   }
 
-  /* Scrollbar */
-  .reasoning-content {
-    scrollbar-width: thin;
-    scrollbar-color: hsl(263 30% 60% / 0.2) transparent;
+  .reasoning-shimmer {
+    background: linear-gradient(
+      90deg,
+      currentColor 0%,
+      var(--foreground) 40%,
+      currentColor 80%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: reasoning-shimmer-slide 1.8s ease-in-out infinite;
   }
-  .reasoning-content::-webkit-scrollbar {
-    width: 4px;
-  }
-  .reasoning-content::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .reasoning-content::-webkit-scrollbar-thumb {
-    background: hsl(263 30% 60% / 0.2);
-    border-radius: 4px;
+
+  @keyframes reasoning-shimmer-slide {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
   }
 </style>

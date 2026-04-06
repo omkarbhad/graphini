@@ -750,9 +750,9 @@
 {#snippet colorGrid(type: 'border' | 'fill' | 'text' | 'edge' | 'subgraph' | 'edgeText' | 'sgText')}
   {#if activeColorPicker === type}
     <div
-      class="absolute bottom-full left-1/2 z-50 mb-1.5 w-56 -translate-x-1/2 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-xl">
+      class="absolute bottom-full left-1/2 z-50 mb-2.5 w-56 -translate-x-1/2 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
       <div class="mb-1.5 flex items-center justify-between">
-        <span class="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+        <span class="text-[10px] font-medium text-muted-foreground">
           {type === 'border'
             ? 'Border'
             : type === 'fill'
@@ -778,7 +778,7 @@
         {#each type === 'fill' ? fillColors : type === 'subgraph' ? subgraphColors : colors as color}
           <button
             type="button"
-            class="size-4.5 rounded-md border border-border transition-transform hover:scale-125"
+            class="size-5 rounded-full border border-border transition-all hover:scale-110 hover:ring-2 hover:ring-foreground/20"
             style="background-color: {color}"
             title={color}
             onclick={() => {
@@ -801,9 +801,9 @@
 {#snippet iconColorGrid()}
   {#if activeColorPicker === 'iconColor' && elementType === 'icon'}
     <div
-      class="absolute bottom-full left-1/2 z-50 mb-1.5 w-56 -translate-x-1/2 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-xl">
+      class="absolute bottom-full left-1/2 z-50 mb-2.5 w-56 -translate-x-1/2 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
       <div class="mb-1.5 flex items-center justify-between">
-        <span class="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase">
+        <span class="text-[10px] font-medium text-muted-foreground">
           Icon Color
         </span>
         <button
@@ -817,7 +817,7 @@
         {#each colors as color}
           <button
             type="button"
-            class="size-4.5 rounded-md border border-border transition-transform hover:scale-125"
+            class="size-5 rounded-full border border-border transition-all hover:scale-110 hover:ring-2 hover:ring-foreground/20"
             style="background-color: {color}"
             title={color}
             onclick={() => {
@@ -834,9 +834,9 @@
 {#snippet fontDropdown(target: 'node' | 'edge' | 'subgraph')}
   {#if showFontPicker === target}
     <div
-      class="absolute bottom-full left-1/2 z-50 mb-1.5 w-36 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl">
+      class="absolute bottom-full left-1/2 z-50 mb-2.5 w-36 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
       <div class="mb-1 flex items-center justify-between px-1">
-        <span class="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase"
+        <span class="text-[10px] font-medium text-muted-foreground"
           >Font</span>
         <button
           type="button"
@@ -851,9 +851,9 @@
         <button
           type="button"
           class={cn(
-            'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] transition-colors',
+            'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors',
             currentFont === font.id
-              ? 'bg-primary/15 font-semibold text-primary'
+              ? 'bg-accent font-medium text-foreground'
               : 'text-muted-foreground hover:bg-accent hover:text-foreground'
           )}
           style="font-family: {font.id === 'sans'
@@ -885,15 +885,15 @@
     )}>
     <!-- Main toolbar -->
     <div
-      class="relative z-40 flex flex-wrap items-center gap-1 rounded-xl border border-border bg-popover px-2 py-1.5 text-popover-foreground shadow-xl">
+      class="relative z-40 flex flex-wrap items-center gap-1.5 rounded-xl border border-border bg-popover px-3 py-2 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
       <!-- Type badge -->
       <span
-        class="rounded-md bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold tracking-wider text-indigo-600 uppercase dark:text-indigo-400">
+        class="rounded-md bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase">
         {elementType}
       </span>
       <span class="max-w-[120px] truncate text-[11px] font-medium text-foreground/70"
         >{elementLabel}</span>
-      <div class="mx-1 h-5 w-px bg-border/40"></div>
+      <div class="mx-1 h-5 w-px bg-border"></div>
 
       <!-- ═══ NODE TOOLBAR ═══ -->
       {#if elementType === 'node'}
@@ -918,10 +918,10 @@
           </button>
           {#if showShapePicker}
             <div
-              class="absolute bottom-full left-1/2 z-50 mb-1.5 w-72 -translate-x-1/2 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-xl">
+              class="absolute bottom-full left-1/2 z-50 mb-2.5 w-72 -translate-x-1/2 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
               <div class="mb-1.5 flex items-center justify-between">
                 <span
-                  class="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase"
+                  class="text-[10px] font-medium text-muted-foreground"
                   >Shape</span>
                 <button
                   type="button"
@@ -933,9 +933,9 @@
                   <button
                     type="button"
                     class={cn(
-                      'flex flex-col items-center gap-1 rounded-lg p-2 transition-colors',
+                      'flex flex-col items-center gap-1 rounded-md p-1.5 transition-colors',
                       nodeShape === shape.id
-                        ? 'bg-primary/15 text-primary ring-1 ring-primary/30'
+                        ? 'bg-accent text-foreground'
                         : 'text-muted-foreground hover:bg-accent'
                     )}
                     title={shape.label}
@@ -958,13 +958,13 @@
           {/if}
         </div>
 
-        <div class="mx-0.5 h-5 w-px bg-border/30"></div>
+        <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Node label edit -->
         <input
           type="text"
           name="node-label"
-          class="h-6 w-24 rounded-md border border-border/40 bg-muted/30 px-2 text-[11px] text-foreground placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none"
+          class="h-7 w-28 rounded-lg border border-border bg-background px-2.5 text-[11px] text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
           placeholder="Label..."
           value={nodeLabel}
           oninput={(e) => {
@@ -979,7 +979,7 @@
           }}
           onblur={() => applyNodeLabel()} />
 
-        <div class="mx-0.5 h-5 w-px bg-border/30"></div>
+        <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Fill color -->
         <div class="relative">
@@ -992,7 +992,7 @@
               closeAllDropdowns();
               if (!was) activeColorPicker = 'fill';
             }}>
-            <div class="size-3 rounded-sm" style="background-color: {nodeFillColor}"></div>
+            <div class="size-3.5 rounded-full border border-border/50" style="background-color: {nodeFillColor}"></div>
           </button>
           {@render colorGrid('fill')}
         </div>
@@ -1008,12 +1008,12 @@
               closeAllDropdowns();
               if (!was) activeColorPicker = 'border';
             }}>
-            <div class="size-3 rounded-sm border-2" style="border-color: {nodeBorderColor}"></div>
+            <div class="size-3.5 rounded-full border-2" style="border-color: {nodeBorderColor}"></div>
           </button>
           {@render colorGrid('border')}
         </div>
 
-        <div class="mx-0.5 h-5 w-px bg-border/30"></div>
+        <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Text color -->
         <div class="relative">
@@ -1039,7 +1039,7 @@
               class={cn(
                 'rounded-md px-1.5 py-1 text-[10px] font-medium transition-colors',
                 nodeTextSize === size
-                  ? 'bg-primary/15 text-primary'
+                  ? 'bg-accent text-foreground'
                   : 'text-muted-foreground hover:bg-accent'
               )}
               title={size === 'sm' ? 'Small' : size === 'md' ? 'Medium' : 'Large'}
@@ -1072,13 +1072,13 @@
           {@render fontDropdown('node')}
         </div>
 
-        <div class="mx-0.5 h-5 w-px bg-border/30"></div>
+        <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Icon dropdown -->
         <div class="relative">
           <button
             type="button"
-            class="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            class="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             title="Attach icon"
             onclick={() => {
               const was = showIconDropdown;
@@ -1090,10 +1090,10 @@
           </button>
           {#if showIconDropdown}
             <div
-              class="absolute right-0 bottom-full z-50 mb-1.5 w-44 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-xl">
+              class="absolute right-0 bottom-full z-50 mb-2.5 w-48 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
               <button
                 type="button"
-                class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
                 onclick={() => {
                   showIconDropdown = false;
                   window.dispatchEvent(
@@ -1102,11 +1102,12 @@
                     })
                   );
                 }}>
-                <ImageIcon class="size-3.5" /> Browse Icons
+                <ImageIcon class="size-4" />
+                <span>Browse Icons</span>
               </button>
               <button
                 type="button"
-                class="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-[10px] font-medium text-destructive/80 transition-colors hover:bg-destructive/10 hover:text-destructive"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-[11px] font-medium text-destructive/80 transition-colors hover:bg-destructive/10 hover:text-destructive"
                 onclick={() => {
                   showIconDropdown = false;
                   const nodeName = getCleanNodeName();
@@ -1119,7 +1120,8 @@
                   code = code.replace(iconPattern, '$1');
                   updateCodeStore({ code });
                 }}>
-                <X class="size-3.5" /> Remove Icon
+                <X class="size-4" />
+                <span>Remove Icon</span>
               </button>
             </div>
           {/if}
@@ -1131,7 +1133,7 @@
         <input
           type="text"
           name="edge-label"
-          class="h-6 w-24 rounded-md border border-border/40 bg-muted/30 px-2 text-[11px] text-foreground placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none"
+          class="h-7 w-28 rounded-lg border border-border bg-background px-2.5 text-[11px] text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
           value={edgeLabel}
           oninput={(e) => {
             const target = e.target as HTMLInputElement;
@@ -1145,7 +1147,7 @@
           }}
           onblur={() => applyEdgeLabel()} />
 
-        <div class="mx-0.5 h-5 w-px bg-border/30"></div>
+        <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Edge thickness (3 sizes) -->
         <div class="flex items-center gap-0.5">
@@ -1155,7 +1157,7 @@
               class={cn(
                 'rounded-md px-1.5 py-1 text-[10px] font-medium transition-colors',
                 edgeThickness === t
-                  ? 'bg-primary/15 text-primary'
+                  ? 'bg-accent text-foreground'
                   : 'text-muted-foreground hover:bg-accent'
               )}
               title={t === 'thin' ? 'Thin line' : t === 'normal' ? 'Normal line' : 'Thick line'}
@@ -1170,7 +1172,7 @@
           {/each}
         </div>
 
-        <div class="mx-0.5 h-5 w-px bg-border/30"></div>
+        <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Arrow direction picker -->
         <div class="relative">
@@ -1196,10 +1198,10 @@
           </button>
           {#if showArrowPicker}
             <div
-              class="absolute bottom-full left-1/2 z-50 mb-1.5 w-36 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl">
+              class="absolute bottom-full left-1/2 z-50 mb-2.5 w-36 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_4px_16px_var(--dash-card-shadow)]">
               <div class="mb-1 flex items-center justify-between px-1">
                 <span
-                  class="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase"
+                  class="text-[10px] font-medium text-muted-foreground"
                   >Arrow</span>
                 <button
                   type="button"
@@ -1210,9 +1212,9 @@
                 <button
                   type="button"
                   class={cn(
-                    'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[10px] transition-colors',
+                    'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[10px] transition-colors',
                     edgeArrowType === arrow.id
-                      ? 'bg-primary/15 font-semibold text-primary'
+                      ? 'bg-accent font-medium text-foreground'
                       : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                   )}
                   onclick={() => {
@@ -1237,14 +1239,14 @@
           type="button"
           class={cn(
             'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
-            edgeIsDashed ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-accent'
+            edgeIsDashed ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent'
           )}
           title={edgeIsDashed ? 'Make solid' : 'Make dashed'}
           onclick={toggleEdgeDash}>
           <Minus class="size-3.5" />
         </button>
 
-        <div class="mx-0.5 h-5 w-px bg-border/30"></div>
+        <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Edge color -->
         <div class="relative">
@@ -1257,7 +1259,7 @@
               closeAllDropdowns();
               if (!was) activeColorPicker = 'edge';
             }}>
-            <div class="size-3 rounded-sm" style="background-color: {edgeColor}"></div>
+            <div class="size-3.5 rounded-full border border-border/50" style="background-color: {edgeColor}"></div>
           </button>
           {@render colorGrid('edge')}
         </div>
@@ -1275,25 +1277,10 @@
 
         <!-- ═══ ICON TOOLBAR ═══ -->
       {:else if elementType === 'icon'}
-        <!-- Icon preview -->
-        {#if iconSrc}
-          <div
-            class="flex size-6 items-center justify-center rounded-md bg-muted/40"
-            title="Current icon">
-            <img src={iconSrc} alt="icon" class="size-4 object-contain" />
-          </div>
-        {:else}
-          <div
-            class="flex size-6 items-center justify-center rounded-md bg-muted/40"
-            title="Inline icon">
-            <ImageIcon class="size-3.5 text-muted-foreground" />
-          </div>
-        {/if}
-
-        <!-- Browse icons button -->
+        <!-- Icon preview + Change -->
         <button
           type="button"
-          class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+          class="flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition-colors hover:bg-accent"
           title="Change icon"
           onclick={() => {
             window.dispatchEvent(
@@ -1302,17 +1289,27 @@
               })
             );
           }}>
-          <ImageIcon class="size-3" />
-          <span>Change</span>
+          {#if iconSrc}
+            <div
+              class="flex size-7 items-center justify-center rounded-md bg-muted/50">
+              <img src={iconSrc} alt="icon" class="size-5 object-contain" />
+            </div>
+          {:else}
+            <div
+              class="flex size-7 items-center justify-center rounded-md bg-muted/50">
+              <ImageIcon class="size-4 text-muted-foreground" />
+            </div>
+          {/if}
+          <span class="text-[10px] font-medium text-muted-foreground">Change</span>
         </button>
 
-        <div class="mx-0.5 h-5 w-px bg-border/30"></div>
+        <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Editable node label -->
         <input
           type="text"
           name="icon-label"
-          class="h-6 w-24 rounded-md border border-border/40 bg-muted/30 px-2 text-[11px] text-foreground placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none"
+          class="h-7 w-36 rounded-lg border border-border bg-background px-2.5 text-[11px] text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
           placeholder="Label..."
           value={iconNodeLabel}
           oninput={(e) => {
@@ -1327,27 +1324,27 @@
           }}
           onblur={() => applyIconNodeLabel()} />
 
-        <div class="mx-0.5 h-5 w-px bg-border/30"></div>
+        <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Color mode toggle: Original / Simple -->
-        <div class="flex items-center gap-0.5">
+        <div class="flex items-center rounded-lg border border-border">
           <button
             type="button"
             class={cn(
-              'rounded-md px-1.5 py-1 text-[10px] font-medium transition-colors',
+              'rounded-l-lg px-2.5 py-1 text-[10px] font-medium transition-colors',
               iconColorMode === 'original'
-                ? 'bg-primary/15 text-primary'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                ? 'bg-accent text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
             )}
             title="Original colors"
             onclick={() => applyIconOriginal()}>Original</button>
           <button
             type="button"
             class={cn(
-              'rounded-md px-1.5 py-1 text-[10px] font-medium transition-colors',
+              'rounded-r-lg px-2.5 py-1 text-[10px] font-medium transition-colors',
               iconColorMode === 'simple'
-                ? 'bg-primary/15 text-primary'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                ? 'bg-accent text-foreground'
+                : 'text-muted-foreground hover:text-foreground'
             )}
             title="Colorize icon"
             onclick={() => {
@@ -1361,25 +1358,25 @@
           <div class="relative">
             <button
               type="button"
-              class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              class="flex items-center gap-1 rounded-lg px-1.5 py-1 text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
               title="Icon color"
               onclick={() => {
                 const was = activeColorPicker === 'iconColor';
                 closeAllDropdowns();
                 if (!was) activeColorPicker = 'iconColor';
               }}>
-              <div class="size-3 rounded-sm" style="background-color: {iconColor}"></div>
+              <div class="size-4 rounded-full border border-border" style="background-color: {iconColor}"></div>
             </button>
             {@render iconColorGrid()}
           </div>
         {/if}
 
-        <div class="mx-0.5 h-5 w-px bg-border/30"></div>
+        <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Delete icon (at end) -->
         <button
           type="button"
-          class="flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-medium text-destructive/80 transition-colors hover:bg-destructive/10 hover:text-destructive"
+          class="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium text-destructive/70 transition-colors hover:bg-destructive/10 hover:text-destructive"
           title="Remove icon"
           onclick={() => {
             const nodeName = getCleanNodeName();
@@ -1392,7 +1389,7 @@
             code = code.replace(iconPattern, '$1');
             updateCodeStore({ code });
           }}>
-          <X class="size-3" />
+          <X class="size-3.5" />
         </button>
 
         <!-- ═══ SUBGRAPH TOOLBAR ═══ -->
@@ -1401,7 +1398,7 @@
         <input
           type="text"
           name="subgraph-title"
-          class="h-6 w-28 rounded-md border border-border/40 bg-muted/30 px-2 text-[11px] text-foreground placeholder:text-muted-foreground/40 focus:border-primary/50 focus:outline-none"
+          class="h-6 w-28 rounded-md border border-border bg-background px-2 text-[11px] text-foreground placeholder:text-muted-foreground focus:border-foreground/30 focus:outline-none"
           placeholder="Title..."
           value={subgraphTitle}
           oninput={(e) => {
@@ -1416,7 +1413,7 @@
           }}
           onblur={() => applySubgraphTitle()} />
 
-        <div class="mx-0.5 h-5 w-px bg-border/30"></div>
+        <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Subgraph fill color (border auto-derived) -->
         <div class="relative">
@@ -1429,7 +1426,7 @@
               closeAllDropdowns();
               if (!was) activeColorPicker = 'subgraph';
             }}>
-            <div class="size-3 rounded-sm" style="background-color: {subgraphFillColor}"></div>
+            <div class="size-3.5 rounded-full border border-border/50" style="background-color: {subgraphFillColor}"></div>
           </button>
           {@render colorGrid('subgraph')}
         </div>
@@ -1439,14 +1436,14 @@
           type="button"
           class={cn(
             'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
-            subgraphFilled ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-accent'
+            subgraphFilled ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent'
           )}
           title={subgraphFilled ? 'Switch to outline' : 'Switch to filled'}
           onclick={toggleSubgraphFilled}>
           {subgraphFilled ? 'Filled' : 'Outline'}
         </button>
 
-        <div class="mx-0.5 h-5 w-px bg-border/30"></div>
+        <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Subgraph text color -->
         <div class="relative">
@@ -1472,7 +1469,7 @@
               class={cn(
                 'rounded-md px-1.5 py-1 text-[10px] font-medium transition-colors',
                 subgraphTextSize === size
-                  ? 'bg-primary/15 text-primary'
+                  ? 'bg-accent text-foreground'
                   : 'text-muted-foreground hover:bg-accent'
               )}
               title={size === 'sm' ? 'Small' : size === 'md' ? 'Medium' : 'Large'}
@@ -1505,7 +1502,7 @@
           {@render fontDropdown('subgraph')}
         </div>
 
-        <div class="mx-0.5 h-5 w-px bg-border/30"></div>
+        <div class="mx-1 h-5 w-px bg-border"></div>
 
         <!-- Direction toggle -->
         <div class="flex items-center gap-0.5">
@@ -1514,7 +1511,7 @@
             class={cn(
               'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
               subgraphDirection === 'LR'
-                ? 'bg-primary/15 text-primary'
+                ? 'bg-accent text-foreground'
                 : 'text-muted-foreground hover:bg-accent'
             )}
             title="Left to Right"
@@ -1526,7 +1523,7 @@
             class={cn(
               'flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium transition-colors',
               subgraphDirection === 'TB'
-                ? 'bg-primary/15 text-primary'
+                ? 'bg-accent text-foreground'
                 : 'text-muted-foreground hover:bg-accent'
             )}
             title="Top to Bottom"

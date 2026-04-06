@@ -198,6 +198,7 @@ export interface DiagramWorkspaceSummaryRow {
   title: string;
   description: string | null;
   diagram_type: string | null;
+  mermaid_preview: string | null;
   is_starred: boolean;
   tags: string[];
   element_count: number;

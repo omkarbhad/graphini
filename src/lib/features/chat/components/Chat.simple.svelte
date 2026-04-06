@@ -2409,7 +2409,7 @@
           <img
             src="/brand/logo.png"
             alt="Graphini"
-            class="h-14 w-14 rounded-2xl opacity-60 shadow-lg ring-1 ring-black/5 dark:ring-white/10" />
+            class="size-12 rounded-xl opacity-60" />
         </div>
         <div class="flex items-center gap-2">
           <div
@@ -2448,7 +2448,7 @@
               onclick={() => {
                 handleSubmit({ text: suggestion.prompt });
               }}
-              class="group relative flex flex-col items-center gap-2 rounded-2xl border border-border/50 bg-card/50 px-3 py-4 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 dark:border-white/[0.06] dark:bg-white/[0.02] dark:hover:border-primary/25 dark:hover:bg-white/[0.04]">
+              class="group relative flex flex-col items-center gap-2 rounded-lg border border-border bg-card px-3 py-4 text-center transition-colors duration-150 hover:border-foreground/20 hover:bg-accent">
               <span class="text-2xl leading-none">{suggestion.icon}</span>
               <span
                 class="text-xs font-medium text-foreground/80 group-hover:text-foreground"
@@ -2459,19 +2459,19 @@
       </div>
     {:else}
       <!-- All Messages -->
-      <div class="mx-auto max-w-3xl space-y-3 px-4 py-4 sm:px-6 sm:py-5">
+      <div class="mx-auto max-w-3xl space-y-5 px-4 py-4 sm:px-6 sm:py-5">
         {#each messages as message, i (i)}
           {#if message.role === 'user'}
             <!-- User Bubble (right-aligned) with checkpoint undo -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
-              class="group/msg flex items-center justify-end gap-3 py-3"
+              class="group/msg flex items-center justify-end gap-3"
               onmouseenter={() => (hoveredMessageIndex = i)}
               onmouseleave={() => (hoveredMessageIndex = null)}>
               {#if hoveredMessageIndex === i && checkpoints.some((c) => c.messageIndex === i)}
                 <button
                   type="button"
-                  class="flex size-7 items-center justify-center rounded-full bg-muted/80 text-muted-foreground opacity-0 transition-all group-hover/msg:opacity-100 hover:bg-indigo-500/10 hover:text-indigo-500"
+                  class="flex size-7 items-center justify-center rounded-full bg-muted text-muted-foreground opacity-0 transition-all group-hover/msg:opacity-100 hover:bg-accent hover:text-foreground"
                   title="Undo to this point"
                   onclick={() => restoreCheckpoint(i)}>
                   <Undo2 class="size-4" />
@@ -2483,7 +2483,7 @@
                     {#each message.attachments as att}
                       {#if att.mediaType?.startsWith('image/') && att.url}
                         <div
-                          class="h-[56px] w-[56px] overflow-hidden rounded-xl border border-border/40 dark:border-white/15">
+                          class="h-[56px] w-[56px] overflow-hidden rounded-xl border border-border">
                           <img
                             src={att.url}
                             alt={att.filename || 'Image'}
@@ -2503,22 +2503,22 @@
                           'csv'
                         ].includes(ext)}
                         {@const extBg = isPdf
-                          ? 'bg-red-500/15 dark:bg-red-500/20'
+                          ? 'bg-destructive/10'
                           : isCode
-                            ? 'bg-amber-500/15 dark:bg-amber-500/20'
-                            : 'bg-muted dark:bg-white/10'}
+                            ? 'bg-amber-500/15'
+                            : 'bg-muted'}
                         {@const extText = isPdf
-                          ? 'text-red-600 dark:text-red-300'
+                          ? 'text-destructive'
                           : isCode
-                            ? 'text-amber-600 dark:text-amber-300'
-                            : 'text-muted-foreground dark:text-white/70'}
+                            ? 'text-foreground'
+                            : 'text-muted-foreground'}
                         {@const iconColor = isPdf
-                          ? 'text-red-500 dark:text-red-400'
+                          ? 'text-destructive'
                           : isCode
-                            ? 'text-amber-500 dark:text-amber-400'
-                            : 'text-muted-foreground dark:text-white/60'}
+                            ? 'text-muted-foreground'
+                            : 'text-muted-foreground'}
                         <div
-                          class="flex h-[56px] w-[56px] flex-col items-center justify-center gap-0.5 rounded-xl border border-border/40 bg-card dark:border-white/15 dark:bg-white/[0.06]"
+                          class="flex h-[56px] w-[56px] flex-col items-center justify-center gap-0.5 rounded-xl border border-border bg-card"
                           title={att.filename}>
                           <div
                             class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md {extBg}">
@@ -2535,7 +2535,7 @@
                             </svg>
                           </div>
                           <span
-                            class="block w-full truncate px-1 text-center text-[7px] leading-tight font-semibold text-foreground/80 dark:text-white/80"
+                            class="block w-full truncate px-1 text-center text-[7px] leading-tight font-semibold text-foreground/80"
                             >{att.filename || 'File'}</span>
                           <span
                             class="rounded px-0.5 text-[6px] font-bold tracking-wider {extBg} {extText}"
@@ -2547,7 +2547,7 @@
                 {/if}
                 {#if message.content}
                   <div
-                    class="inline-block rounded-2xl rounded-tr-sm bg-slate-100 px-4 py-2.5 text-[13px] leading-relaxed text-slate-800 dark:bg-card dark:text-foreground dark:ring-1 dark:ring-white/[0.08]">
+                    class="inline-block rounded-2xl rounded-tr-sm bg-muted px-4 py-2.5 text-[13px] leading-relaxed text-foreground">
                     {message.content}
                   </div>
                 {/if}
@@ -2555,8 +2555,8 @@
             </div>
           {:else if message.role === 'assistant'}
             <!-- Assistant Response (left-aligned) -->
-            <div class="py-3">
-              <div class="max-w-[95%] space-y-4">
+            <div>
+              <div class="max-w-[95%] space-y-3">
                 {#if messageParts[i] && messageParts[i].length > 0}
                   {#each messageParts[i] as part, pi (pi)}
                     {#if part.type === 'text' && part.text}
@@ -2594,14 +2594,14 @@
                     {:else if part.type === 'error'}
                       <!-- Error with retry -->
                       <div
-                        class="flex items-center gap-3 rounded-lg border border-red-500/20 bg-red-500/[0.04] px-4 py-2.5 dark:border-red-500/30 dark:bg-red-500/[0.08]">
+                        class="flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-2.5">
                         <AlertCircle class="size-4 shrink-0 text-red-500" />
-                        <p class="flex-1 text-xs font-medium text-red-700 dark:text-red-300">
+                        <p class="flex-1 text-xs font-medium text-destructive">
                           Some error occurred
                         </p>
                         <button
                           type="button"
-                          class="flex shrink-0 items-center gap-1 rounded-md bg-red-500/10 px-2.5 py-1 text-[10px] font-medium text-red-600 transition-colors hover:bg-red-500/20 dark:text-red-400"
+                          class="flex shrink-0 items-center gap-1 rounded-md bg-destructive/10 px-2.5 py-1 text-[10px] font-medium text-destructive transition-colors hover:bg-destructive/20"
                           onclick={() =>
                             retryMessage(
                               part.userMessage ||
@@ -2637,21 +2637,38 @@
                       {@const isPlanner =
                         part.toolName === 'planner' || part.toolName === 'actionItemExtractor'}
                       {@const isAnalytics = part.toolName === 'tableAnalytics'}
+                      {@const toolIconColor = isDiagramRead
+                            ? 'bg-blue-500/10 text-blue-500'
+                            : isIconifier
+                              ? 'bg-violet-500/10 text-violet-500'
+                              : part.toolName === 'autoStyler'
+                                ? 'bg-pink-500/10 text-pink-500'
+                                : isSearch
+                                  ? 'bg-sky-500/10 text-sky-500'
+                                  : isFileManager
+                                    ? 'bg-amber-500/10 text-amber-500'
+                                    : part.toolName === 'selfCritique'
+                                      ? 'bg-rose-500/10 text-rose-500'
+                                      : isChecker
+                                        ? 'bg-red-500/10 text-red-500'
+                                        : part.toolName === 'planner'
+                                          ? 'bg-emerald-500/10 text-emerald-500'
+                                          : part.toolName === 'actionItemExtractor'
+                                            ? 'bg-orange-500/10 text-orange-500'
+                                            : isAnalytics
+                                              ? 'bg-indigo-500/10 text-indigo-500'
+                                              : part.toolName === 'longTermMemory'
+                                                ? 'bg-teal-500/10 text-teal-500'
+                                                : part.toolName === 'planWithProgress'
+                                                  ? 'bg-emerald-500/10 text-emerald-500'
+                                                  : part.toolName === 'sequentialThinking'
+                                                    ? 'bg-yellow-500/10 text-yellow-500'
+                                                    : 'bg-muted text-muted-foreground'}
                       <div
-                        class="group my-1.5 overflow-hidden rounded-lg border transition-all duration-200
+                        class="group overflow-hidden rounded-lg border transition-all duration-200
                         {part.status === 'running'
-                          ? isIconifier
-                            ? 'border-violet-500/30 bg-violet-500/[0.03] dark:border-violet-400/20 dark:bg-violet-500/[0.04]'
-                            : isFileManager
-                              ? 'border-cyan-500/30 bg-cyan-500/[0.03] dark:border-cyan-400/20 dark:bg-cyan-500/[0.04]'
-                              : isChecker
-                                ? 'border-amber-500/30 bg-amber-500/[0.03] dark:border-amber-400/20 dark:bg-amber-500/[0.04]'
-                                : isPlanner
-                                  ? 'border-emerald-500/30 bg-emerald-500/[0.03] dark:border-emerald-400/20 dark:bg-emerald-500/[0.04]'
-                                  : isAnalytics
-                                    ? 'border-orange-500/30 bg-orange-500/[0.03] dark:border-orange-400/20 dark:bg-orange-500/[0.04]'
-                                    : 'border-sky-500/30 bg-sky-500/[0.03] dark:border-sky-400/20 dark:bg-sky-500/[0.04]'
-                          : 'border-border/40 bg-muted/20 hover:border-border/60 dark:bg-muted/10'}">
+                          ? 'border-border bg-muted/30'
+                          : 'border-border bg-muted/20 hover:border-foreground/10'}">
                         <button
                           type="button"
                           class="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/30"
@@ -2664,104 +2681,41 @@
                             if (chev) chev.classList.toggle('rotate-90');
                           }}>
                           <div
-                            class="flex size-5 shrink-0 items-center justify-center rounded-md
-                            {part.status === 'running'
-                              ? isIconifier
-                                ? 'bg-violet-500/15 text-violet-600 dark:text-violet-400'
-                                : isFileManager
-                                  ? 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-400'
-                                  : isChecker
-                                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
-                                    : isPlanner
-                                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                                      : isAnalytics
-                                        ? 'bg-orange-500/15 text-orange-600 dark:text-orange-400'
-                                        : 'bg-sky-500/15 text-sky-600 dark:text-sky-400'
-                              : isIconifier
-                                ? 'bg-violet-500/10 text-violet-500'
-                                : isFileManager
-                                  ? 'bg-cyan-500/10 text-cyan-500'
-                                  : isChecker
-                                    ? 'bg-amber-500/10 text-amber-500'
-                                    : isPlanner
-                                      ? 'bg-emerald-500/10 text-emerald-500'
-                                      : isAnalytics
-                                        ? 'bg-orange-500/10 text-orange-500'
-                                        : 'bg-sky-500/10 text-sky-500'}">
-                            {#if part.status === 'running'}
-                              {#if isDiagramRead}
-                                <Network class="size-3 animate-pulse" />
-                              {:else if isIconifier}
-                                <Palette class="size-3 animate-pulse" />
-                              {:else if part.toolName === 'autoStyler'}
-                                <Paintbrush class="size-3 animate-pulse" />
-                              {:else if isSearch}
-                                <Globe class="size-3 animate-pulse" />
-                              {:else if isFileManager}
-                                <FileText class="size-3 animate-pulse" />
-                              {:else if isChecker}
-                                <ShieldCheck class="size-3 animate-pulse" />
-                              {:else if part.toolName === 'planner'}
-                                <ClipboardCheck class="size-3 animate-pulse" />
-                              {:else if part.toolName === 'actionItemExtractor'}
-                                <ListChecks class="size-3 animate-pulse" />
-                              {:else if isAnalytics}
-                                <ChartBar class="size-3 animate-pulse" />
-                              {:else if part.toolName === 'selfCritique'}
-                                <Brain class="size-3 animate-pulse" />
-                              {:else if part.toolName === 'longTermMemory'}
-                                <BookOpen class="size-3 animate-pulse" />
-                              {:else if part.toolName === 'planWithProgress'}
-                                <Target class="size-3 animate-pulse" />
-                              {:else if part.toolName === 'sequentialThinking'}
-                                <Lightbulb class="size-3 animate-pulse" />
-                              {:else}
-                                <Wrench class="size-3 animate-pulse" />
-                              {/if}
+                            class="flex size-5 shrink-0 items-center justify-center rounded-md {toolIconColor}">
+                            {#if isDiagramRead}
+                              <Network class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if isIconifier}
-                              <Palette class="size-3" />
+                              <Palette class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if part.toolName === 'autoStyler'}
-                              <Paintbrush class="size-3" />
-                            {:else if isFileManager}
-                              <FileText class="size-3" />
-                            {:else if part.toolName === 'selfCritique'}
-                              <Brain class="size-3" />
-                            {:else if isChecker}
-                              <ShieldCheck class="size-3" />
-                            {:else if part.toolName === 'planner'}
-                              <ClipboardCheck class="size-3" />
-                            {:else if part.toolName === 'actionItemExtractor'}
-                              <ListChecks class="size-3" />
-                            {:else if isAnalytics}
-                              <ChartBar class="size-3" />
-                            {:else if part.toolName === 'longTermMemory'}
-                              <BookOpen class="size-3" />
-                            {:else if part.toolName === 'planWithProgress'}
-                              <Target class="size-3" />
-                            {:else if part.toolName === 'sequentialThinking'}
-                              <Lightbulb class="size-3" />
-                            {:else if isDiagramRead}
-                              <Network class="size-3" />
+                              <Paintbrush class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if isSearch}
-                              <Globe class="size-3" />
+                              <Globe class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                            {:else if isFileManager}
+                              <FileText class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                            {:else if part.toolName === 'selfCritique'}
+                              <Brain class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                            {:else if isChecker}
+                              <ShieldCheck class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                            {:else if part.toolName === 'planner'}
+                              <ClipboardCheck class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                            {:else if part.toolName === 'actionItemExtractor'}
+                              <ListChecks class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                            {:else if isAnalytics}
+                              <ChartBar class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                            {:else if part.toolName === 'longTermMemory'}
+                              <BookOpen class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                            {:else if part.toolName === 'planWithProgress'}
+                              <Target class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                            {:else if part.toolName === 'sequentialThinking'}
+                              <Lightbulb class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else}
-                              <Wrench class="size-3" />
+                              <Wrench class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {/if}
                           </div>
                           <span
                             class="flex-1 text-xs font-medium
                             {part.status === 'running'
-                              ? isIconifier
-                                ? 'text-violet-700 dark:text-violet-300'
-                                : isFileManager
-                                  ? 'text-cyan-700 dark:text-cyan-300'
-                                  : isChecker
-                                    ? 'text-amber-700 dark:text-amber-300'
-                                    : isPlanner
-                                      ? 'text-emerald-700 dark:text-emerald-300'
-                                      : isAnalytics
-                                        ? 'text-orange-700 dark:text-orange-300'
-                                        : 'text-sky-700 dark:text-sky-300'
+                              ? 'text-foreground'
                               : 'text-muted-foreground'}">
                             {#if part.status === 'running'}
                               {part.message || `Running ${part.toolName}…`}
@@ -2781,17 +2735,7 @@
                             {/if}
                           </span>
                           {#if part.status === 'running'}
-                            {@const dotColor = isIconifier
-                              ? 'bg-violet-500'
-                              : isFileManager
-                                ? 'bg-cyan-500'
-                                : isChecker
-                                  ? 'bg-amber-500'
-                                  : isPlanner
-                                    ? 'bg-emerald-500'
-                                    : isAnalytics
-                                      ? 'bg-orange-500'
-                                      : 'bg-sky-500'}
+                            {@const dotColor = 'bg-muted-foreground/40'}
                             <div class="flex items-center gap-0.5">
                               <span
                                 class="inline-block size-1 animate-pulse rounded-full {dotColor} [animation-delay:0ms]"
@@ -2812,7 +2756,7 @@
                         </button>
                         {#if hasDetails}
                           <div
-                            class="hidden border-t border-border/30 px-3 py-2.5"
+                            class="hidden border-t border-border px-3 py-2.5"
                             style="max-height: 250px; overflow-y: auto;">
                             {#if isIconifier && part.iconResults}
                               <div class="space-y-1">
@@ -2882,10 +2826,10 @@
                     {:else if part.type === 'markdown'}
                       <!-- Markdown content card — teal accent, streaming support -->
                       <div
-                        class="group my-1.5 overflow-hidden rounded-lg border transition-all duration-200
+                        class="group overflow-hidden rounded-lg border transition-all duration-200
                         {part.isStreaming
-                          ? 'border-teal-500/30 bg-teal-500/[0.03] dark:border-teal-400/20'
-                          : 'border-teal-500/20 bg-card hover:border-teal-500/40 dark:bg-card/80'}">
+                          ? 'border-border bg-muted/30'
+                          : 'border-border bg-card hover:border-foreground/10'}">
                         <button
                           type="button"
                           class="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/30"
@@ -2898,9 +2842,9 @@
                             if (chev) chev.classList.toggle('rotate-90');
                           }}>
                           <div
-                            class="flex size-5 shrink-0 items-center justify-center rounded-md bg-teal-500/10 text-teal-600 dark:text-teal-400">
+                            class="flex size-5 shrink-0 items-center justify-center rounded-md bg-teal-500/10 text-teal-500">
                             {#if part.isStreaming}
-                              <div class="size-2.5 animate-pulse rounded-full bg-teal-500"></div>
+                              <FileText class="size-3 animate-pulse" />
                             {:else}
                               <FileText class="size-3" />
                             {/if}
@@ -2931,7 +2875,7 @@
                         <div
                           class="{part.isStreaming
                             ? ''
-                            : 'hidden'} border-t border-border/30 px-3 py-2.5"
+                            : 'hidden'} border-t border-border px-3 py-2.5"
                           style="max-height: 300px; overflow-y: auto;">
                           <pre
                             class="text-[11px] leading-relaxed whitespace-pre-wrap text-foreground/70">{part.content ||
@@ -2941,27 +2885,21 @@
                     {:else if part.type === 'questionnaire'}
                       <!-- Questionnaire — indigo accent, streaming support -->
                       <div
-                        class="my-1.5 overflow-hidden rounded-lg border transition-all duration-200
+                        class="overflow-hidden rounded-lg border transition-all duration-200
                         {part.isStreaming
-                          ? 'border-indigo-500/30 bg-indigo-500/[0.03] dark:border-indigo-400/20 dark:bg-indigo-500/[0.04]'
+                          ? 'border-border bg-muted/30'
                           : part.submitted
-                            ? 'border-emerald-500/30 bg-emerald-500/[0.02] dark:border-emerald-400/20'
-                            : 'border-indigo-500/20 bg-card dark:bg-card/80'}">
+                            ? 'border-border bg-muted/20'
+                            : 'border-border bg-card'}">
                         <!-- Header -->
                         <div
                           class="flex items-center gap-2 border-b px-3 py-2
-                          {part.isStreaming
-                            ? 'border-indigo-500/20'
-                            : part.submitted
-                              ? 'border-emerald-500/20'
-                              : 'border-border/30'}">
+                          border-border">
                           <div
                             class="flex size-5 shrink-0 items-center justify-center rounded-md
-                            {part.isStreaming
-                              ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400'
-                              : part.submitted
-                                ? 'bg-emerald-500/15 text-emerald-500'
-                                : 'bg-indigo-500/10 text-indigo-500'}">
+                            {part.submitted
+                              ? 'bg-emerald-500/10 text-emerald-500'
+                              : 'bg-indigo-500/10 text-indigo-500'}">
                             {#if part.isStreaming}
                               <MessageCircleQuestion class="size-3 animate-pulse" />
                             {:else if part.submitted}
@@ -2973,9 +2911,9 @@
                           <span
                             class="flex-1 text-xs font-medium
                             {part.isStreaming
-                              ? 'text-indigo-700 dark:text-indigo-300'
+                              ? 'text-foreground'
                               : part.submitted
-                                ? 'text-emerald-700 dark:text-emerald-300'
+                                ? 'text-foreground'
                                 : 'text-foreground/80'}">
                             {#if part.isStreaming}
                               Preparing questions…
@@ -2990,13 +2928,13 @@
                           {#if part.isStreaming}
                             <div class="flex items-center gap-0.5">
                               <span
-                                class="inline-block size-1 animate-pulse rounded-full bg-indigo-500 [animation-delay:0ms]"
+                                class="inline-block size-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:0ms]"
                               ></span>
                               <span
-                                class="inline-block size-1 animate-pulse rounded-full bg-indigo-500 [animation-delay:150ms]"
+                                class="inline-block size-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:150ms]"
                               ></span>
                               <span
-                                class="inline-block size-1 animate-pulse rounded-full bg-indigo-500 [animation-delay:300ms]"
+                                class="inline-block size-1 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:300ms]"
                               ></span>
                             </div>
                           {/if}
@@ -3038,9 +2976,9 @@
                                         <label
                                           class="flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-[11px] transition-all duration-150
                                           {part.submitted
-                                            ? 'pointer-events-none border-border/30 opacity-60'
-                                            : 'border-border/40 hover:border-indigo-500/30 hover:bg-indigo-500/[0.03]'}
-                                          has-[:checked]:border-indigo-500/40 has-[:checked]:bg-indigo-500/[0.06]">
+                                            ? 'pointer-events-none border-border opacity-60'
+                                            : 'border-border hover:border-foreground/20 hover:bg-accent'}
+                                          has-[:checked]:border-foreground/20 has-[:checked]:bg-accent">
                                           {#if q.type === 'multi'}
                                             <input
                                               type="checkbox"
@@ -3101,7 +3039,7 @@
                             {#if !part.isStreaming && !part.submitted}
                               <button
                                 type="button"
-                                class="mt-3 w-full rounded-lg bg-indigo-500 px-4 py-2 text-xs font-semibold text-white transition-all hover:bg-indigo-600 active:scale-[0.98]"
+                                class="mt-3 w-full rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors duration-150 hover:bg-primary/90"
                                 onclick={() =>
                                   handleQuestionnaireSubmit(
                                     part.id,
@@ -3118,25 +3056,8 @@
                     {/if}
                   {/each}
                 {:else if isLoading && i === messages.length - 1}
-                  <div class="flex items-center gap-3 py-2">
-                    <div
-                      class="flex size-5 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-600/15 to-indigo-500/15">
-                      <Brain class="size-2.5 animate-spin text-indigo-600" />
-                    </div>
-                    <div class="flex items-center gap-1.5">
-                      <span class="text-[12px] font-medium text-muted-foreground">Thinking</span>
-                      <span class="thinking-dots flex gap-0.5">
-                        <span
-                          class="dot h-1 w-1 animate-bounce rounded-full bg-indigo-600 [animation-delay:0ms]"
-                        ></span>
-                        <span
-                          class="dot h-1 w-1 animate-bounce rounded-full bg-indigo-500 [animation-delay:100ms]"
-                        ></span>
-                        <span
-                          class="dot h-1 w-1 animate-bounce rounded-full bg-indigo-600 [animation-delay:200ms]"
-                        ></span>
-                      </span>
-                    </div>
+                  <div class="flex items-center py-2">
+                    <span class="thinking-shimmer text-[12px] font-medium text-muted-foreground/60">Thinking...</span>
                   </div>
                 {/if}
               </div>
@@ -3146,22 +3067,24 @@
       </div>
     {/if}
 
-    <!-- Scroll to bottom button -->
-    {#if showScrollButton && hasMessages}
+  </div>
+  <!-- Scroll to bottom button -->
+  {#if showScrollButton && hasMessages}
+    <div class="relative">
       <button
         type="button"
         onclick={scrollToBottom}
-        class="absolute right-3 bottom-3 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border/50 bg-background/95 text-muted-foreground shadow-lg backdrop-blur-sm transition-all duration-200 hover:bg-accent hover:text-foreground hover:shadow-xl dark:border-border/30 dark:bg-background/95">
-        <ArrowDown class="size-4" />
+        class="absolute right-3 -top-10 z-10 flex size-7 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-all duration-150 hover:bg-accent hover:text-foreground">
+        <ArrowDown class="size-3.5" />
       </button>
-    {/if}
-  </div>
+    </div>
+  {/if}
 
   <!-- File error toast -->
   {#if fileError}
     <div class="mx-auto flex w-full max-w-3xl items-center gap-2 px-3 sm:px-4">
       <div
-        class="flex w-full items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[11px] font-medium text-red-600 dark:text-red-400">
+        class="flex w-full items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-1.5 text-[11px] font-medium text-destructive">
         <AlertCircle class="size-3.5 shrink-0" />
         <span class="flex-1 truncate">{fileError}</span>
         <button
@@ -3177,9 +3100,7 @@
   <!-- Input Area -->
   <div class="mx-auto w-full max-w-3xl shrink-0 px-3 pt-1.5 pb-2 sm:px-4 sm:pt-2 sm:pb-3">
     <PromptInput
-      class="rounded-2xl border {selectedContext.type
-        ? 'border-indigo-500/40'
-        : 'border-border/40'} bg-muted/40 text-foreground shadow-sm transition-all duration-200 focus-within:border-indigo-500/50 focus-within:bg-card focus-within:shadow-md dark:bg-muted/20 dark:focus-within:bg-muted/30"
+      class="rounded-xl border border-border bg-background text-foreground transition-colors duration-150 focus-within:border-foreground/30"
       accept="image/*,.pdf,.txt,.md,.json,.xml,.yaml,.yml,.html,.mmd,.mermaid,.svg,.log,.env,.toml,.ini,.cfg,.js,.ts,.py,.java,.c,.cpp,.h,.go,.rs,.rb,.php,.sh,.bat,.sql,.r,.swift,.kt,.csv,.xlsx,.xls"
       multiple
       maxFileSize={20 * 1024 * 1024}
@@ -3194,11 +3115,11 @@
       onSubmit={(message) => handleSubmit(message)}>
       <!-- Context indicator -->
       {#if selectedContext.type && selectedContext.ids.length > 0}
-        <div class="flex items-center gap-1.5 border-b border-indigo-500/20 px-3 py-1.5">
-          <div class="flex size-4 items-center justify-center rounded-full bg-indigo-500/10">
-            <AtSign class="size-2.5 text-indigo-500" />
+        <div class="flex items-center gap-1.5 border-b border-border px-3 py-1.5">
+          <div class="flex size-4 items-center justify-center rounded-full bg-muted">
+            <AtSign class="size-2.5 text-muted-foreground" />
           </div>
-          <span class="text-[10px] font-medium text-indigo-600 dark:text-indigo-400">
+          <span class="text-[10px] font-medium text-foreground">
             {selectedContext.ids.length}
             {selectedContext.type}{selectedContext.ids.length > 1 ? 's' : ''} selected
           </span>
@@ -3217,14 +3138,14 @@
         </div>
       {/if}
       <!-- Attachment previews -->
-      <PromptInputAttachments class="border-b border-border/20">
+      <PromptInputAttachments>
         {#snippet children(file)}
           <PromptInputAttachment data={file} />
         {/snippet}
       </PromptInputAttachments>
       <PromptInputBody>
         <Textarea
-          class="field-sizing-content min-h-10 w-full resize-none rounded-none border-none bg-transparent px-3.5 py-2.5 text-[13px] text-foreground shadow-none ring-0 outline-none placeholder:text-muted-foreground/60 focus-visible:ring-0 sm:min-h-[44px] dark:bg-transparent"
+          class="field-sizing-content min-h-10 w-full resize-none rounded-none border-none bg-transparent dark:bg-transparent px-3.5 py-2.5 text-[13px] text-foreground shadow-none ring-0 outline-none placeholder:text-muted-foreground/60 focus-visible:ring-0 sm:min-h-[44px]"
           style="max-height: min(240px, 40vh);"
           name="message"
           placeholder={selectedContext.type
@@ -3240,30 +3161,171 @@
             }
           }} />
       </PromptInputBody>
-      <PromptInputToolbar class="px-2.5 pb-1.5">
+      <PromptInputToolbar class="px-2 pb-2">
         <PromptInputTools>
           <!-- Attachment button -->
           <button
             type="button"
-            class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-xl border border-border/50 bg-background text-muted-foreground shadow-xs transition-colors hover:bg-accent hover:text-foreground dark:border-border/30 dark:bg-white/[0.05] dark:hover:bg-white/[0.1]"
+            class="flex size-7 cursor-pointer items-center justify-center rounded-full border border-border text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
             title="Attach files (max 20MB per file)"
             onclick={(e) => {
               e.preventDefault();
-              // The file input lives outside the <form> in PromptInput, so search from the wrapper div
               const wrapper = (e.currentTarget as HTMLElement).closest('.mx-auto');
               const fileInput = wrapper?.querySelector('input[type="file"]') as HTMLInputElement;
               if (fileInput) fileInput.click();
             }}>
-            <Paperclip class="size-3.5" />
+            <Paperclip class="size-3" />
           </button>
+          <!-- Improve prompt button -->
+          {#if inputText.trim().length > 0}
+            <button
+              type="button"
+              class="flex size-7 cursor-pointer items-center justify-center rounded-full border border-border text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground {isImprovingPrompt
+                ? 'animate-pulse border-violet-500/40 bg-violet-500/10 text-violet-500'
+                : ''}"
+              title={isImprovingPrompt ? 'Improving…' : 'Improve prompt'}
+              disabled={isImprovingPrompt || isLoading}
+              onclick={improvePrompt}>
+              {#if isImprovingPrompt}
+                <div
+                  class="size-3 animate-spin rounded-full border-2 border-violet-500 border-t-transparent">
+                </div>
+              {:else}
+                <Sparkles class="size-3" />
+              {/if}
+            </button>
+          {/if}
+          <!-- Model picker -->
+          <Popover.Root
+            bind:open={modelPopoverOpen}
+            onOpenChange={(open) => {
+              if (!open) modelSearchQuery = '';
+            }}>
+            <Popover.Trigger
+              class="flex h-7 max-w-[180px] cursor-pointer items-center gap-1 rounded-full border border-border px-2 text-[10px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground">
+              <Zap class="size-2.5 shrink-0" />
+              <span class="truncate">
+                {selectedModel ? selectedModel.name : 'Model'}
+              </span>
+              <ChevronsUpDown class="size-2 shrink-0 opacity-40" />
+            </Popover.Trigger>
+            <Popover.Content
+              class="w-[300px] rounded-xl border border-border bg-popover p-0 shadow-[0_4px_16px_var(--dash-card-shadow)]"
+              align="start"
+              sideOffset={8}>
+              <!-- Search -->
+              <div class="flex items-center gap-2 px-3 py-2.5">
+                <Search class="size-3.5 shrink-0 text-muted-foreground/50" />
+                <input
+                  type="text"
+                  name="model-search"
+                  placeholder="Search models..."
+                  class="h-5 w-full bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/40"
+                  bind:value={modelSearchQuery} />
+              </div>
+              <div class="h-px bg-border" />
+              <!-- Model list -->
+              <div class="max-h-[300px] overflow-y-auto overscroll-contain py-1">
+                {#if modelsStore.isLoading}
+                  <div class="flex items-center justify-center py-8">
+                    <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div class="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground"></div>
+                      Loading models...
+                    </div>
+                  </div>
+                {:else if filteredModels.length === 0}
+                  <div class="flex flex-col items-center justify-center gap-2 py-8">
+                    <Search class="size-5 text-muted-foreground/20" />
+                    <span class="text-xs text-muted-foreground/60">No models found</span>
+                  </div>
+                {:else}
+                  {#each groupedModels as [category, categoryModels] (category)}
+                    {#if groupedModels.length > 1}
+                      <div class="sticky top-0 z-10 bg-popover px-3 pt-2 pb-1">
+                        <span
+                          class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50"
+                          >{category}</span>
+                      </div>
+                    {/if}
+                    {#each categoryModels as model (model.id)}
+                      <button
+                        type="button"
+                        class="group flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-accent/50 {selectedModelId ===
+                        model.id
+                          ? 'bg-accent/50'
+                          : ''}"
+                        onclick={() => {
+                          modelsStore.select(model.id);
+                          modelPopoverOpen = false;
+                          modelSearchQuery = '';
+                        }}>
+                        <div class="flex min-w-0 flex-1 flex-col">
+                          <span class="truncate text-[13px] font-medium text-foreground"
+                            >{model.name}</span>
+                          {#if model.description}
+                            <span class="truncate text-[11px] text-muted-foreground/70"
+                              >{model.description}</span>
+                          {/if}
+                        </div>
+                        <div class="flex shrink-0 items-center gap-2">
+                          <span
+                            class="flex items-center gap-0.5 text-[10px] text-muted-foreground/60">
+                            <Gem class="size-2.5" />
+                            {model.gemsPerMessage}
+                          </span>
+                          {#if selectedModelId === model.id}
+                            <Check class="size-3.5 text-foreground" />
+                          {/if}
+                        </div>
+                      </button>
+                    {/each}
+                  {/each}
+                {/if}
+              </div>
+            </Popover.Content>
+          </Popover.Root>
+          <!-- Context usage -->
+          <div
+            class="flex size-7 items-center justify-center"
+            title="{estimatedTokens.toLocaleString()} / {CONTEXT_WINDOW.toLocaleString()} tokens ({contextPercent}% used)">
+            <svg class="size-5" viewBox="0 0 36 36">
+              <circle
+                cx="18"
+                cy="18"
+                r="14"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                class="text-border" />
+              <circle
+                cx="18"
+                cy="18"
+                r="14"
+                fill="none"
+                stroke-width="3"
+                stroke-linecap="round"
+                class="{contextStrokeColor} transition-all duration-500"
+                stroke-dasharray="{contextPercent * 0.8796} 87.96"
+                transform="rotate(-90 18 18)" />
+              <text
+                x="18"
+                y="19"
+                text-anchor="middle"
+                dominant-baseline="middle"
+                class="fill-current {contextColor} text-[10px] font-bold"
+                >{contextPercent}</text>
+            </svg>
+          </div>
+        </PromptInputTools>
+        <div class="flex items-center gap-1.5">
           <!-- Mic button -->
           <button
             type="button"
-            class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-xl border border-border/50 bg-background text-muted-foreground shadow-xs transition-colors dark:border-border/30 dark:bg-white/[0.05] {isRecording
-              ? 'animate-pulse border-red-500/60 bg-red-500/10 text-red-500 dark:border-red-500/40 dark:bg-red-500/15'
+            class="flex size-7 cursor-pointer items-center justify-center rounded-full border border-border text-muted-foreground transition-colors duration-150 {isRecording
+              ? 'border-destructive/50 bg-destructive/10 text-destructive'
               : isTranscribing
-                ? 'border-indigo-500/60 bg-indigo-500/10 text-indigo-500 dark:border-indigo-500/40'
-                : 'hover:bg-accent hover:text-foreground dark:hover:bg-white/[0.1]'}"
+                ? 'border-foreground/20 bg-accent text-foreground'
+                : 'hover:bg-accent hover:text-foreground'}"
             title={isRecording
               ? 'Stop recording'
               : isTranscribing
@@ -3276,11 +3338,11 @@
             }}>
             {#if isTranscribing}
               <div
-                class="size-3 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent">
+                class="size-3 animate-spin rounded-full border-2 border-foreground border-t-transparent">
               </div>
             {:else}
               <svg
-                class="size-3.5"
+                class="size-3"
                 fill="none"
                 stroke="currentColor"
                 stroke-width="2"
@@ -3298,173 +3360,51 @@
                   y2="23" /></svg>
             {/if}
           </button>
-          <!-- Improve prompt button -->
-          {#if inputText.trim().length > 0}
+          <!-- Send / Stop / Processing -->
+          {#if isProcessingFiles}
+            <div
+              class="flex size-8 items-center justify-center rounded-full"
+              title="Processing files...">
+              <div
+                class="size-3.5 animate-spin rounded-full border-2 border-amber-500/30 border-t-amber-500">
+              </div>
+            </div>
+          {:else if isLoading}
             <button
               type="button"
-              class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-xl border border-border/50 bg-background text-muted-foreground shadow-xs transition-colors hover:bg-accent hover:text-foreground dark:border-border/30 dark:bg-white/[0.05] dark:hover:bg-white/[0.1] {isImprovingPrompt
-                ? 'animate-pulse border-violet-500/60 bg-violet-500/10 text-violet-500 dark:border-violet-500/40'
-                : ''}"
-              title={isImprovingPrompt ? 'Improving…' : 'Improve prompt'}
-              disabled={isImprovingPrompt || isLoading}
-              onclick={improvePrompt}>
-              {#if isImprovingPrompt}
-                <div
-                  class="size-3 animate-spin rounded-full border-2 border-violet-500 border-t-transparent">
-                </div>
-              {:else}
-                <Sparkles class="size-3.5" />
-              {/if}
+              onclick={stopStream}
+              class="flex size-8 items-center justify-center rounded-full border border-border text-foreground transition-colors duration-150 hover:bg-accent">
+              <Square class="size-2.5" fill="currentColor" />
             </button>
+          {:else}
+            <PromptInputSubmit
+              status={chatStatus}
+              disabled={!inputText.trim()}
+              class="size-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90" />
           {/if}
-          <Popover.Root
-            bind:open={modelPopoverOpen}
-            onOpenChange={(open) => {
-              if (!open) modelSearchQuery = '';
-            }}>
-            <Popover.Trigger
-              class="flex h-7 max-w-[200px] cursor-pointer items-center gap-1.5 rounded-xl border border-border/50 bg-background px-2 text-[11px] font-medium text-muted-foreground shadow-xs transition-colors hover:bg-accent hover:text-foreground dark:border-border/30 dark:bg-white/[0.05] dark:hover:bg-white/[0.1]">
-              <Zap class="size-3 shrink-0 text-indigo-500" />
-              <span class="truncate">
-                {selectedModel ? selectedModel.name : 'Select model'}
-              </span>
-              {#if selectedModel}
-                <span
-                  class="flex shrink-0 items-center gap-0.5 rounded-full bg-indigo-500/10 px-1.5 py-0">
-                  <Gem class="size-2 text-indigo-500" />
-                  <span class="text-[9px] font-semibold text-indigo-600 dark:text-indigo-400"
-                    >{selectedModel.gemsPerMessage}</span>
-                </span>
-              {/if}
-              <ChevronsUpDown class="size-3 shrink-0 opacity-50" />
-            </Popover.Trigger>
-            <Popover.Content
-              class="w-[300px] rounded-xl border border-border bg-popover p-0 shadow-lg dark:border-border/40 dark:bg-popover"
-              align="start"
-              sideOffset={8}>
-              <div
-                class="flex items-center gap-1.5 border-b border-border px-2 py-1 dark:border-border/30">
-                <Search class="size-3 shrink-0 text-muted-foreground" />
-                <input
-                  type="text"
-                  name="model-search"
-                  placeholder="Search..."
-                  class="h-6 w-full bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/60 dark:text-white"
-                  bind:value={modelSearchQuery} />
-              </div>
-              <div class="max-h-[280px] overflow-y-auto overscroll-contain p-1">
-                {#if modelsStore.isLoading}
-                  <div class="flex items-center justify-center py-6">
-                    <span class="text-xs text-muted-foreground">Loading models...</span>
-                  </div>
-                {:else if filteredModels.length === 0}
-                  <div class="flex flex-col items-center justify-center gap-1 py-6">
-                    <Search class="size-4 text-muted-foreground/40" />
-                    <span class="text-xs text-muted-foreground">No models found</span>
-                  </div>
-                {:else}
-                  {#each groupedModels as [category, categoryModels] (category)}
-                    {#if groupedModels.length > 1}
-                      <div class="sticky top-0 z-10 bg-popover/95 px-2 py-1 backdrop-blur-sm">
-                        <span
-                          class="text-[9px] font-semibold tracking-wider text-muted-foreground/60 uppercase"
-                          >{category}</span>
-                      </div>
-                    {/if}
-                    {#each categoryModels as model (model.id)}
-                      <button
-                        type="button"
-                        class="flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-accent {selectedModelId ===
-                        model.id
-                          ? 'bg-accent'
-                          : ''}"
-                        onclick={() => {
-                          modelsStore.select(model.id);
-                          modelPopoverOpen = false;
-                          modelSearchQuery = '';
-                        }}>
-                        <Zap class="size-3.5 shrink-0 text-indigo-500" />
-                        <div class="flex min-w-0 flex-1 flex-col">
-                          <span class="truncate text-[11px] font-medium text-foreground"
-                            >{model.name}</span>
-                          {#if model.description}
-                            <span class="truncate text-[10px] text-muted-foreground"
-                              >{model.description}</span>
-                          {/if}
-                        </div>
-                        <div class="flex shrink-0 items-center gap-1">
-                          <span
-                            class="flex items-center gap-0.5 rounded-full bg-indigo-500/10 px-1.5 py-0.5">
-                            <Gem class="size-2 text-indigo-500" />
-                            <span
-                              class="text-[9px] font-semibold text-indigo-600 dark:text-indigo-400"
-                              >{model.gemsPerMessage}</span>
-                          </span>
-                          {#if selectedModelId === model.id}
-                            <Check class="size-3.5 text-primary" />
-                          {/if}
-                        </div>
-                      </button>
-                    {/each}
-                  {/each}
-                {/if}
-              </div>
-            </Popover.Content>
-          </Popover.Root>
-          <!-- Context usage ring -->
-          <div
-            class="flex items-center gap-1.5"
-            title="{estimatedTokens.toLocaleString()} / {CONTEXT_WINDOW.toLocaleString()} tokens ({contextPercent}% used)">
-            <svg class="size-5" viewBox="0 0 36 36">
-              <circle
-                cx="18"
-                cy="18"
-                r="15.5"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.5"
-                class="text-muted-foreground/20" />
-              <circle
-                cx="18"
-                cy="18"
-                r="15.5"
-                fill="none"
-                stroke-width="2.5"
-                stroke-linecap="round"
-                class="{contextStrokeColor} transition-all duration-500"
-                stroke-dasharray="{contextPercent * 0.9738} 97.38"
-                transform="rotate(-90 18 18)" />
-              <text
-                x="18"
-                y="19.5"
-                text-anchor="middle"
-                dominant-baseline="middle"
-                class="fill-current {contextColor} text-[9px] font-bold">{contextPercent}</text>
-            </svg>
-          </div>
-        </PromptInputTools>
-        {#if isProcessingFiles}
-          <div
-            class="flex h-7 w-7 items-center justify-center rounded-full bg-amber-500/10"
-            title="Processing files...">
-            <div
-              class="size-3.5 animate-spin rounded-full border-2 border-amber-500/30 border-t-amber-500">
-            </div>
-          </div>
-        {:else if isLoading}
-          <button
-            type="button"
-            onclick={stopStream}
-            class="flex h-7 w-7 items-center justify-center rounded-full bg-red-500 text-white shadow-[0_0_12px_rgba(239,68,68,0.4)] transition-all hover:bg-red-600 hover:shadow-[0_0_16px_rgba(239,68,68,0.5)] active:scale-95">
-            <Square class="size-2.5" fill="currentColor" />
-          </button>
-        {:else}
-          <PromptInputSubmit
-            status={chatStatus}
-            disabled={!inputText.trim()}
-            class="h-7 w-7 rounded-full bg-primary text-primary-foreground hover:bg-primary/90" />
-        {/if}
+        </div>
       </PromptInputToolbar>
     </PromptInput>
   </div>
 </div>
+
+<style>
+  .thinking-shimmer {
+    background: linear-gradient(
+      90deg,
+      currentColor 0%,
+      var(--foreground) 40%,
+      currentColor 80%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer-slide 1.8s ease-in-out infinite;
+  }
+
+  @keyframes shimmer-slide {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+</style>

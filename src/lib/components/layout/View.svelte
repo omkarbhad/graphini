@@ -665,7 +665,11 @@
     const renderTime = Date.now() - startTime;
     saveStatistics({ code, diagramType, isRough: state.rough, renderTime });
     recordRenderTime(renderTime, () => {
-      inputStateStore.update((state) => ({ ...state, updateDiagram: true }));
+      // Only trigger a re-render if the code/config actually changed during this render
+      const current = get(inputStateStore);
+      if (current.code !== code || current.mermaid !== config || current.rough !== rough) {
+        inputStateStore.update((s) => ({ ...s, updateDiagram: true }));
+      }
     });
   };
 

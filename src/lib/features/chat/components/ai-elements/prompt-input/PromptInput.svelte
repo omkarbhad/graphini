@@ -205,7 +205,7 @@
   bind:this={attachmentsContext.fileInputRef}
   type="file" />
 <form
-  class={cn('w-full overflow-hidden rounded-xl border bg-background shadow-sm', className)}
+  class={cn('w-full overflow-hidden rounded-xl border border-border', className)}
   onsubmit={handleSubmit}
   {...props}>
   {#if children}

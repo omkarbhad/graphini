@@ -76,6 +76,7 @@ export interface DiagramWorkspaceSummary {
   title: string;
   description: string | null;
   thumbnail_url: string | null;
+  mermaid_preview: string | null;
   is_starred: boolean;
   tags: string[];
   element_count: number;

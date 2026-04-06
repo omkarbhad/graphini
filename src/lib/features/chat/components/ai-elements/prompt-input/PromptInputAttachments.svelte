@@ -49,7 +49,7 @@
 
 <div
   aria-live="polite"
-  class={cn('overflow-hidden transition-[height] duration-200 ease-out', className)}
+  class={cn('overflow-hidden transition-[height] duration-200 ease-out', attachments.files.length > 0 && 'border-b border-border', className)}
   style:height="{computedHeight}px"
   {...props}>
   <div class="space-y-2 px-3 py-1" bind:this={contentRef}>

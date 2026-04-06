@@ -306,9 +306,9 @@
 
 {#if open}
   <div
-    class="absolute z-50 flex w-80 animate-in flex-col rounded-xl border border-border bg-card/95 shadow-xl backdrop-blur-sm duration-200 {openSource ===
+    class="absolute z-50 flex w-80 animate-in flex-col rounded-xl border border-border bg-card/95 shadow-[0_4px_24px_var(--dash-card-shadow)] backdrop-blur-sm duration-200 {openSource ===
     'toolbar'
-      ? 'bottom-16 left-1/2 h-[60vh] -translate-x-1/2 slide-in-from-bottom-2'
+      ? 'bottom-24 left-1/2 h-[55vh] -translate-x-1/2 slide-in-from-bottom-2'
       : 'top-16 right-4 h-[70vh] slide-in-from-right-2'}">
     <!-- Header -->
     <div class="flex items-center justify-between border-b border-border/50 px-3 py-1.5">

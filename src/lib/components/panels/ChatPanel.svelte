@@ -79,9 +79,9 @@
   });
 </script>
 
-<div class="flex h-full flex-col bg-card dark:bg-background">
+<div class="flex h-full flex-col bg-background">
   <!-- Header with active chat name and controls -->
-  <div class="border-b border-border/30 px-3 py-2 dark:border-border/20 dark:bg-card">
+  <div class="border-b border-border px-3 py-2">
     <div class="mx-auto flex min-h-6 max-w-3xl items-center gap-2">
       <div class="flex min-w-0 flex-1 items-center gap-2">
         <MessageSquare class="size-3.5 flex-shrink-0 text-muted-foreground" />
@@ -93,7 +93,7 @@
           class={cn(
             'flex size-7 items-center justify-center rounded-md transition-colors',
             showHistory
-              ? 'bg-primary/10 text-primary'
+              ? 'bg-accent text-foreground'
               : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
           )}
           title="Chat History"
@@ -120,9 +120,9 @@
 
   <!-- History Panel (slides in from top) -->
   {#if showHistory}
-    <div class="border-b border-border/30 bg-muted/10">
+    <div class="border-b border-border bg-muted/10">
       <div class="flex items-center justify-between px-3 py-1.5">
-        <span class="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase"
+        <span class="text-[10px] font-medium text-muted-foreground"
           >History</span>
         <div class="flex items-center gap-1">
           <button
@@ -162,7 +162,7 @@
             <div
               class={cn(
                 'group flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-muted/40',
-                conv.id === conversationsStore.activeId && 'bg-primary/5'
+                conv.id === conversationsStore.activeId && 'bg-accent'
               )}
               onclick={() => handleSelectConversation(conv.id)}
               onkeydown={(e) => {
@@ -203,7 +203,7 @@
     {:else}
       <div class="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
         <div
-          class="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/10">
+          class="flex size-12 items-center justify-center rounded-xl bg-muted">
           <img src="/brand/logo.png" alt="Graphini" class="size-6" />
         </div>
         <div>

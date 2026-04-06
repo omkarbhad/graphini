@@ -28,34 +28,40 @@
   import { panels, type PanelId } from '$lib/stores/panels.svelte';
   import { cn } from '$lib/utils';
   import {
+    AlertCircle,
+    ArrowLeft,
     Circle,
     Code2,
     Diamond,
     Download,
-    Expand,
     FileCode2,
     FileText,
     Gem,
     GitBranch,
-    Grid3x3,
+    Grid2x2,
     Hand,
     Hexagon,
     Layers,
+    Loader2 as Loader2Spin,
     LogOut,
+    Maximize2,
     MessageSquare,
     Moon,
     MousePointer2,
     Network,
     Pencil,
+    PenTool,
     Plus,
     RectangleHorizontal,
-    Redo,
-    RotateCcw,
+    Redo2,
+    Scan,
+    Settings,
     Square,
     Sun,
     Triangle,
-    Undo,
+    Undo2,
     UserCircle,
+    Workflow,
     X,
     ZoomIn,
     ZoomOut
@@ -67,9 +73,6 @@
   import { onMount } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import { get } from 'svelte/store';
-  import { Loader2 as Loader2Spin, AlertCircle, ArrowLeft } from 'lucide-svelte';
-  import RoughIcon from '~icons/material-symbols/draw-outline-rounded';
-  import GearIcon from '~icons/material-symbols/settings-outline-rounded';
 
   const panZoomState = new PanZoomState();
 
@@ -707,7 +710,7 @@
 {:else if authStore.isLoggedIn}
   <div class="flex h-screen flex-col overflow-hidden bg-background" bind:clientWidth={width}>
     <!-- ═══ TOP HEADER BAR ═══ -->
-    <header class="glass flex h-12 items-center justify-between border-b border-border/40 px-4">
+    <header class="flex h-12 items-center justify-between border-b border-border bg-card px-4">
       <!-- Left: Logo + file name -->
       <div class="flex items-center gap-4">
         <div class="flex items-center gap-2.5">
@@ -746,7 +749,7 @@
       </div>
 
       <!-- Center: Panel toggle buttons (draggable to reorder) -->
-      <div class="flex items-center gap-0.5 rounded-lg border border-border/30 bg-muted/20 p-0.5">
+      <div class="flex items-center gap-0.5 rounded-lg border border-border bg-muted/30 p-0.5">
         {#each panels.order as panelId (panelId)}
           {@const Icon = panelIcons[panelId]}
           {@const panelConfig = panels.panels}
@@ -795,13 +798,13 @@
           onclick={() => {
             isSettingsModalOpen = true;
           }}>
-          <GearIcon class="size-4" />
+          <Settings class="size-4" />
         </Button>
 
         <!-- Gems -->
         <button
           type="button"
-          class="group flex h-8 items-center gap-1.5 rounded-full border border-purple-500/25 bg-gradient-to-r from-purple-500/[0.08] to-indigo-500/[0.08] px-3.5 text-purple-600 transition-all duration-200 hover:border-purple-500/40 hover:from-purple-500/[0.14] hover:to-indigo-500/[0.14] hover:shadow-sm dark:border-purple-400/20 dark:from-purple-500/[0.1] dark:to-indigo-500/[0.1] dark:text-purple-400 dark:hover:border-purple-400/35 dark:hover:from-purple-500/[0.16] dark:hover:to-indigo-500/[0.16]"
+          class="flex h-8 items-center gap-1.5 rounded-full border border-border px-3.5 text-muted-foreground transition-colors duration-150 hover:border-foreground/20 hover:text-foreground"
           title={authStore.isLoggedIn
             ? `Gems: ${authStore.credits?.balance ?? 0}`
             : 'Sign in to view gems'}
@@ -809,8 +812,7 @@
             if (authStore.isLoggedIn) isRefillGemsOpen = true;
             else authStore.login();
           }}>
-          <Gem
-            class="size-3.5 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-12" />
+          <Gem class="size-3.5" />
           <span class="text-[11px] font-bold tracking-wide tabular-nums">
             {#if authStore.isLoggedIn && authStore.credits}{authStore.credits.balance}{:else}0{/if}
           </span>
@@ -872,7 +874,7 @@
             <div class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
               <!-- Floating Vertical Canvas Toolbar -->
               <div
-                class="absolute top-3 left-3 z-30 flex flex-col gap-1 rounded-xl border border-border/40 bg-card/95 p-1.5 shadow-lg backdrop-blur-sm dark:border-border/25 dark:bg-card/95">
+                class="absolute top-1/2 left-3 z-30 flex -translate-y-1/2 flex-col gap-1 rounded-xl border border-border bg-card p-1.5 shadow-sm">
                 <!-- Plus button with shape dropdown -->
                 <div class="relative">
                   <Button
@@ -886,10 +888,10 @@
                     }}><Plus class="size-4" /></Button>
                   {#if showShapeDropdown}
                     <div
-                      class="absolute top-0 left-full z-50 ml-1.5 w-[220px] rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-xl">
-                      <div class="mb-1.5 flex items-center justify-between px-1">
+                      class="absolute top-0 left-full z-50 ml-1.5 w-[200px] rounded-lg border border-border bg-popover p-1.5 text-popover-foreground shadow-sm">
+                      <div class="mb-1 flex items-center justify-between px-1.5 py-0.5">
                         <span
-                          class="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase"
+                          class="text-[10px] font-medium text-muted-foreground"
                           >Add Node</span>
                         <button
                           type="button"
@@ -929,18 +931,18 @@
                     </div>
                   {/if}
                 </div>
-                <div class="mx-1 h-px bg-border/30"></div>
+                <div class="mx-1 h-px bg-border"></div>
 
                 {#if documentationURL.key}
                   <a
                     href={documentationURL.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    class="flex items-center justify-center rounded-lg bg-primary/8 p-2 text-primary transition-colors hover:bg-primary/15"
+                    class="toolbar-btn size-8"
                     title="View {documentationURL.key} docs">
                     <FileCode2 class="size-4" />
                   </a>
-                  <div class="mx-1 h-px bg-border/30"></div>
+                  <div class="mx-1 h-px bg-border"></div>
                 {/if}
 
                 <!-- Tool selection buttons -->
@@ -963,7 +965,7 @@
                   class="toolbar-btn size-8 {activeTool === 'draw' ? 'active' : ''}"
                   title="Draw (D)"
                   onclick={() => handleToolSelect('draw')}><Pencil class="size-4" /></Button>
-                <div class="mx-1 h-px bg-border/30"></div>
+                <div class="mx-1 h-px bg-border"></div>
 
                 <!-- History controls -->
                 <Button
@@ -971,14 +973,14 @@
                   size="icon"
                   class="toolbar-btn size-8"
                   title="Undo (Ctrl+Z)"
-                  onclick={handleUndo}><Undo class="size-4" /></Button>
+                  onclick={handleUndo}><Undo2 class="size-4" /></Button>
                 <Button
                   variant="ghost"
                   size="icon"
                   class="toolbar-btn size-8"
                   title="Redo (Ctrl+Y)"
-                  onclick={handleRedo}><Redo class="size-4" /></Button>
-                <div class="mx-1 h-px bg-border/30"></div>
+                  onclick={handleRedo}><Redo2 class="size-4" /></Button>
+                <div class="mx-1 h-px bg-border"></div>
 
                 <!-- Style and display options -->
                 <Button
@@ -986,14 +988,14 @@
                   size="icon"
                   class="toolbar-btn size-8 {isRoughMode ? 'active' : ''}"
                   title="Hand-Drawn (R)"
-                  onclick={toggleRoughMode}><RoughIcon class="size-4" /></Button>
+                  onclick={toggleRoughMode}><PenTool class="size-4" /></Button>
                 <Button
                   variant="ghost"
                   size="icon"
                   class="toolbar-btn size-8 {isGridVisible ? 'active' : ''}"
                   title="Grid (G)"
-                  onclick={toggleGrid}><Grid3x3 class="size-4" /></Button>
-                <div class="mx-1 h-px bg-border/30"></div>
+                  onclick={toggleGrid}><Grid2x2 class="size-4" /></Button>
+                <div class="mx-1 h-px bg-border"></div>
 
                 <!-- Layout dropdown -->
                 <div class="relative">
@@ -1008,14 +1010,14 @@
                       showLayoutDropdown = !showLayoutDropdown;
                       showShapeDropdown = false;
                     }}>
-                    <Network class="size-4" />
+                    <Workflow class="size-4" />
                   </Button>
                   {#if showLayoutDropdown}
                     <div
-                      class="absolute top-0 left-full z-50 ml-1.5 w-36 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl">
-                      <div class="mb-1 flex items-center justify-between px-1">
+                      class="absolute top-0 left-full z-50 ml-1.5 w-32 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-sm">
+                      <div class="mb-0.5 flex items-center justify-between px-2 py-1">
                         <span
-                          class="text-[10px] font-semibold tracking-wider text-muted-foreground uppercase"
+                          class="text-[10px] font-medium text-muted-foreground"
                           >Layout</span>
                         <button
                           type="button"
@@ -1027,31 +1029,31 @@
                       <button
                         type="button"
                         class={cn(
-                          'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] transition-colors',
+                          'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors',
                           currentLayout === 'dagre'
-                            ? 'bg-primary/15 font-semibold text-primary'
+                            ? 'bg-accent font-medium text-foreground'
                             : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                         )}
                         onclick={() => handleLayoutChange('dagre')}>
-                        <GitBranch class="size-3.5" />
+                        <GitBranch class="size-3" />
                         Dagre
                       </button>
                       <button
                         type="button"
                         class={cn(
-                          'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[11px] transition-colors',
+                          'flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] transition-colors',
                           currentLayout === 'elk'
-                            ? 'bg-primary/15 font-semibold text-primary'
+                            ? 'bg-accent font-medium text-foreground'
                             : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                         )}
                         onclick={() => handleLayoutChange('elk')}>
-                        <Network class="size-3.5" />
+                        <Network class="size-3" />
                         ELK
                       </button>
                     </div>
                   {/if}
                 </div>
-                <div class="mx-1 h-px bg-border/30"></div>
+                <div class="mx-1 h-px bg-border"></div>
 
                 <!-- Export -->
                 <Button
@@ -1068,8 +1070,8 @@
                   onclick={() => {
                     if (document.fullscreenElement) document.exitFullscreen();
                     else document.documentElement.requestFullscreen();
-                  }}><Expand class="size-4" /></Button>
-                <div class="mx-1 h-px bg-border/30"></div>
+                  }}><Maximize2 class="size-4" /></Button>
+                <div class="mx-1 h-px bg-border"></div>
 
                 <!-- Zoom controls at bottom -->
                 <Button
@@ -1081,7 +1083,7 @@
                     panZoomState.zoomIn();
                     zoomLevel = Math.min(400, zoomLevel + 10);
                   }}><ZoomIn class="size-4" /></Button>
-                <div class="text-center font-mono text-[9px] font-medium text-muted-foreground">
+                <div class="flex size-8 items-center justify-center rounded-[5px] text-[10px] font-medium tabular-nums text-muted-foreground">
                   {zoomLevel}%
                 </div>
                 <Button
@@ -1101,7 +1103,7 @@
                   onclick={() => {
                     panZoomState.reset();
                     zoomLevel = 100;
-                  }}><RotateCcw class="size-4" /></Button>
+                  }}><Scan class="size-4" /></Button>
               </div>
 
               <!-- Diagram View -->
@@ -1145,7 +1147,7 @@
             </div>
           {:else if panelId === 'document'}
             <div
-              class="relative min-w-0 overflow-hidden border-l border-border/30"
+              class="relative min-w-0 overflow-hidden border-l border-border"
               style="{panels.panels.canvas.visible
                 ? `width: ${panels.panels.document.width}px;`
                 : ''} min-width: {panels.panels.document.minWidth}px; flex: {!panels.panels.canvas
@@ -1159,7 +1161,7 @@
             </div>
           {:else if panelId === 'code'}
             <div
-              class="relative min-w-0 overflow-hidden border-l border-border/30"
+              class="relative min-w-0 overflow-hidden border-l border-border"
               style="{panels.panels.canvas.visible
                 ? `width: ${panels.panels.code.width}px;`
                 : ''} min-width: {panels.panels.code.minWidth}px; flex: {!panels.panels.canvas
@@ -1171,7 +1173,7 @@
                 onResize={(delta) => handlePanelResize('code', delta)} />
               <div class="flex h-full flex-col bg-card">
                 <div
-                  class="flex h-10 items-center justify-between gap-1.5 border-b border-border/30 px-3">
+                  class="flex h-10 items-center justify-between gap-1.5 border-b border-border px-3">
                   <div class="flex items-center gap-1.5">
                     <Code2 class="size-4 text-muted-foreground" />
                     <span class="text-xs font-semibold text-foreground">Code</span>
@@ -1181,7 +1183,7 @@
                   <div class="flex items-center gap-1">
                     <button
                       type="button"
-                      class="flex h-6 items-center gap-1 rounded-md border border-border/30 bg-background px-2 text-[10px] font-medium transition-colors hover:bg-muted/50"
+                      class="flex h-6 items-center gap-1 rounded-md border border-border bg-background px-2 text-[10px] font-medium transition-colors hover:bg-muted/50"
                       onclick={() => {
                         const currentMode = $stateStore.editorMode;
                         const newMode = currentMode === 'code' ? 'config' : 'code';
@@ -1206,7 +1208,7 @@
             </div>
           {:else if panelId === 'chat'}
             <div
-              class="relative min-w-0 overflow-hidden border-l border-border/30"
+              class="relative min-w-0 overflow-hidden border-l border-border"
               style="{panels.panels.canvas.visible
                 ? `width: ${panels.panels.chat.width}px;`
                 : ''} min-width: {panels.panels.chat.minWidth}px; flex: {!panels.panels.canvas
@@ -1255,7 +1257,7 @@
       <section
         role="group"
         tabindex="-1"
-        class="mx-4 w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-2xl">
+        class="mx-4 w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-sm">
         <div class="mb-4 flex items-center justify-between">
           <h2 id="shortcuts-modal-title" class="text-sm font-semibold text-foreground">
             Keyboard Shortcuts
