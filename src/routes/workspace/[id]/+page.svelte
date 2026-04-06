@@ -707,10 +707,15 @@
     if (activeStructurizrFile === oldName) activeStructurizrFile = newName;
   }
 
-  // Sync active Structurizr file content into editor
+  // Sync active Structurizr file content into editor.
+  // Set updateDiagram: false so the Mermaid renderer doesn't try to parse DSL code.
   $effect(() => {
     if (isStructurizr && structurizrFiles[activeStructurizrFile] !== undefined) {
-      inputStateStore.update((s) => ({ ...s, code: structurizrFiles[activeStructurizrFile] }));
+      inputStateStore.update((s) => ({
+        ...s,
+        code: structurizrFiles[activeStructurizrFile],
+        updateDiagram: false
+      }));
     }
   });
 </script>
