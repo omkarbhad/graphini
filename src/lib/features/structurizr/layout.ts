@@ -38,8 +38,8 @@ export function applyDagreLayout(
     direction = 'TB',
     nodeWidth = 280,
     nodeHeight = 160,
-    rankSep = 80,
-    nodeSep = 60
+    rankSep = 120,
+    nodeSep = 80
   } = options;
 
   const graph = new dagre.graphlib.Graph();
@@ -116,7 +116,7 @@ export function applyDagreLayout(
       targetHandle = dy > 0 ? 'top' : 'bottom';
     }
 
-    return { ...edge, sourceHandle, targetHandle };
+    return { ...edge, sourceHandle, targetHandle, type: 'straight' };
   });
 
   return { nodes: layoutedNodes, edges: layoutedEdges };
