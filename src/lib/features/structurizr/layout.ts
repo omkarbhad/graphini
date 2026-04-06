@@ -64,7 +64,7 @@ export function applyDagreLayout(
 
   dagre.layout(graph);
 
-  return nodes.map((node) => {
+  const layoutedNodes = nodes.map((node) => {
     // positionOverrides take precedence over Dagre
     if (positionOverrides[node.id]) {
       return { ...node, position: positionOverrides[node.id] };
@@ -84,4 +84,40 @@ export function applyDagreLayout(
       }
     };
   });
+
+  // Build a position lookup for computing optimal handle pairs
+  const posMap = new Map<string, { cx: number; cy: number }>();
+  for (const node of layoutedNodes) {
+    posMap.set(node.id, {
+      cx: node.position.x + nodeWidth / 2,
+      cy: node.position.y + nodeHeight / 2
+    });
+  }
+
+  // Assign sourceHandle/targetHandle on edges based on relative node positions
+  const layoutedEdges = edges.map((edge) => {
+    const src = posMap.get(edge.source);
+    const tgt = posMap.get(edge.target);
+    if (!src || !tgt) return edge;
+
+    const dx = tgt.cx - src.cx;
+    const dy = tgt.cy - src.cy;
+
+    let sourceHandle: string;
+    let targetHandle: string;
+
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // Horizontal relationship
+      sourceHandle = dx > 0 ? 'right' : 'left';
+      targetHandle = dx > 0 ? 'left' : 'right';
+    } else {
+      // Vertical relationship
+      sourceHandle = dy > 0 ? 'bottom' : 'top';
+      targetHandle = dy > 0 ? 'top' : 'bottom';
+    }
+
+    return { ...edge, sourceHandle, targetHandle };
+  });
+
+  return { nodes: layoutedNodes, edges: layoutedEdges };
 }

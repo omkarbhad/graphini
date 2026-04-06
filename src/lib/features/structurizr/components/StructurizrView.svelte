@@ -82,7 +82,7 @@
     rawNodes: Node[],
     rawEdges: Edge[],
     overrides: Record<string, { x: number; y: number }>
-  ): Node[] {
+  ): { nodes: Node[]; edges: Edge[] } {
     return applyDagreLayout(rawNodes, rawEdges, {}, overrides);
   }
 
@@ -97,8 +97,9 @@
   ) {
     const result = transformToSvelteFlow(ws, viewKey);
     const remapped = remapNodeData(result.nodes);
-    nodes = applyLayout(remapped, result.edges, overrides);
-    edges = result.edges;
+    const laid = applyLayout(remapped, result.edges, overrides);
+    nodes = laid.nodes;
+    edges = laid.edges;
   }
 
   // ---------------------------------------------------------------------------
