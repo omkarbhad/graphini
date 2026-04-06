@@ -10,6 +10,7 @@
   import type { C4Workspace } from '../types.js';
 
   import ViewSelector from './ViewSelector.svelte';
+  import ElkEdge from './edges/ElkEdge.svelte';
   import StaggeredEdge from './edges/StaggeredEdge.svelte';
   import PersonNode from './nodes/PersonNode.svelte';
   import SoftwareSystemNode from './nodes/SoftwareSystemNode.svelte';
@@ -38,6 +39,11 @@
     deploymentNode: DeploymentNode,
     person: PersonNode,
     softwareSystem: SoftwareSystemNode
+  };
+
+  const edgeTypes = {
+    elk: ElkEdge,
+    staggered: StaggeredEdge
   };
 
   const edgeTypes = {

@@ -134,6 +134,8 @@ export async function applyElkLayout(
   // First pass: compute handle positions for each edge
   interface EdgeHandleInfo {
     bendPoints: { x: number; y: number }[];
+    elkEnd: { x: number; y: number };
+    elkStart: { x: number; y: number };
     sourceHandleId: string;
     targetHandleId: string;
   }
@@ -148,6 +150,8 @@ export async function applyElkLayout(
     if (!section?.startPoint || !section?.endPoint || !srcNode || !tgtNode) {
       edgeHandleInfoMap.set(edge.id, {
         bendPoints: [],
+        elkEnd: { x: 0, y: 0 },
+        elkStart: { x: 0, y: 0 },
         sourceHandleId: 'bottom',
         targetHandleId: 'top'
       });
@@ -164,6 +168,8 @@ export async function applyElkLayout(
 
     edgeHandleInfoMap.set(edge.id, {
       bendPoints: section.bendPoints ?? [],
+      elkEnd: section.endPoint,
+      elkStart: section.startPoint,
       sourceHandleId: srcHandle.id,
       targetHandleId: tgtHandle.id
     });
@@ -229,12 +235,15 @@ export async function applyElkLayout(
       ...edge,
       data: {
         ...((edge.data as Record<string, unknown>) ?? {}),
+        bendPoints: info.bendPoints,
+        elkEnd: info.elkEnd,
+        elkStart: info.elkStart,
         offset
       },
       markerEnd: { height: 15, type: MarkerType.ArrowClosed, width: 15 },
       sourceHandle: info.sourceHandleId,
       targetHandle: info.targetHandleId,
-      type: 'staggered'
+      type: info.bendPoints.length > 0 ? 'elk' : 'staggered'
     };
   });
 
