@@ -2446,7 +2446,7 @@
             <button
               type="button"
               onclick={() => {
-                inputText = suggestion.prompt;
+                handleSubmit({ text: suggestion.prompt });
               }}
               class="group relative flex flex-col items-center gap-2 rounded-2xl border border-border/50 bg-card/50 px-3 py-4 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 dark:border-white/[0.06] dark:bg-white/[0.02] dark:hover:border-primary/25 dark:hover:bg-white/[0.04]">
               <span class="text-2xl leading-none">{suggestion.icon}</span>
