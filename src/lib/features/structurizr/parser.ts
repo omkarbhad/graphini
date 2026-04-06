@@ -167,7 +167,6 @@ function buildBlockTree(lines: string[]): Block {
       const parent = stack[stack.length - 1];
       parent.children.push(newBlock);
       stack.push(newBlock);
-      depth += openCount;
 
       // Handle case where open and close are on the same line: `autoLayout lr`
       // won't happen with braces, but `{ }` on one line could
