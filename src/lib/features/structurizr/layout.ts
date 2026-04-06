@@ -54,8 +54,8 @@ export async function applyElkLayout(
     direction = 'DOWN',
     nodeWidth = 280,
     nodeHeight = 180,
-    layerSpacing = 200,
-    nodeSpacing = 120
+    layerSpacing = 250,
+    nodeSpacing = 150
   } = options;
 
   if (nodes.length === 0) return { nodes: [], edges: [] };
@@ -68,12 +68,12 @@ export async function applyElkLayout(
       'elk.edgeRouting': 'ORTHOGONAL',
       'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
       'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
-      'elk.layered.spacing.edgeEdgeBetweenLayers': '60',
-      'elk.layered.spacing.edgeNodeBetweenLayers': '80',
+      'elk.layered.spacing.edgeEdgeBetweenLayers': '80',
+      'elk.layered.spacing.edgeNodeBetweenLayers': '100',
       'elk.layered.spacing.nodeNodeBetweenLayers': String(layerSpacing),
       'elk.portConstraints': 'FREE',
-      'elk.spacing.edgeEdge': '50',
-      'elk.spacing.edgeNode': '60',
+      'elk.spacing.edgeEdge': '80',
+      'elk.spacing.edgeNode': '80',
       'elk.spacing.nodeNode': String(nodeSpacing)
     },
     children: nodes.map((node) => ({
@@ -200,14 +200,10 @@ export async function applyElkLayout(
 
     return {
       ...edge,
-      data: {
-        ...((edge.data as Record<string, unknown>) ?? {}),
-        bendPoints: info.bendPoints
-      },
       markerEnd: { height: 15, type: MarkerType.ArrowClosed, width: 15 },
       sourceHandle: info.sourceHandleId,
       targetHandle: info.targetHandleId,
-      type: info.bendPoints.length > 0 ? 'elk' : 'smoothstep'
+      type: 'smoothstep'
     };
   });
 
