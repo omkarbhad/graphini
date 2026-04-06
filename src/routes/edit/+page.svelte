@@ -310,7 +310,7 @@
       !hasAttemptedRedirect
     ) {
       hasAttemptedRedirect = true;
-      authStore.login(window.location.href);
+      authStore.login();
     }
   });
 
@@ -371,7 +371,7 @@
     window.addEventListener('conversation-created', handleConversationCreated as EventListener);
 
     const handleOpenAuthModal = () => {
-      authStore.login(window.location.href);
+      authStore.login();
     };
     window.addEventListener('open-auth-modal', handleOpenAuthModal);
     const handleOpenRefillGems = () => {
@@ -763,7 +763,7 @@
             : 'Sign in to view gems'}
           onclick={() => {
             if (authStore.isLoggedIn) isRefillGemsOpen = true;
-            else authStore.login(window.location.href);
+            else authStore.login();
           }}>
           <Gem
             class="size-3.5 transition-transform duration-200 group-hover:scale-110 group-hover:rotate-12" />
@@ -813,7 +813,7 @@
             type="button"
             class="flex size-8 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-muted-foreground ring-1 ring-border/50 transition-colors hover:bg-muted/80"
             title="Sign in"
-            onclick={() => authStore.login(window.location.href)}>
+            onclick={() => authStore.login()}>
             <UserCircle class="size-4" />
           </button>
         {/if}
