@@ -151,8 +151,8 @@ export async function applyElkLayout(
     const section = elkEdge?.sections?.[0];
 
     if (!section?.startPoint || !section?.endPoint) {
-      // Fallback: no routing data, use smoothstep
-      return { ...edge, type: 'smoothstep' };
+      // Fallback: no routing data
+      return { ...edge, type: 'elk' };
     }
 
     const start = section.startPoint;
@@ -175,7 +175,7 @@ export async function applyElkLayout(
       data: { ...((edge.data as Record<string, unknown>) ?? {}), elkPath: d },
       sourceHandle,
       targetHandle,
-      type: 'smoothstep'
+      type: 'elk'
     };
   });
 
