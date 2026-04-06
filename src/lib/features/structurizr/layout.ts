@@ -1,153 +1,197 @@
 /**
- * Applies Dagre graph layout to SvelteFlow nodes and edges.
+ * ELK-based layout for C4 diagrams.
  *
- * Uses Dagre for node positioning (which already minimises edge crossings)
- * and `smoothstep` edges for orthogonal routing with right-angle bends.
+ * Uses the Eclipse Layout Kernel (elkjs) with its `layered` algorithm and
+ * ORTHOGONAL edge routing. ELK computes both node positions and edge bend
+ * points that guarantee:
+ *   - No edge-edge crossings (crossing minimisation)
+ *   - No edge-node overlaps (orthogonal routing avoids nodes)
+ *   - Edges connect at distributed ports along node borders
  */
 
-import dagre from 'dagre';
+import ELK from 'elkjs/lib/elk.bundled.js';
 import type { Node, Edge } from '@xyflow/svelte';
 
-export interface DagreLayoutOptions {
-  /** Graph direction. Default: 'TB' */
-  direction?: 'TB' | 'BT' | 'LR' | 'RL';
-  /** Node width used for layout calculation. Default: 280 */
+const elk = new ELK();
+
+export interface LayoutOptions {
+  /** Graph direction. Default: 'DOWN' */
+  direction?: 'DOWN' | 'UP' | 'RIGHT' | 'LEFT';
+  /** Node width for layout. Default: 280 */
   nodeWidth?: number;
-  /** Node height used for layout calculation. Default: 160 */
+  /** Node height for layout. Default: 160 */
   nodeHeight?: number;
-  /** Vertical separation between ranks. Default: 140 */
-  rankSep?: number;
-  /** Horizontal separation between nodes in the same rank. Default: 100 */
-  nodeSep?: number;
-  /** Horizontal separation between edges in the same rank. Default: 40 */
-  edgeSep?: number;
+  /** Spacing between layers/ranks. Default: 80 */
+  layerSpacing?: number;
+  /** Spacing between nodes in the same layer. Default: 60 */
+  nodeSpacing?: number;
+}
+
+/** Map from C4 autoLayout directions to ELK directions. */
+const DIRECTION_MAP: Record<string, string> = {
+  BT: 'UP',
+  DOWN: 'DOWN',
+  LEFT: 'LEFT',
+  LR: 'RIGHT',
+  RIGHT: 'RIGHT',
+  RL: 'LEFT',
+  TB: 'DOWN',
+  UP: 'UP'
+};
+
+export function normalizeDirection(dir?: string): string {
+  if (!dir) return 'DOWN';
+  return DIRECTION_MAP[dir.toUpperCase()] ?? 'DOWN';
 }
 
 /**
- * Applies Dagre auto-layout to a set of SvelteFlow nodes and edges.
+ * Apply ELK layout to SvelteFlow nodes and edges.
  *
- * Returns both positioned nodes and edges with handle + type assignments.
+ * Returns positioned nodes and edges with bend-point paths that avoid
+ * all crossings and node overlaps.
  */
-export function applyDagreLayout(
+export async function applyElkLayout(
   nodes: Node[],
   edges: Edge[],
-  options: DagreLayoutOptions = {},
+  options: LayoutOptions = {},
   positionOverrides: Record<string, { x: number; y: number }> = {}
-): { nodes: Node[]; edges: Edge[] } {
+): Promise<{ nodes: Node[]; edges: Edge[] }> {
   const {
-    direction = 'TB',
+    direction = 'DOWN',
     nodeWidth = 280,
     nodeHeight = 160,
-    rankSep = 140,
-    nodeSep = 100,
-    edgeSep = 40
+    layerSpacing = 80,
+    nodeSpacing = 60
   } = options;
 
-  const isHorizontal = direction === 'LR' || direction === 'RL';
-
-  const graph = new dagre.graphlib.Graph();
-
-  graph.setDefaultEdgeLabel(() => ({}));
-  graph.setGraph({
-    edgesep: edgeSep,
-    nodesep: nodeSep,
-    rankdir: direction,
-    ranksep: rankSep
-  });
-
-  for (const node of nodes) {
-    graph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+  if (nodes.length === 0) {
+    return { nodes: [], edges: [] };
   }
 
-  for (const edge of edges) {
-    if (graph.hasNode(edge.source) && graph.hasNode(edge.target)) {
-      graph.setEdge(edge.source, edge.target);
-    }
+  // Build the ELK graph
+  const elkGraph = {
+    id: 'root',
+    layoutOptions: {
+      'elk.algorithm': 'layered',
+      'elk.direction': direction,
+      // Orthogonal edge routing — edges bend at right angles and avoid nodes
+      'elk.edgeRouting': 'ORTHOGONAL',
+      // Crossing minimisation
+      'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP',
+      // Node placement to reduce edge length
+      'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
+      // Spacing
+      'elk.layered.spacing.baseValue': String(nodeSpacing),
+      'elk.layered.spacing.edgeEdgeBetweenLayers': '30',
+      'elk.layered.spacing.edgeNodeBetweenLayers': '40',
+      'elk.layered.spacing.nodeNodeBetweenLayers': String(layerSpacing),
+      // Distribute ports along node edges (not just center)
+      'elk.portConstraints': 'FREE',
+      // Edge spacing
+      'elk.spacing.edgeEdge': '20',
+      'elk.spacing.edgeNode': '30'
+    },
+    children: nodes.map((node) => ({
+      id: node.id,
+      width: nodeWidth,
+      height: nodeHeight
+    })),
+    edges: edges
+      .filter((e) => {
+        const hasSource = nodes.some((n) => n.id === e.source);
+        const hasTarget = nodes.some((n) => n.id === e.target);
+        return hasSource && hasTarget;
+      })
+      .map((e) => ({
+        id: e.id,
+        sources: [e.source],
+        targets: [e.target]
+      }))
+  };
+
+  const layoutResult = await elk.layout(elkGraph);
+
+  // --- Map ELK results back to SvelteFlow ---
+
+  const elkNodeMap = new Map<string, { x: number; y: number }>();
+  for (const child of layoutResult.children ?? []) {
+    elkNodeMap.set(child.id, { x: child.x ?? 0, y: child.y ?? 0 });
   }
-
-  dagre.layout(graph);
-
-  // --- Position nodes ---
 
   const layoutedNodes = nodes.map((node) => {
     if (positionOverrides[node.id]) {
       return { ...node, position: positionOverrides[node.id] };
     }
-
-    const dagreNode = graph.node(node.id);
-    if (!dagreNode) return node;
-
-    return {
-      ...node,
-      position: {
-        x: dagreNode.x - nodeWidth / 2,
-        y: dagreNode.y - nodeHeight / 2
-      }
-    };
+    const pos = elkNodeMap.get(node.id);
+    if (!pos) return node;
+    return { ...node, position: { x: pos.x, y: pos.y } };
   });
 
-  // --- Build position lookup (centre of each node) ---
-
-  const posMap = new Map<string, { cx: number; cy: number }>();
-  for (const node of layoutedNodes) {
-    posMap.set(node.id, {
-      cx: node.position.x + nodeWidth / 2,
-      cy: node.position.y + nodeHeight / 2
-    });
+  // Build edge lookup from ELK result
+  const elkEdgeMap = new Map<
+    string,
+    {
+      sections?: {
+        bendPoints?: { x: number; y: number }[];
+        startPoint?: { x: number; y: number };
+        endPoint?: { x: number; y: number };
+      }[];
+    }
+  >();
+  for (const elkEdge of layoutResult.edges ?? []) {
+    elkEdgeMap.set(elkEdge.id, elkEdge);
   }
 
-  // --- Assign handles, edge type, and stagger offsets to avoid overlap ---
-
-  // Group edges by their (sourceHandle, targetHandle) pair so we can offset
-  // parallel edges that share the same axis.
-  const handlePairCount = new Map<string, number>();
-
+  // Convert ELK bend points to SVG path for each edge
   const layoutedEdges = edges.map((edge) => {
-    const src = posMap.get(edge.source);
-    const tgt = posMap.get(edge.target);
-    if (!src || !tgt) return { ...edge, type: 'smoothstep' };
+    const elkEdge = elkEdgeMap.get(edge.id);
+    const section = elkEdge?.sections?.[0];
 
-    const dx = tgt.cx - src.cx;
-    const dy = tgt.cy - src.cy;
-
-    let sourceHandle: string;
-    let targetHandle: string;
-
-    if (isHorizontal) {
-      // For LR/RL layouts, prefer left/right handles
-      if (Math.abs(dx) >= Math.abs(dy) * 0.3) {
-        sourceHandle = dx > 0 ? 'right' : 'left';
-        targetHandle = dx > 0 ? 'left' : 'right';
-      } else {
-        sourceHandle = dy > 0 ? 'bottom' : 'top';
-        targetHandle = dy > 0 ? 'top' : 'bottom';
-      }
-    } else {
-      // For TB/BT layouts, prefer top/bottom handles
-      if (Math.abs(dy) >= Math.abs(dx) * 0.3) {
-        sourceHandle = dy > 0 ? 'bottom' : 'top';
-        targetHandle = dy > 0 ? 'top' : 'bottom';
-      } else {
-        sourceHandle = dx > 0 ? 'right' : 'left';
-        targetHandle = dx > 0 ? 'left' : 'right';
-      }
+    if (!section?.startPoint || !section?.endPoint) {
+      // Fallback: no routing data, use smoothstep
+      return { ...edge, type: 'smoothstep' };
     }
 
-    // Track how many edges share the same handle pair for offset staggering
-    const pairKey = `${edge.source}:${sourceHandle}`;
-    const idx = handlePairCount.get(pairKey) ?? 0;
-    handlePairCount.set(pairKey, idx + 1);
+    const start = section.startPoint;
+    const end = section.endPoint;
+    const bends = section.bendPoints ?? [];
+
+    // Build SVG path: M start L bend1 L bend2 ... L end
+    let d = `M ${start.x} ${start.y}`;
+    for (const bp of bends) {
+      d += ` L ${bp.x} ${bp.y}`;
+    }
+    d += ` L ${end.x} ${end.y}`;
+
+    // Compute source/target handles based on edge direction at endpoints
+    const sourceHandle = getHandleFromDirection(start, bends[0] ?? end);
+    const targetHandle = getHandleFromDirection(end, bends[bends.length - 1] ?? start);
 
     return {
       ...edge,
+      data: { ...((edge.data as Record<string, unknown>) ?? {}), elkPath: d },
       sourceHandle,
-      // Stagger parallel edges slightly so they don't stack on top of each other
-      style: idx > 0 ? `stroke-dashoffset: ${idx * 4}px;` : undefined,
       targetHandle,
-      // smoothstep creates orthogonal right-angle bends that route cleanly
       type: 'smoothstep'
     };
   });
 
   return { nodes: layoutedNodes, edges: layoutedEdges };
 }
+
+/** Determine which handle (top/bottom/left/right) an edge enters/exits from. */
+function getHandleFromDirection(
+  point: { x: number; y: number },
+  otherPoint: { x: number; y: number }
+): string {
+  const dx = otherPoint.x - point.x;
+  const dy = otherPoint.y - point.y;
+
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return dx > 0 ? 'right' : 'left';
+  }
+  return dy > 0 ? 'bottom' : 'top';
+}
+
+// Keep the old function name as an alias for backwards compatibility
+export const applyDagreLayout = applyElkLayout;

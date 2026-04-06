@@ -6,7 +6,7 @@
 
   import { parseStructurizrDSL } from '../parser.js';
   import { getAvailableViews, transformToSvelteFlow, type ViewSummary } from '../transformer.js';
-  import { applyDagreLayout } from '../layout.js';
+  import { applyElkLayout, normalizeDirection } from '../layout.js';
   import type { C4Workspace } from '../types.js';
 
   import ViewSelector from './ViewSelector.svelte';
@@ -78,26 +78,21 @@
   // Layout application
   // ---------------------------------------------------------------------------
 
-  function applyLayout(
-    rawNodes: Node[],
-    rawEdges: Edge[],
-    overrides: Record<string, { x: number; y: number }>
-  ): { nodes: Node[]; edges: Edge[] } {
-    return applyDagreLayout(rawNodes, rawEdges, {}, overrides);
-  }
-
   // ---------------------------------------------------------------------------
   // View rendering
   // ---------------------------------------------------------------------------
 
-  function renderView(
+  async function renderView(
     ws: C4Workspace,
     viewKey: string,
     overrides: Record<string, { x: number; y: number }>
   ) {
+    const view = ws.views.views.find((v) => v.key === viewKey);
+    const direction = normalizeDirection(view?.autoLayout?.direction);
+
     const result = transformToSvelteFlow(ws, viewKey);
     const remapped = remapNodeData(result.nodes);
-    const laid = applyLayout(remapped, result.edges, overrides);
+    const laid = await applyElkLayout(remapped, result.edges, { direction }, overrides);
     nodes = laid.nodes;
     edges = laid.edges;
   }

@@ -142,6 +142,7 @@
     "dompurify": "^3.3.1",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.2",
+    "elkjs": "^0.11.1",
     "github-dark-default": "link:@shikijs/themes/github-dark-default",
     "github-light-default": "link:@shikijs/themes/github-light-default",
     "hammerjs": "^2.0.8",
