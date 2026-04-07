@@ -199,13 +199,22 @@
     searchTimeout = setTimeout(() => loadWorkspaces(), 400);
   }
 
+  function nextUntitledName(): string {
+    const prefix = 'Untitled Workspace';
+    const existing = new Set(workspaces.map((w) => w.title));
+    if (!existing.has(prefix)) return prefix;
+    let i = 1;
+    while (existing.has(`${prefix} ${i}`)) i++;
+    return `${prefix} ${i}`;
+  }
+
   async function handleNewWorkspace(engine: 'mermaid' | 'structurizr' = 'mermaid') {
     if (!authStore.isLoggedIn) {
       authStore.login();
       return;
     }
     creating = true;
-    const ws = await workspaceStore.create(undefined, engine);
+    const ws = await workspaceStore.create(nextUntitledName(), engine);
     creating = false;
     if (ws) goto(resolve(`/workspace/${ws.id}`));
   }
@@ -391,6 +400,28 @@
                   <Command class="size-2.5" />K
                 </kbd>
               </div>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger>
+                  <button class="new-btn" disabled={creating}>
+                    {#if creating}
+                      <Loader2 class="size-4 animate-spin" />
+                    {:else}
+                      <Plus class="size-4" />
+                    {/if}
+                    New
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content align="end" class="min-w-[200px]">
+                  <DropdownMenu.Item onclick={() => handleNewWorkspace('mermaid')}>
+                    <Workflow class="mr-2 size-4" />
+                    Mermaid Diagram
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item onclick={() => handleNewWorkspace('structurizr')}>
+                    <Network class="mr-2 size-4" />
+                    C4 Architecture
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
             </div>
           </div>
         {/if}
@@ -423,37 +454,6 @@
           <!-- Populated grid -->
         {:else if workspaces.length > 0}
           <div class="card-grid">
-            <!-- New diagram card -->
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger>
-                <button
-                  class="new-card group"
-                  disabled={creating}
-                  aria-label="Create new workspace">
-                  <div class="new-card-inner">
-                    {#if creating}
-                      <Loader2 class="size-6 animate-spin text-muted-foreground" />
-                    {:else}
-                      <div class="new-card-icon">
-                        <Plus class="size-5" />
-                      </div>
-                    {/if}
-                    <span class="new-card-label">New Diagram</span>
-                  </div>
-                </button>
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Content align="start" class="min-w-[200px]">
-                <DropdownMenu.Item onclick={() => handleNewWorkspace('mermaid')}>
-                  <Workflow class="mr-2 size-4" />
-                  Mermaid Diagram
-                </DropdownMenu.Item>
-                <DropdownMenu.Item onclick={() => handleNewWorkspace('structurizr')}>
-                  <Network class="mr-2 size-4" />
-                  C4 Architecture
-                </DropdownMenu.Item>
-              </DropdownMenu.Content>
-            </DropdownMenu.Root>
-
             <!-- Workspace cards -->
             {#each workspaces as ws (ws.id)}
               {@const Icon = typeIcons[ws.diagram_type || ''] || typeIcons.default}
@@ -522,6 +522,12 @@
                         style="color: #1168BD; background: rgba(17,104,189,0.08); border-color: rgba(17,104,189,0.15);">
                         C4
                       </span>
+                    {:else if ws.engine === 'mermaid'}
+                      <span
+                        class="ws-type-badge"
+                        style="color: #ff3670; background: rgba(255,54,112,0.08); border-color: rgba(255,54,112,0.15);">
+                        Mermaid
+                      </span>
                     {/if}
                     {#if ws.diagram_type}
                       <span
@@ -555,12 +561,23 @@
                 : 'Create your first diagram to get started. Describe it in plain English or write Mermaid DSL directly.'}
             </p>
             {#if !searchQuery}
-              <button
-                class="new-btn mt-6"
-                disabled={creating}
-                onclick={() => handleNewWorkspace('mermaid')}>
-                <Plus class="size-4" />Create your first diagram
-              </button>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger>
+                  <button class="new-btn mt-6" disabled={creating}>
+                    <Plus class="size-4" />Create your first diagram
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Content align="center" class="min-w-[200px]">
+                  <DropdownMenu.Item onclick={() => handleNewWorkspace('mermaid')}>
+                    <Workflow class="mr-2 size-4" />
+                    Mermaid Diagram
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item onclick={() => handleNewWorkspace('structurizr')}>
+                    <Network class="mr-2 size-4" />
+                    C4 Architecture
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
             {/if}
           </div>
         {/if}

@@ -48,6 +48,7 @@
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: adminUser, password: adminPass })
       });
@@ -60,7 +61,7 @@
       if (data.user?.role !== 'admin' && data.user?.role !== 'superadmin') {
         adminAuthError = 'Access denied. Admin privileges required.';
         // Logout the non-admin session
-        await fetch('/api/auth/logout', { method: 'POST' });
+        await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
         return;
       }
       isAdminAuthed = true;
@@ -75,7 +76,7 @@
 
   async function adminLogout() {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
     } catch {}
     isAdminAuthed = false;
   }
@@ -269,7 +270,7 @@
   // Fetch data
   async function fetchData(action: string, params: Record<string, string> = {}) {
     const searchParams = new URLSearchParams({ action, ...params });
-    const res = await fetch(`/api/admin?${searchParams}`);
+    const res = await fetch(`/api/admin?${searchParams}`, { credentials: 'include' });
     const data = await res.json();
     return data.success ? data.data : null;
   }
@@ -277,6 +278,7 @@
   async function postData(body: any) {
     const res = await fetch('/api/admin', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
@@ -649,7 +651,7 @@
 
   onMount(async () => {
     try {
-      const res = await fetch('/api/auth/me');
+      const res = await fetch('/api/auth/me', { credentials: 'include' });
       const data = await res.json();
       if (data.user && (data.user.role === 'admin' || data.user.role === 'superadmin')) {
         isAdminAuthed = true;

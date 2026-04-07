@@ -30,11 +30,13 @@
     AtSign,
     BookOpen,
     Brain,
+    Building2,
     ChartBar,
     Check,
     ChevronRight,
     ChevronsUpDown,
     ClipboardCheck,
+    Database,
     FileText,
     Gem,
     Globe,
@@ -45,9 +47,12 @@
     Paintbrush,
     Palette,
     Paperclip,
+    Plus,
+    RefreshCw,
     RotateCcw,
     Search,
     ShieldCheck,
+    Smartphone,
     Sparkles,
     Square,
     Target,
@@ -568,6 +573,7 @@
   let currentToolCallId = $state<string | null>(null);
   let currentToolName = $state('');
   let currentToolInputJson = $state('');
+  let streamCanvasTimer: ReturnType<typeof setTimeout> | null = null;
   let currentArtifactId = $state<string | null>(null);
   // Track whether the last part for the current message is text (to append to it)
   let lastPartWasText = $state(false);
@@ -618,32 +624,32 @@
     if (hasDiagram) {
       return [
         {
-          icon: '🎨',
+          icon: Palette,
           label: 'Style it',
           prompt: 'Make the diagram visually stunning with colors, icons, and professional styling'
         },
         {
-          icon: '➕',
+          icon: Plus,
           label: 'Expand',
           prompt: 'Add more nodes, connections, and detail to make the diagram more comprehensive'
         },
         {
-          icon: '📝',
+          icon: FileText,
           label: 'Document',
           prompt: 'Write detailed documentation explaining this diagram in the document panel'
         },
         {
-          icon: '🔍',
+          icon: Search,
           label: 'Review',
           prompt: 'Review this diagram for completeness, best practices, and suggest improvements'
         },
         {
-          icon: '🔄',
+          icon: RefreshCw,
           label: 'Convert',
           prompt: 'Convert this diagram to a different type while preserving the information'
         },
         {
-          icon: '🛠️',
+          icon: Wrench,
           label: 'Fix errors',
           prompt: 'Check this diagram for syntax errors and fix any issues found'
         }
@@ -651,36 +657,36 @@
     }
     return [
       {
-        icon: '🏗️',
+        icon: Building2,
         label: 'System Architecture',
         prompt:
           'Design a cloud architecture diagram with microservices, databases, load balancers, and message queues'
       },
       {
-        icon: '🔄',
+        icon: RefreshCw,
         label: 'User Flow',
         prompt:
           'Create a user authentication flow with login, signup, password reset, and OAuth options'
       },
       {
-        icon: '📊',
+        icon: Database,
         label: 'Database Schema',
         prompt:
           'Design an ER diagram for an e-commerce platform with users, products, orders, and payments'
       },
       {
-        icon: '🧠',
+        icon: Brain,
         label: 'Mind Map',
         prompt: 'Create a mind map brainstorming ideas for a startup product launch strategy'
       },
       {
-        icon: '⚡',
+        icon: Zap,
         label: 'CI/CD Pipeline',
         prompt:
           'Build a CI/CD pipeline diagram showing code commit to production deployment with testing stages'
       },
       {
-        icon: '📱',
+        icon: Smartphone,
         label: 'App Screens',
         prompt:
           'Create a sequence diagram showing how a mobile app communicates with backend APIs and third-party services'
@@ -1756,9 +1762,14 @@
                             lines: rawMd.split('\n').length
                           } as ContentPart;
                           messageParts[assistantIndex] = [...parts];
-                          // Stream to Document panel in real-time
+                          // Stream to Document panel in real-time and auto-show
                           if (rawMd.trim()) {
                             documentMarkdownStore.set(rawMd);
+                            import('$lib/stores/panels.svelte').then(({ panels }) => {
+                              if (!panels.panels.document.visible) {
+                                panels.show('document');
+                              }
+                            });
                           }
                         }
                         scrollToBottom();
@@ -1783,6 +1794,11 @@
                             code: rawCode
                           };
                           artifactMap = { ...artifactMap };
+                          // Live canvas preview: debounce update to canvas during streaming
+                          if (streamCanvasTimer) clearTimeout(streamCanvasTimer);
+                          streamCanvasTimer = setTimeout(() => {
+                            inputStateStore.update((s) => ({ ...s, code: rawCode }));
+                          }, 300);
                           scrollToBottom();
                         }
                       }
@@ -2245,9 +2261,15 @@
                         parts.push(mdPart);
                       }
                       messageParts[assistantIndex] = [...parts];
-                      // Push final content to Document panel
+                      // Push final content to Document panel and auto-show it
                       if (toolName === 'markdownWrite' && mdContent) {
                         documentMarkdownStore.set(mdContent);
+                        // Auto-open Document panel if hidden
+                        import('$lib/stores/panels.svelte').then(({ panels }) => {
+                          if (!panels.panels.document.visible) {
+                            panels.show('document');
+                          }
+                        });
                       }
                       scrollToBottom();
                     }
@@ -2286,6 +2308,11 @@
                       /* ignore parse errors */
                     }
                   } else if (data.type === 'done' || data.type === 'finish') {
+                    // Clear any pending canvas streaming timer
+                    if (streamCanvasTimer) {
+                      clearTimeout(streamCanvasTimer);
+                      streamCanvasTimer = null;
+                    }
                     // Finalize any active reasoning block
                     if (currentReasoningId && reasoningMap[currentReasoningId]) {
                       reasoningMap[currentReasoningId] = {
@@ -2450,7 +2477,7 @@
                 handleSubmit({ text: suggestion.prompt });
               }}
               class="group relative flex flex-col items-center gap-2 rounded-lg border border-border bg-card px-3 py-4 text-center transition-colors duration-150 hover:border-foreground/20 hover:bg-accent">
-              <span class="text-2xl leading-none">{suggestion.icon}</span>
+              <svelte:component this={suggestion.icon} class="h-6 w-6 text-foreground/70 group-hover:text-foreground transition-colors" />
               <span
                 class="text-xs font-medium text-foreground/80 group-hover:text-foreground"
                 >{suggestion.label}</span>

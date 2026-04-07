@@ -1,13 +1,12 @@
-import { validateSession } from '$lib/server/auth';
-import { env } from '$env/dynamic/private';
+import { getDevBypassEmail, validateSession } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { authLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ request }) => {
-  // Skip rate limiting when dev bypass is active
-  if (!env.DEV_BYPASS_AUTH) {
+  // Skip rate limiting when dev bypass is active (including implicit localhost dev)
+  if (!getDevBypassEmail(request)) {
     const rl = authLimiter.check(getClientKey(request));
     if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
   }
@@ -18,9 +17,24 @@ export const GET: RequestHandler = async ({ request }) => {
       return json({ user: null, credits: null }, { status: 401 });
     }
 
-    // Get credit balance
-    const db = getDb();
-    const credits = await db.getCreditBalance(user.id);
+    let credits: {
+      balance: number;
+      lifetime_earned: number;
+      lifetime_spent: number;
+    } | null = null;
+    try {
+      const db = getDb();
+      const row = await db.getCreditBalance(user.id);
+      credits = row
+        ? {
+            balance: row.balance,
+            lifetime_earned: row.lifetime_earned,
+            lifetime_spent: row.lifetime_spent
+          }
+        : null;
+    } catch {
+      /* e.g. DATABASE_URL unset or dev fallback user id — still return session */
+    }
 
     return json({
       user: {
@@ -31,13 +45,7 @@ export const GET: RequestHandler = async ({ request }) => {
         id: user.id,
         role: user.role
       },
-      credits: credits
-        ? {
-            balance: credits.balance,
-            lifetime_earned: credits.lifetime_earned,
-            lifetime_spent: credits.lifetime_spent
-          }
-        : null
+      credits
     });
   } catch (e) {
     console.error('[auth/me] Error:', e);

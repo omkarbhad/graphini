@@ -1,13 +1,13 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { createLocalSession, localSessionCookie } from '$lib/server/auth';
+import { applyAdminEmailRoleOverrides, createLocalSession, localSessionCookie } from '$lib/server/auth';
 import { getDb } from '$lib/server/db';
 import { authLimiter, getClientKey, rateLimitResponse } from '$lib/server/rate-limit';
 
 /**
  * POST /api/auth/register — local/dev registration with email + password
  */
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, url }) => {
   const rl = authLimiter.check(getClientKey(request));
   if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
 
@@ -48,22 +48,24 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // Create signed session
     const signed = await createLocalSession(email);
+    const effective = applyAdminEmailRoleOverrides(user);
+    const secureCookie = url.protocol === 'https:';
 
     return json(
       {
         user: {
-          avatar_url: user.avatar_url,
-          created_at: user.created_at,
-          display_name: user.display_name,
-          email: user.email,
-          id: user.id,
-          role: user.role
+          avatar_url: effective.avatar_url,
+          created_at: effective.created_at,
+          display_name: effective.display_name,
+          email: effective.email,
+          id: effective.id,
+          role: effective.role
         }
       },
       {
         status: 201,
         headers: {
-          'Set-Cookie': localSessionCookie(signed)
+          'Set-Cookie': localSessionCookie(signed, secureCookie)
         }
       }
     );

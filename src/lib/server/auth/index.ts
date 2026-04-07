@@ -6,6 +6,7 @@
  * admin overrides. Follows the same pattern as Astrova.
  */
 
+import { dev } from '$app/environment';
 import { env } from '$env/dynamic/private';
 import { getCache, userCacheKeys } from '$lib/server/cache';
 import type { User } from '$lib/server/db';
@@ -14,7 +15,8 @@ import { getDb } from '$lib/server/db';
 const SESSION_COOKIE_NAME = 'magnova_session';
 const LOCAL_COOKIE_NAME = 'graphini_session';
 
-const ADMIN_EMAIL_OVERRIDES = (env.ADMIN_EMAIL_OVERRIDES || '')
+/** Comma-separated emails that should be treated as admin when the DB still has role `user`. */
+const ADMIN_EMAIL_OVERRIDES = (env.ADMIN_EMAIL_OVERRIDES || env.ADMIN_ALLOWED_EMAILS || '')
   .split(',')
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
@@ -112,29 +114,61 @@ export async function verifySignedValue(signedValue: string): Promise<string | n
 
 // ── Admin overrides ───────────────────────────────────────────────────────
 
-const applyAdminOverrides = (user: User): User => {
+/** Promote configured emails to admin when the DB role is still `user` (matches session validation). */
+export function applyAdminEmailRoleOverrides(user: User): User {
   if (ADMIN_EMAIL_OVERRIDES.length === 0) return user;
   if (ADMIN_EMAIL_OVERRIDES.includes(user.email.toLowerCase()) && user.role === 'user') {
     return { ...user, role: 'admin' };
   }
   return user;
-};
+}
 
 // ── Session validation ────────────────────────────────────────────────────
 
 let _cachedDevUser: User | null = null;
 
+/** Loopback hosts only — safe with `dev`; never enabled in production builds. */
+function isLoopbackHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]' || h === '::1';
+}
+
+/**
+ * `DEV_BYPASS_AUTH` value, or implicit `'true'` when running `vite dev` against localhost.
+ * Use for rate limits and any other dev-bypass checks.
+ */
+export function getDevBypassEmail(request: Request): string | undefined {
+  const explicit = env.DEV_BYPASS_AUTH;
+  if (explicit) return explicit;
+  if (!dev) return undefined;
+  const host = new URL(request.url).hostname;
+  if (isLoopbackHost(host)) return 'true';
+  return undefined;
+}
+
+/**
+ * `vite dev` + dev bypass often resolves to the first DB user with role `user`, which blocks /admin.
+ * Promote to `admin` in that mode only (`dev` is false in production builds).
+ */
+function liftRoleForDevBypassSession(user: User): User {
+  if (!dev) return user;
+  if (user.role === 'superadmin') return user;
+  return { ...user, role: 'admin' };
+}
+
 /**
  * Validate the current session. Tries methods in order:
- * 0. DEV_BYPASS_AUTH — auto-login as first user or by email (local dev only)
+ * 0. DEV_BYPASS_AUTH (or auto localhost bypass in `vite dev`) — auto-login as first user or by email
  * 1. magnova_session cookie (Firebase UID → user lookup, auto-create if needed)
  * 2. graphini_session cookie (signed email → user lookup, for local/dev auth)
  */
 export async function validateSession(request: Request): Promise<User | null> {
   // Method 0: Dev bypass — skip all auth, auto-login
-  const bypassEmail = env.DEV_BYPASS_AUTH;
+  const bypassEmail = getDevBypassEmail(request);
   if (bypassEmail) {
-    if (_cachedDevUser) return applyAdminOverrides(_cachedDevUser);
+    if (_cachedDevUser) {
+      return liftRoleForDevBypassSession(applyAdminEmailRoleOverrides(_cachedDevUser));
+    }
 
     try {
       const db = getDb();
@@ -147,7 +181,7 @@ export async function validateSession(request: Request): Promise<User | null> {
       }
       if (user) {
         _cachedDevUser = user;
-        return applyAdminOverrides(user);
+        return liftRoleForDevBypassSession(applyAdminEmailRoleOverrides(user));
       }
     } catch (e) {
       console.warn('[auth] DEV_BYPASS_AUTH: DB lookup failed, using fallback dev user:', e);
@@ -161,7 +195,7 @@ export async function validateSession(request: Request): Promise<User | null> {
         role: 'admin'
       } as User;
       _cachedDevUser = fallback;
-      return applyAdminOverrides(fallback);
+      return liftRoleForDevBypassSession(applyAdminEmailRoleOverrides(fallback));
     }
   }
 
@@ -172,7 +206,7 @@ export async function validateSession(request: Request): Promise<User | null> {
     const cache = getCache();
     const cacheKey = userCacheKeys.session(`firebase:${firebaseUid}`);
     const cached = await cache.get<User>(cacheKey);
-    if (cached) return cached;
+    if (cached) return applyAdminEmailRoleOverrides(cached);
 
     const db = getDb();
     let user = await db.getUserByFirebaseUid(firebaseUid);
@@ -183,7 +217,7 @@ export async function validateSession(request: Request): Promise<User | null> {
     }
 
     if (user && user.is_active) {
-      const result = applyAdminOverrides(user);
+      const result = applyAdminEmailRoleOverrides(user);
       await cache.set(cacheKey, result, { ttlSeconds: 300 });
       return result;
     }
@@ -196,7 +230,7 @@ export async function validateSession(request: Request): Promise<User | null> {
     if (email) {
       const db = getDb();
       const user = await db.getUserByEmail(email);
-      if (user && user.is_active) return applyAdminOverrides(user);
+      if (user && user.is_active) return applyAdminEmailRoleOverrides(user);
     }
   }
 
@@ -241,9 +275,16 @@ export async function createLocalSession(email: string): Promise<string> {
   return signValue(email);
 }
 
-export function localSessionCookie(signedValue: string): string {
+export function localSessionCookie(signedValue: string, secure = false): string {
   const maxAge = 7 * 24 * 60 * 60; // 7 days
-  return `graphini_session=${signedValue}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`;
+  const secureFlag = secure ? '; Secure' : '';
+  return `graphini_session=${signedValue}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureFlag}`;
+}
+
+/** Clear-graphini_session Set-Cookie value (must match attributes used when setting the cookie). */
+export function clearLocalSessionCookie(secure = false): string {
+  const secureFlag = secure ? '; Secure' : '';
+  return `graphini_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`;
 }
 
 // ── magnova-auth URLs ─────────────────────────────────────────────────────

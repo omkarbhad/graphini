@@ -98,6 +98,10 @@ async function load(id: string): Promise<boolean> {
   state.loading = true;
   state.error = null;
 
+  // Clear stale diagram from localStorage-persisted store immediately
+  // so the canvas doesn't flash old content while the workspace loads
+  inputStateStore.update((s) => ({ ...s, code: '' }));
+
   try {
     const res = await fetch(`/api/workspaces/${id}`, { credentials: 'include' });
     if (!res.ok) {
@@ -117,9 +121,7 @@ async function load(id: string): Promise<boolean> {
     // Canvas store removed — canvas state lives in workspace.document only
     documentMarkdownStore.set(doc.documentMarkdown || '');
 
-    if (doc.mermaidCode) {
-      inputStateStore.update((s) => ({ ...s, code: doc.mermaidCode }));
-    }
+    inputStateStore.update((s) => ({ ...s, code: doc.mermaidCode || '', updateDiagram: true }));
 
     state.loading = false;
     return true;

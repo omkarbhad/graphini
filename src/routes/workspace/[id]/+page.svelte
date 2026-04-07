@@ -335,9 +335,11 @@
   });
 
   onMount(() => {
-    // Load workspace from route param
+    // Load workspace from route param — always reload if ID changed
     const workspaceId = $page.params.id;
-    if (workspaceId && !workspaceStore.isActive) {
+    const currentId = workspaceStore.workspace?.id;
+    if (workspaceId && workspaceId !== currentId) {
+      if (currentId) workspaceStore.unload();
       workspaceStore.load(workspaceId).then((success) => {
         if (!success) {
           wsError = workspaceStore.state.error || 'Failed to load workspace';
@@ -907,10 +909,11 @@
     <!-- ═══ MAIN CONTENT: DYNAMIC PANEL LAYOUT ═══ -->
     <div class="flex flex-1 overflow-hidden" role="main">
       {#each panels.order as panelId (panelId)}
-        {#if panels.panels[panelId].visible}
+        {#if panels.panels[panelId].visible || panelId === 'chat'}
           {#if panelId === 'canvas'}
             <div class="relative flex min-w-0 flex-1 flex-col overflow-hidden">
-              <!-- Floating Vertical Canvas Toolbar -->
+              <!-- Floating Vertical Canvas Toolbar (Mermaid only) -->
+              {#if !isStructurizr}
               <div
                 class="absolute top-1/2 left-3 z-30 flex -translate-y-1/2 flex-col gap-1 rounded-xl border border-border bg-card p-1.5 shadow-sm">
                 <!-- Plus button with shape dropdown -->
@@ -1140,6 +1143,7 @@
                     zoomLevel = 100;
                   }}><Scan class="size-4" /></Button>
               </div>
+              {/if}
 
               <!-- Diagram View -->
               <div class="relative flex-1 overflow-hidden">
@@ -1263,7 +1267,9 @@
           {:else if panelId === 'chat'}
             <div
               class="relative min-w-0 overflow-hidden border-l border-border"
-              style="{panels.panels.canvas.visible
+              style="{!panels.panels.chat.visible
+                ? 'display: none;'
+                : ''}{panels.panels.canvas.visible
                 ? `width: ${panels.panels.chat.width}px;`
                 : ''} min-width: {panels.panels.chat.minWidth}px; flex: {!panels.panels.canvas
                 .visible

@@ -212,26 +212,10 @@ export const GET: RequestHandler = async ({ url, request }) => {
         ];
         if (!allowedTables.includes(table))
           return json({ success: false, error: 'Table not allowed' }, { status: 400 });
-        // Use raw supabase query through the adapter's client
         try {
-          const db = getDb() as any;
-          const client = db.client;
-          if (!client)
-            return json(
-              { success: false, error: 'Direct DB access not available' },
-              { status: 500 }
-            );
-          const {
-            data: rows,
-            error: dbErr,
-            count
-          } = await client
-            .from(table)
-            .select('*', { count: 'exact' })
-            .order('created_at', { ascending: false })
-            .range(offset, offset + limit - 1);
-          if (dbErr) throw new Error(dbErr.message);
-          return json({ success: true, data: { rows: rows || [], total: count || 0 } });
+          const db = getDb();
+          const { rows, total } = await db.adminBrowseTable(table, { limit, offset });
+          return json({ success: true, data: { rows, total } });
         } catch (e) {
           return json(
             { success: false, error: e instanceof Error ? e.message : 'DB query failed' },

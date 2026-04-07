@@ -1,8 +1,10 @@
 import { json, redirect } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import {
+  applyAdminEmailRoleOverrides,
   createLocalSession,
   getAuthUrl,
+  getDevBypassEmail,
   localSessionCookie,
   validateSession
 } from '$lib/server/auth';
@@ -30,12 +32,42 @@ export const GET: RequestHandler = async ({ request, url }) => {
  * POST /api/auth/login — local/dev login with email + password
  * Creates a graphini_session cookie signed with COOKIE_SECRET.
  */
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, url }) => {
   const rl = authLimiter.check(getClientKey(request));
   if (!rl.allowed) return rateLimitResponse(rl.retryAfterMs ?? 0);
 
   try {
-    const { email, password } = await request.json();
+    // Dev bypass: set session without credentials (admin "Sign in" on localhost often POSTs empty)
+    const bypass = getDevBypassEmail(request);
+    if (bypass) {
+      const devUser = await validateSession(request);
+      if (devUser) {
+        const signed = await createLocalSession(devUser.email);
+        const secureCookie = url.protocol === 'https:';
+        return json(
+          {
+            user: {
+              avatar_url: devUser.avatar_url,
+              created_at: devUser.created_at,
+              display_name: devUser.display_name,
+              email: devUser.email,
+              id: devUser.id,
+              role: devUser.role
+            }
+          },
+          { headers: { 'Set-Cookie': localSessionCookie(signed, secureCookie) } }
+        );
+      }
+    }
+
+    let body: { email?: unknown; password?: unknown };
+    try {
+      body = await request.json();
+    } catch {
+      return json({ error: 'Email and password required' }, { status: 400 });
+    }
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    const password = typeof body.password === 'string' ? body.password : '';
     if (!email || !password) {
       return json({ error: 'Email and password required' }, { status: 400 });
     }
@@ -55,13 +87,24 @@ export const POST: RequestHandler = async ({ request }) => {
     }
 
     const { scrypt, timingSafeEqual } = await import('node:crypto');
-    const valid = await new Promise<boolean>((resolve) => {
-      const [hash, salt] = (user.password_hash ?? '').split(':');
-      scrypt(password, salt, 64, (err, derived) => {
-        if (err) return resolve(false);
-        resolve(timingSafeEqual(Buffer.from(hash, 'hex'), derived));
-      });
-    });
+    const parts = (user.password_hash ?? '').split(':');
+    const hash = parts[0];
+    const salt = parts.slice(1).join(':'); // salt is hex; guard against extra colons
+    const valid =
+      hash &&
+      salt &&
+      (await new Promise<boolean>((resolve) => {
+        scrypt(password, salt, 64, (err, derived) => {
+          if (err) return resolve(false);
+          try {
+            const hashBuf = Buffer.from(hash, 'hex');
+            if (hashBuf.length !== derived.length) return resolve(false);
+            resolve(timingSafeEqual(hashBuf, derived));
+          } catch {
+            resolve(false);
+          }
+        });
+      }));
 
     if (!valid) {
       return json({ error: 'Invalid credentials' }, { status: 401 });
@@ -69,21 +112,23 @@ export const POST: RequestHandler = async ({ request }) => {
 
     // Create signed session
     const signed = await createLocalSession(email);
+    const effective = applyAdminEmailRoleOverrides(user);
+    const secureCookie = url.protocol === 'https:';
 
     return json(
       {
         user: {
-          avatar_url: user.avatar_url,
-          created_at: user.created_at,
-          display_name: user.display_name,
-          email: user.email,
-          id: user.id,
-          role: user.role
+          avatar_url: effective.avatar_url,
+          created_at: effective.created_at,
+          display_name: effective.display_name,
+          email: effective.email,
+          id: effective.id,
+          role: effective.role
         }
       },
       {
         headers: {
-          'Set-Cookie': localSessionCookie(signed)
+          'Set-Cookie': localSessionCookie(signed, secureCookie)
         }
       }
     );

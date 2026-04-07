@@ -259,6 +259,13 @@ export interface DatabaseAdapter {
   ): Promise<void>;
   duplicateDiagramWorkspace(id: string, newTitle: string): Promise<DiagramWorkspaceRow>;
 
+  // ── Admin (read-only table browser) ───────────────────────────────────
+  /** Whitelisted tables only; used by /api/admin db_table action. */
+  adminBrowseTable(
+    table: string,
+    options: { limit: number; offset: number }
+  ): Promise<{ rows: Record<string, unknown>[]; total: number }>;
+
   // ── Health ────────────────────────────────────────────────────────────
   healthCheck(): Promise<boolean>;
 }

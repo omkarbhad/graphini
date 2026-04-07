@@ -6,7 +6,7 @@
 
 import { neon } from '@neondatabase/serverless';
 import { drizzle, type NeonHttpDatabase } from 'drizzle-orm/neon-http';
-import { sql } from 'drizzle-orm';
+import { desc, sql } from 'drizzle-orm';
 import type { DatabaseAdapter } from './adapter';
 import type {
   CacheEntry,
@@ -507,6 +507,141 @@ export class NeonAdapter implements DatabaseAdapter {
 
   async duplicateDiagramWorkspace(id: string, newTitle: string): Promise<DiagramWorkspaceRow> {
     return modelsDomain.duplicateDiagramWorkspace(this.db, id, newTitle);
+  }
+
+  // ── Admin (read-only table browser) ─────────────────────────────────
+
+  async adminBrowseTable(
+    table: string,
+    options: { limit: number; offset: number }
+  ): Promise<{ rows: Record<string, unknown>[]; total: number }> {
+    const { limit, offset } = options;
+
+    const countRows = await (() => {
+      switch (table) {
+        case 'users':
+          return this.db.select({ c: sql<number>`count(*)::int` }).from(schema.users);
+        case 'sessions':
+          return this.db.select({ c: sql<number>`count(*)::int` }).from(schema.sessions);
+        case 'workspaces':
+          return this.db.select({ c: sql<number>`count(*)::int` }).from(schema.workspaces);
+        case 'credit_balances':
+          return this.db.select({ c: sql<number>`count(*)::int` }).from(schema.creditBalances);
+        case 'credit_transactions':
+          return this.db.select({ c: sql<number>`count(*)::int` }).from(schema.creditTransactions);
+        case 'model_pricing':
+          return this.db.select({ c: sql<number>`count(*)::int` }).from(schema.modelPricing);
+        case 'enabled_models':
+          return this.db.select({ c: sql<number>`count(*)::int` }).from(schema.enabledModels);
+        case 'conversations':
+          return this.db.select({ c: sql<number>`count(*)::int` }).from(schema.conversations);
+        case 'messages':
+          return this.db.select({ c: sql<number>`count(*)::int` }).from(schema.messages);
+        case 'usage_stats':
+          return this.db.select({ c: sql<number>`count(*)::int` }).from(schema.usageStats);
+        case 'cache_entries':
+          return this.db.select({ c: sql<number>`count(*)::int` }).from(schema.cacheEntries);
+        case 'app_settings':
+          return this.db.select({ c: sql<number>`count(*)::int` }).from(schema.appSettings);
+        default:
+          throw new Error(`Unsupported admin table: ${table}`);
+      }
+    })();
+
+    const total = countRows[0]?.c ?? 0;
+
+    const rows = await (() => {
+      switch (table) {
+        case 'users':
+          return this.db
+            .select()
+            .from(schema.users)
+            .orderBy(desc(schema.users.created_at))
+            .limit(limit)
+            .offset(offset);
+        case 'sessions':
+          return this.db
+            .select()
+            .from(schema.sessions)
+            .orderBy(desc(schema.sessions.created_at))
+            .limit(limit)
+            .offset(offset);
+        case 'workspaces':
+          return this.db
+            .select()
+            .from(schema.workspaces)
+            .orderBy(desc(schema.workspaces.created_at))
+            .limit(limit)
+            .offset(offset);
+        case 'credit_balances':
+          return this.db
+            .select()
+            .from(schema.creditBalances)
+            .orderBy(desc(schema.creditBalances.updated_at))
+            .limit(limit)
+            .offset(offset);
+        case 'credit_transactions':
+          return this.db
+            .select()
+            .from(schema.creditTransactions)
+            .orderBy(desc(schema.creditTransactions.created_at))
+            .limit(limit)
+            .offset(offset);
+        case 'model_pricing':
+          return this.db
+            .select()
+            .from(schema.modelPricing)
+            .orderBy(desc(schema.modelPricing.created_at))
+            .limit(limit)
+            .offset(offset);
+        case 'enabled_models':
+          return this.db
+            .select()
+            .from(schema.enabledModels)
+            .orderBy(desc(schema.enabledModels.created_at))
+            .limit(limit)
+            .offset(offset);
+        case 'conversations':
+          return this.db
+            .select()
+            .from(schema.conversations)
+            .orderBy(desc(schema.conversations.created_at))
+            .limit(limit)
+            .offset(offset);
+        case 'messages':
+          return this.db
+            .select()
+            .from(schema.messages)
+            .orderBy(desc(schema.messages.created_at))
+            .limit(limit)
+            .offset(offset);
+        case 'usage_stats':
+          return this.db
+            .select()
+            .from(schema.usageStats)
+            .orderBy(desc(schema.usageStats.created_at))
+            .limit(limit)
+            .offset(offset);
+        case 'cache_entries':
+          return this.db
+            .select()
+            .from(schema.cacheEntries)
+            .orderBy(desc(schema.cacheEntries.created_at))
+            .limit(limit)
+            .offset(offset);
+        case 'app_settings':
+          return this.db
+            .select()
+            .from(schema.appSettings)
+            .orderBy(desc(schema.appSettings.created_at))
+            .limit(limit)
+            .offset(offset);
+        default:
+          throw new Error(`Unsupported admin table: ${table}`);
+      }
+    })();
+
+    return { rows: rows as Record<string, unknown>[], total };
   }
 
   // ── Health ────────────────────────────────────────────────────────────

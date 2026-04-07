@@ -136,6 +136,8 @@ export async function createDiagramWorkspace(
         },
         chat: { messages: [] },
         documentMarkdown: '',
+        engine: data.engine ?? 'mermaid',
+        files: {},
         mermaidCode: '',
         version: 1
       },

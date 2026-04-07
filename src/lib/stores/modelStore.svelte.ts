@@ -3,7 +3,7 @@
  * Manages AI model providers, favorites, and chat selection.
  */
 
-import { hmrRestore, hmrPreserve } from '$lib/util/hmr';
+import { hmrPreserve, hmrRestore } from '$lib/util/hmr';
 
 // Model interface for the chat component
 export interface ModelOption {
@@ -192,5 +192,5 @@ function getModelIcon(provider: string): string {
   return icons[provider] || '🤖';
 }
 
-// Initialize models on import (skip if restored from HMR)
-if (!_hmrModelStore) loadModelsFromAPI();
+// Do not auto-load on import — this store calls admin-only endpoints.
+// Call loadModelsFromAPI() explicitly from admin-only contexts.
