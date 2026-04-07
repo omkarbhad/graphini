@@ -371,47 +371,724 @@ function parseMermaidNodes(diagram: string): { id: string; text: string; line: n
 
 // AI SDK Tool Definitions for Multi-Step Calling
 const createDiagramTools = (sessionId: string) => ({
-  diagramRead: tool({
+  actionItemExtractor: tool({
     description:
-      'Read the current Mermaid diagram content. Optionally read a specific range of lines. The client will validate syntax using the real Mermaid parser. ALWAYS call this first before making changes.',
+      'Extract action items, tasks, KPIs, risks, and key entities from the current document or a provided text. Returns structured data that can be used to create diagrams or task lists. Use when the user asks to "extract action items", "find tasks", "identify risks", or "summarize key points".',
     inputSchema: z.object({
-      startLine: z
-        .number()
-        .int()
-        .min(1)
+      source: z
+        .enum(['document', 'text'])
+        .describe(
+          'Where to extract from: "document" = current markdown panel, "text" = provided text'
+        ),
+      text: z
+        .string()
         .optional()
-        .describe('Optional 1-based start line to read from'),
-      endLine: z.number().int().min(1).optional().describe('Optional 1-based end line to read to')
+        .describe('Text to extract from (only used when source is "text")'),
+      extractTypes: z
+        .array(z.enum(['actions', 'risks', 'kpis', 'entities', 'decisions', 'deadlines']))
+        .optional()
+        .describe('Types of items to extract. Defaults to all.')
     }),
-    execute: async ({ startLine, endLine } = {}) => {
-      const diagram = diagramStore.get(sessionId) || '';
-      const allLines = diagram.split('\n');
-      const totalLines = allLines.length;
+    execute: async ({ source, text, extractTypes }) => {
+      const content = source === 'document' ? markdownStore.get(sessionId) || '' : text || '';
+      if (!content.trim()) {
+        return { success: false, error: 'No content to extract from' };
+      }
 
-      if (diagram.trim().length === 0) {
+      const types = extractTypes || [
+        'actions',
+        'risks',
+        'kpis',
+        'entities',
+        'decisions',
+        'deadlines'
+      ];
+
+      return {
+        content: content,
+        instruction:
+          'Analyze the provided content and extract the requested item types. Return structured results with: actions (who, what, when), risks (description, severity, mitigation), KPIs (metric, target, current), entities (name, type, role), decisions (what, rationale, impact), deadlines (task, date, owner). Format as a clear summary.',
+        requestedTypes: types,
+        sourceLength: content.length,
+        sourceLines: content.split('\n').length,
+        success: true
+      };
+    }
+  }),
+
+  askQuestions: tool({
+    description:
+      'Ask the user one or more multiple-choice or multi-select questions to clarify requirements before creating/editing a diagram. The user will see a questionnaire UI and can select answers. Use this when the request is ambiguous or you need to understand preferences (e.g. diagram type, level of detail, which components to include). Questions should be concise and options should be clear.',
+    inputSchema: z.object({
+      context: z.string().describe('Brief context about why you are asking these questions'),
+      questions: z
+        .array(
+          z.object({
+            id: z.string().describe('Unique question ID like q1, q2'),
+            text: z.string().describe('The question text'),
+            type: z
+              .enum(['single', 'multi'])
+              .describe('single = radio buttons, multi = checkboxes'),
+            options: z
+              .array(
+                z.object({
+                  id: z.string().describe('Option ID like a, b, c'),
+                  label: z.string().describe('Option label shown to user')
+                })
+              )
+              .describe('Answer options (2-6 options)')
+          })
+        )
+        .describe('Array of questions to ask')
+    })
+    // No execute — this is a client-handled tool (requires user interaction)
+  }),
+
+  autoStyler: tool({
+    description:
+      'Automatically style all nodes and subgraphs in the diagram with harmonious grouped colors. Applies fill, border, and text colors. Use when the user asks to "make it colorful", "style the diagram", or "add colors".',
+    inputSchema: z.object({
+      palette: z
+        .enum(['vibrant', 'pastel', 'earth', 'ocean', 'sunset', 'monochrome'])
+        .optional()
+        .describe('Color palette theme. Defaults to vibrant.'),
+      preserveExisting: z
+        .boolean()
+        .optional()
+        .describe('If true, only style nodes that have no existing style. Default false.')
+    }),
+    execute: async ({ palette = 'vibrant', preserveExisting = false }) => {
+      const diagram = diagramStore.get(sessionId) || '';
+      if (!diagram.trim()) {
+        return { success: false, message: 'No diagram to style' };
+      }
+
+      // Check if diagram type supports style directives
+      const firstLine = diagram.split('\n')[0]?.trim().split(/\s/)[0]?.toLowerCase() || '';
+      const noStyleTypes = [
+        'mindmap',
+        'timeline',
+        'pie',
+        'gantt',
+        'gitgraph',
+        'sequencediagram',
+        'erdiagram',
+        'sankey',
+        'packet',
+        'quadrantchart',
+        'xychart',
+        'journey'
+      ];
+      if (noStyleTypes.includes(firstLine)) {
         return {
-          content: '',
-          totalLines: 0,
-          readFrom: 1,
-          readTo: 0,
-          isPartial: false
+          success: false,
+          message: `${firstLine} diagrams do not support style directives. Styling must be done through Mermaid theme configuration or by restructuring the diagram as a flowchart. You cannot add colors to ${firstLine} nodes with "style" lines.`
         };
       }
 
-      // Determine read range
-      const from = startLine ? Math.max(1, Math.min(startLine, totalLines)) : 1;
-      const to = endLine ? Math.max(from, Math.min(endLine, totalLines)) : totalLines;
-      const isPartial = from !== 1 || to !== totalLines;
+      const palettes: Record<string, { fill: string; stroke: string; text: string }[]> = {
+        earth: [
+          { fill: '#92400e', stroke: '#78350f', text: '#fef3c7' },
+          { fill: '#065f46', stroke: '#064e3b', text: '#d1fae5' },
+          { fill: '#7c2d12', stroke: '#6c2710', text: '#fed7aa' },
+          { fill: '#1e3a5f', stroke: '#172554', text: '#dbeafe' },
+          { fill: '#713f12', stroke: '#5c3210', text: '#fef9c3' },
+          { fill: '#4a1942', stroke: '#3b1336', text: '#fae8ff' }
+        ],
+        monochrome: [
+          { fill: '#374151', stroke: '#1f2937', text: '#f9fafb' },
+          { fill: '#6b7280', stroke: '#4b5563', text: '#f9fafb' },
+          { fill: '#9ca3af', stroke: '#6b7280', text: '#111827' },
+          { fill: '#d1d5db', stroke: '#9ca3af', text: '#111827' },
+          { fill: '#1f2937', stroke: '#111827', text: '#f9fafb' },
+          { fill: '#4b5563', stroke: '#374151', text: '#f9fafb' }
+        ],
+        ocean: [
+          { fill: '#0ea5e9', stroke: '#0284c7', text: '#ffffff' },
+          { fill: '#06b6d4', stroke: '#0891b2', text: '#ffffff' },
+          { fill: '#14b8a6', stroke: '#0d9488', text: '#ffffff' },
+          { fill: '#3b82f6', stroke: '#2563eb', text: '#ffffff' },
+          { fill: '#6366f1', stroke: '#4f46e5', text: '#ffffff' },
+          { fill: '#0369a1', stroke: '#075985', text: '#ffffff' }
+        ],
+        pastel: [
+          { fill: '#c7d2fe', stroke: '#818cf8', text: '#312e81' },
+          { fill: '#e0e7ff', stroke: '#818cf8', text: '#312e81' },
+          { fill: '#99f6e4', stroke: '#2dd4bf', text: '#134e4a' },
+          { fill: '#fde68a', stroke: '#fbbf24', text: '#78350f' },
+          { fill: '#ddd6fe', stroke: '#a78bfa', text: '#4c1d95' },
+          { fill: '#a5f3fc', stroke: '#22d3ee', text: '#164e63' },
+          { fill: '#fecaca', stroke: '#f87171', text: '#7f1d1d' },
+          { fill: '#bbf7d0', stroke: '#4ade80', text: '#14532d' }
+        ],
+        sunset: [
+          { fill: '#ef4444', stroke: '#dc2626', text: '#ffffff' },
+          { fill: '#f97316', stroke: '#ea580c', text: '#ffffff' },
+          { fill: '#f59e0b', stroke: '#d97706', text: '#ffffff' },
+          { fill: '#818cf8', stroke: '#6366f1', text: '#ffffff' },
+          { fill: '#a855f7', stroke: '#9333ea', text: '#ffffff' },
+          { fill: '#e11d48', stroke: '#be123c', text: '#ffffff' }
+        ],
+        vibrant: [
+          { fill: '#6366f1', stroke: '#4f46e5', text: '#ffffff' },
+          { fill: '#818cf8', stroke: '#6366f1', text: '#ffffff' },
+          { fill: '#14b8a6', stroke: '#0d9488', text: '#ffffff' },
+          { fill: '#f59e0b', stroke: '#d97706', text: '#ffffff' },
+          { fill: '#8b5cf6', stroke: '#7c3aed', text: '#ffffff' },
+          { fill: '#06b6d4', stroke: '#0891b2', text: '#ffffff' },
+          { fill: '#ef4444', stroke: '#dc2626', text: '#ffffff' },
+          { fill: '#22c55e', stroke: '#16a34a', text: '#ffffff' }
+        ]
+      };
 
-      const readContent = isPartial ? allLines.slice(from - 1, to).join('\n') : diagram;
+      const colors = palettes[palette] || palettes.vibrant;
+      const lines = diagram.split('\n');
+
+      // Parse nodes: lines like "  NodeId[Label]" or "  NodeId(Label)" etc.
+      const nodePattern = /^\s*([A-Za-z_][\w]*)\s*[[({<|]|^\s*([A-Za-z_][\w]*)\s*@\{/;
+      const edgePattern = /(<-->|<-\.->|<==>|<---|-->|-\.->|==>|---)/;
+      const nodeIds: string[] = [];
+      const subgraphIds: string[] = [];
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (
+          trimmed.startsWith('%%') ||
+          trimmed.startsWith('style ') ||
+          trimmed.startsWith('classDef ') ||
+          trimmed.startsWith('class ') ||
+          trimmed.startsWith('linkStyle')
+        )
+          continue;
+        if (trimmed.startsWith('subgraph ')) {
+          const sgMatch = trimmed.match(/^subgraph\s+([A-Za-z_][\w]*)/);
+          if (sgMatch) subgraphIds.push(sgMatch[1]);
+          continue;
+        }
+        if (trimmed === 'end' || trimmed.startsWith('flowchart') || trimmed.startsWith('graph'))
+          continue;
+
+        // Extract node IDs from edge lines and definition lines
+        const nodeMatch = trimmed.match(nodePattern);
+        if (nodeMatch) {
+          const id = nodeMatch[1] || nodeMatch[2];
+          if (id && !nodeIds.includes(id)) nodeIds.push(id);
+        }
+        // Also extract from edge lines: A --> B
+        if (edgePattern.test(trimmed)) {
+          const parts = trimmed.split(edgePattern);
+          for (const part of parts) {
+            const idMatch = part.trim().match(/^([A-Za-z_][\w]*)/);
+            if (idMatch && !edgePattern.test(idMatch[1]) && !nodeIds.includes(idMatch[1])) {
+              nodeIds.push(idMatch[1]);
+            }
+          }
+        }
+      }
+
+      // Remove existing style lines if not preserving
+      let cleanedLines = lines;
+      if (!preserveExisting) {
+        cleanedLines = lines.filter((l) => {
+          const t = l.trim();
+          return !t.startsWith('style ') && !t.startsWith('classDef ') && !t.startsWith('class ');
+        });
+      }
+
+      // Assign colors: group nodes by subgraph membership or sequentially
+      const styleLines: string[] = [];
+      let colorIdx = 0;
+      for (const nodeId of nodeIds) {
+        const c = colors[colorIdx % colors.length];
+        styleLines.push(
+          `    style ${nodeId} fill:${c.fill},stroke:${c.stroke},stroke-width:2px,color:${c.text}`
+        );
+        colorIdx++;
+      }
+
+      // Style subgraphs
+      const sgFills = [
+        { fill: '#f0f0ff', stroke: '#6366f1' },
+        { fill: '#eef2ff', stroke: '#6366f1' },
+        { fill: '#f0fdfa', stroke: '#14b8a6' },
+        { fill: '#fffbeb', stroke: '#f59e0b' },
+        { fill: '#faf5ff', stroke: '#8b5cf6' },
+        { fill: '#ecfeff', stroke: '#06b6d4' }
+      ];
+      for (let i = 0; i < subgraphIds.length; i++) {
+        const sf = sgFills[i % sgFills.length];
+        styleLines.push(
+          `    style ${subgraphIds[i]} fill:${sf.fill},stroke:${sf.stroke},stroke-width:2px`
+        );
+      }
+
+      const newDiagram = cleanedLines.join('\n') + '\n' + styleLines.join('\n');
+      diagramStore.set(sessionId, newDiagram);
 
       return {
-        content: readContent,
-        totalLines,
-        readFrom: from,
-        readTo: to,
-        isPartial
+        content: newDiagram,
+        nodesStyled: nodeIds.length,
+        palette,
+        subgraphsStyled: subgraphIds.length,
+        success: true,
+        summary: `Styled ${nodeIds.length} nodes and ${subgraphIds.length} subgraphs with ${palette} palette`
       };
+    }
+  }),
+
+  dataAnalyzer: tool({
+    description: `Perform computational analysis on CSV/tabular data from uploaded files. Use this when the user asks to analyze data, find patterns, frequencies, trends, top values, or any computation on uploaded CSV/Excel files.
+
+OPERATIONS:
+- "frequency" — Count how often each unique value appears in a column. Great for finding most common items, popular numbers, etc.
+- "groupBy" — Group rows by one column and aggregate another column (sum, count, avg, min, max).
+- "filter" — Filter rows where a column matches a condition (equals, contains, gt, lt, gte, lte).
+- "topN" — Get the top N rows sorted by a column (ascending or descending).
+- "crossTab" — Cross-tabulate two columns to see how values co-occur.
+- "valueCounts" — Count occurrences of specific values across multiple columns (useful for lottery numbers across draw columns).
+- "correlate" — Find correlation between two numeric columns.
+
+WHEN TO USE:
+- User asks "find me good numbers" from lottery data → use frequency + valueCounts
+- User asks "what are the most common X" → use frequency
+- User asks "group by X and sum Y" → use groupBy
+- User asks "show top 10 by sales" → use topN
+- User asks "filter where price > 100" → use filter
+- Any data analysis request on uploaded CSV files`,
+    inputSchema: z.object({
+      aggregation: z
+        .enum(['sum', 'count', 'avg', 'min', 'max'])
+        .optional()
+        .describe('Aggregation function for groupBy'),
+      ascending: z.boolean().optional().describe('Sort ascending (default false = descending)'),
+      column: z.string().optional().describe('Primary column name to analyze'),
+      column2: z
+        .string()
+        .optional()
+        .describe('Secondary column (for groupBy aggregation, crossTab, correlate)'),
+      columns: z
+        .array(z.string())
+        .optional()
+        .describe('Multiple columns for valueCounts operation'),
+      fileId: z.string().describe('File ID of the uploaded CSV file to analyze'),
+      filterOp: z
+        .enum(['equals', 'contains', 'gt', 'lt', 'gte', 'lte', 'notEquals'])
+        .optional()
+        .describe('Filter comparison operator'),
+      filterValue: z.string().optional().describe('Value to filter by'),
+      n: z.number().optional().describe('Number of results for topN (default 20)'),
+      operation: z
+        .enum(['frequency', 'groupBy', 'filter', 'topN', 'crossTab', 'valueCounts', 'correlate'])
+        .describe('The analysis operation to perform')
+    }),
+    execute: async ({
+      fileId,
+      operation,
+      column,
+      column2,
+      aggregation,
+      filterOp,
+      filterValue,
+      n = 20,
+      ascending = false,
+      columns: multiColumns
+    }) => {
+      const file = await getFileById(fileId);
+      if (!file) return { success: false, error: `File not found: ${fileId}` };
+
+      const rawText = file.extractedText || '';
+      if (!rawText.trim()) return { success: false, error: 'File has no extracted text content' };
+
+      // Parse CSV — handle both raw CSV and markdown-table format
+      let headers: string[] = [];
+      let rows: string[][] = [];
+
+      // Check if it's markdown table format (from csvToMarkdown)
+      if (rawText.includes('| ') && rawText.includes(' | ')) {
+        const lines = rawText.split('\n').filter((l: string) => l.trim().startsWith('|'));
+        if (lines.length >= 2) {
+          headers = lines[0]
+            .split('|')
+            .map((h: string) => h.trim())
+            .filter(Boolean);
+          // Skip separator line (---)
+          for (let i = 1; i < lines.length; i++) {
+            const cells = lines[i]
+              .split('|')
+              .map((c: string) => c.trim())
+              .filter(Boolean);
+            if (cells.some((c: string) => /^-+$/.test(c))) continue; // skip separator
+            if (cells.length > 0) rows.push(cells);
+          }
+        }
+      }
+
+      // Fallback: try raw CSV parsing
+      if (headers.length === 0) {
+        const lines = rawText.trim().split('\n');
+        const sep = lines[0].includes('\t') ? '\t' : ',';
+        headers = lines[0].split(sep).map((h: string) => h.trim().replace(/^["']|["']$/g, ''));
+        rows = lines
+          .slice(1)
+          .map((line: string) =>
+            line.split(sep).map((cell: string) => cell.trim().replace(/^["']|["']$/g, ''))
+          );
+      }
+
+      if (headers.length === 0 || rows.length === 0) {
+        return {
+          success: false,
+          error: 'Could not parse tabular data from file',
+          headers: [],
+          rowCount: 0
+        };
+      }
+
+      const colIndex = (name: string) => {
+        const idx = headers.findIndex((h: string) => h.toLowerCase() === name.toLowerCase());
+        if (idx >= 0) return idx;
+        // Fuzzy match: partial match
+        return headers.findIndex((h: string) => h.toLowerCase().includes(name.toLowerCase()));
+      };
+
+      try {
+        switch (operation) {
+          case 'frequency': {
+            if (!column)
+              return {
+                success: false,
+                error: 'column is required for frequency operation',
+                availableColumns: headers
+              };
+            const ci = colIndex(column);
+            if (ci < 0)
+              return {
+                success: false,
+                error: `Column "${column}" not found`,
+                availableColumns: headers
+              };
+            const freq: Record<string, number> = {};
+            for (const row of rows) {
+              const val = (row[ci] || '').trim();
+              if (val) freq[val] = (freq[val] || 0) + 1;
+            }
+            const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+            return {
+              column,
+              instruction:
+                'Present the frequency results as a clear ranked list. Highlight the most common values. If the user wants lottery numbers, emphasize the "hot" numbers (most frequent) and suggest combinations.',
+              operation: 'frequency',
+              results: sorted.slice(0, n).map(([value, count]) => ({
+                value,
+                count,
+                percentage: Math.round((count / rows.length) * 10000) / 100
+              })),
+              success: true,
+              totalRows: rows.length,
+              uniqueValues: sorted.length
+            };
+          }
+
+          case 'valueCounts': {
+            const cols = multiColumns || (column ? [column] : []);
+            if (cols.length === 0)
+              return {
+                success: false,
+                error: 'columns or column is required for valueCounts',
+                availableColumns: headers
+              };
+            const indices = cols.map((c: string) => colIndex(c)).filter((i: number) => i >= 0);
+            if (indices.length === 0)
+              return {
+                success: false,
+                error: `None of the specified columns found`,
+                availableColumns: headers
+              };
+            // Count every value across all specified columns
+            const freq: Record<string, number> = {};
+            for (const row of rows) {
+              for (const ci of indices) {
+                const val = (row[ci] || '').trim();
+                if (val) freq[val] = (freq[val] || 0) + 1;
+              }
+            }
+            const sorted = Object.entries(freq).sort((a, b) =>
+              ascending ? a[1] - b[1] : b[1] - a[1]
+            );
+            return {
+              columnsAnalyzed: cols,
+              instruction:
+                'Present the value counts clearly. For lottery analysis, these are the "hot numbers" that appear most frequently across all draw columns. Suggest the top values as recommended picks.',
+              operation: 'valueCounts',
+              results: sorted.slice(0, n).map(([value, count]) => ({ value, count })),
+              success: true,
+              totalValues: Object.values(freq).reduce((a, b) => a + b, 0),
+              uniqueValues: sorted.length
+            };
+          }
+
+          case 'groupBy': {
+            if (!column)
+              return {
+                success: false,
+                error: 'column is required for groupBy',
+                availableColumns: headers
+              };
+            const ci = colIndex(column);
+            if (ci < 0)
+              return {
+                success: false,
+                error: `Column "${column}" not found`,
+                availableColumns: headers
+              };
+            const agg = aggregation || 'count';
+            const ci2 = column2 ? colIndex(column2) : -1;
+            if (agg !== 'count' && ci2 < 0)
+              return {
+                success: false,
+                error: `column2 is required for ${agg} aggregation`,
+                availableColumns: headers
+              };
+
+            const groups: Record<string, number[]> = {};
+            for (const row of rows) {
+              const key = (row[ci] || '').trim();
+              if (!key) continue;
+              if (!groups[key]) groups[key] = [];
+              if (ci2 >= 0) {
+                const num = parseFloat(row[ci2]);
+                if (!isNaN(num)) groups[key].push(num);
+              } else {
+                groups[key].push(1);
+              }
+            }
+
+            const results = Object.entries(groups)
+              .map(([key, vals]) => {
+                let aggVal: number;
+                switch (agg) {
+                  case 'sum':
+                    aggVal = vals.reduce((a, b) => a + b, 0);
+                    break;
+                  case 'avg':
+                    aggVal = vals.length
+                      ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) / 100
+                      : 0;
+                    break;
+                  case 'min':
+                    aggVal = Math.min(...vals);
+                    break;
+                  case 'max':
+                    aggVal = Math.max(...vals);
+                    break;
+                  default:
+                    aggVal = vals.length;
+                }
+                return { group: key, [agg]: aggVal, count: vals.length };
+              })
+              .sort((a, b) =>
+                ascending
+                  ? (a as Record<string, number>)[agg] - (b as Record<string, number>)[agg]
+                  : (b as Record<string, number>)[agg] - (a as Record<string, number>)[agg]
+              );
+
+            return {
+              aggregation: agg,
+              groupColumn: column,
+              groupCount: results.length,
+              operation: 'groupBy',
+              results: results.slice(0, n),
+              success: true,
+              valueColumn: column2 || '(count)'
+            };
+          }
+
+          case 'filter': {
+            if (!column || !filterOp || filterValue === undefined)
+              return {
+                success: false,
+                error: 'column, filterOp, and filterValue are required',
+                availableColumns: headers
+              };
+            const ci = colIndex(column);
+            if (ci < 0)
+              return {
+                success: false,
+                error: `Column "${column}" not found`,
+                availableColumns: headers
+              };
+            const filtered = rows.filter((row: string[]) => {
+              const val = (row[ci] || '').trim();
+              const numVal = parseFloat(val);
+              const numFilter = parseFloat(filterValue);
+              switch (filterOp) {
+                case 'equals':
+                  return val.toLowerCase() === filterValue.toLowerCase();
+                case 'notEquals':
+                  return val.toLowerCase() !== filterValue.toLowerCase();
+                case 'contains':
+                  return val.toLowerCase().includes(filterValue.toLowerCase());
+                case 'gt':
+                  return !isNaN(numVal) && !isNaN(numFilter) && numVal > numFilter;
+                case 'lt':
+                  return !isNaN(numVal) && !isNaN(numFilter) && numVal < numFilter;
+                case 'gte':
+                  return !isNaN(numVal) && !isNaN(numFilter) && numVal >= numFilter;
+                case 'lte':
+                  return !isNaN(numVal) && !isNaN(numFilter) && numVal <= numFilter;
+                default:
+                  return false;
+              }
+            });
+            return {
+              column,
+              filterOp,
+              filterValue,
+              matchedRows: filtered.length,
+              operation: 'filter',
+              results: filtered.slice(0, n).map((row: string[]) => {
+                const obj: Record<string, string> = {};
+                headers.forEach((h: string, i: number) => {
+                  obj[h] = row[i] || '';
+                });
+                return obj;
+              }),
+              success: true,
+              totalRows: rows.length
+            };
+          }
+
+          case 'topN': {
+            if (!column)
+              return {
+                success: false,
+                error: 'column is required for topN',
+                availableColumns: headers
+              };
+            const ci = colIndex(column);
+            if (ci < 0)
+              return {
+                success: false,
+                error: `Column "${column}" not found`,
+                availableColumns: headers
+              };
+            const sorted = [...rows].sort((a: string[], b: string[]) => {
+              const va = parseFloat(a[ci]);
+              const vb = parseFloat(b[ci]);
+              if (!isNaN(va) && !isNaN(vb)) return ascending ? va - vb : vb - va;
+              return ascending
+                ? (a[ci] || '').localeCompare(b[ci] || '')
+                : (b[ci] || '').localeCompare(a[ci] || '');
+            });
+            return {
+              ascending,
+              column,
+              n,
+              operation: 'topN',
+              results: sorted.slice(0, n).map((row: string[]) => {
+                const obj: Record<string, string> = {};
+                headers.forEach((h: string, i: number) => {
+                  obj[h] = row[i] || '';
+                });
+                return obj;
+              }),
+              success: true,
+              totalRows: rows.length
+            };
+          }
+
+          case 'crossTab': {
+            if (!column || !column2)
+              return {
+                success: false,
+                error: 'column and column2 are required for crossTab',
+                availableColumns: headers
+              };
+            const ci1 = colIndex(column);
+            const ci2 = colIndex(column2);
+            if (ci1 < 0)
+              return {
+                success: false,
+                error: `Column "${column}" not found`,
+                availableColumns: headers
+              };
+            if (ci2 < 0)
+              return {
+                success: false,
+                error: `Column "${column2}" not found`,
+                availableColumns: headers
+              };
+            const cross: Record<string, Record<string, number>> = {};
+            for (const row of rows) {
+              const v1 = (row[ci1] || '').trim();
+              const v2 = (row[ci2] || '').trim();
+              if (!v1 || !v2) continue;
+              if (!cross[v1]) cross[v1] = {};
+              cross[v1][v2] = (cross[v1][v2] || 0) + 1;
+            }
+            return {
+              column1: column,
+              column2,
+              operation: 'crossTab',
+              results: cross,
+              success: true
+            };
+          }
+
+          case 'correlate': {
+            if (!column || !column2)
+              return {
+                success: false,
+                error: 'column and column2 are required for correlate',
+                availableColumns: headers
+              };
+            const ci1 = colIndex(column);
+            const ci2 = colIndex(column2);
+            if (ci1 < 0 || ci2 < 0)
+              return { success: false, error: 'Column(s) not found', availableColumns: headers };
+            const pairs: [number, number][] = [];
+            for (const row of rows) {
+              const v1 = parseFloat(row[ci1]);
+              const v2 = parseFloat(row[ci2]);
+              if (!isNaN(v1) && !isNaN(v2)) pairs.push([v1, v2]);
+            }
+            if (pairs.length < 3)
+              return { success: false, error: 'Not enough numeric pairs for correlation' };
+            const n1 = pairs.length;
+            const sumX = pairs.reduce((s, p) => s + p[0], 0);
+            const sumY = pairs.reduce((s, p) => s + p[1], 0);
+            const sumXY = pairs.reduce((s, p) => s + p[0] * p[1], 0);
+            const sumX2 = pairs.reduce((s, p) => s + p[0] ** 2, 0);
+            const sumY2 = pairs.reduce((s, p) => s + p[1] ** 2, 0);
+            const num = n1 * sumXY - sumX * sumY;
+            const den = Math.sqrt((n1 * sumX2 - sumX ** 2) * (n1 * sumY2 - sumY ** 2));
+            const r = den === 0 ? 0 : Math.round((num / den) * 10000) / 10000;
+            return {
+              column1: column,
+              column2,
+              correlation: r,
+              operation: 'correlate',
+              pairCount: n1,
+              strength: Math.abs(r) > 0.7 ? 'strong' : Math.abs(r) > 0.4 ? 'moderate' : 'weak',
+              success: true
+            };
+          }
+
+          default:
+            return { success: false, error: `Unknown operation: ${operation}` };
+        }
+      } catch (e) {
+        return { success: false, error: e instanceof Error ? e.message : 'Analysis failed' };
+      }
+    }
+  }),
+
+  diagramDelete: tool({
+    description: 'Clear the entire diagram',
+    inputSchema: z.object({}),
+    execute: async () => {
+      diagramStore.set(sessionId, '');
+      return { success: true, content: '' };
     }
   }),
 
@@ -451,6 +1128,50 @@ const createDiagramTools = (sessionId: string) => ({
       diagramStore.set(sessionId, newDiagram);
 
       return { success: true, newLineCount: lines.length, content: newDiagram };
+    }
+  }),
+
+  diagramRead: tool({
+    description:
+      'Read the current Mermaid diagram content. Optionally read a specific range of lines. The client will validate syntax using the real Mermaid parser. ALWAYS call this first before making changes.',
+    inputSchema: z.object({
+      startLine: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe('Optional 1-based start line to read from'),
+      endLine: z.number().int().min(1).optional().describe('Optional 1-based end line to read to')
+    }),
+    execute: async ({ startLine, endLine } = {}) => {
+      const diagram = diagramStore.get(sessionId) || '';
+      const allLines = diagram.split('\n');
+      const totalLines = allLines.length;
+
+      if (diagram.trim().length === 0) {
+        return {
+          content: '',
+          isPartial: false,
+          readFrom: 1,
+          readTo: 0,
+          totalLines: 0
+        };
+      }
+
+      // Determine read range
+      const from = startLine ? Math.max(1, Math.min(startLine, totalLines)) : 1;
+      const to = endLine ? Math.max(from, Math.min(endLine, totalLines)) : totalLines;
+      const isPartial = from !== 1 || to !== totalLines;
+
+      const readContent = isPartial ? allLines.slice(from - 1, to).join('\n') : diagram;
+
+      return {
+        content: readContent,
+        isPartial,
+        readFrom: from,
+        readTo: to,
+        totalLines
+      };
     }
   }),
 
@@ -497,261 +1218,6 @@ const createDiagramTools = (sessionId: string) => ({
         content: unescapedContent
       };
     }
-  }),
-
-  diagramDelete: tool({
-    description: 'Clear the entire diagram',
-    inputSchema: z.object({}),
-    execute: async () => {
-      diagramStore.set(sessionId, '');
-      return { success: true, content: '' };
-    }
-  }),
-
-  iconifier: tool({
-    description: `Post-processing tool that attaches visual icons to diagram nodes AFTER a diagram is created.
-
-HOW IT WORKS:
-- You provide a mode and optional node list. The tool automatically resolves the best icon for each node.
-- Resolution order: (1) exact NodeID match against 2400+ local icons (AWS, Azure, GCP, K8s, Cisco, brands), (2) camelCase-split parts of NodeID, (3) node label text keywords, (4) Iconify web API fallback (200,000+ icons from logos, devicon, simple-icons, mdi, etc.)
-- Icons are inserted as @{ img: "url" } annotations on the node line in the Mermaid code.
-- The tool returns a summary showing which nodes got icons and which were skipped.
-
-WHEN TO CALL:
-- ALWAYS call with mode "all" immediately after creating any architecture/infrastructure/tech diagram.
-- Call with mode "selective" when user asks to add icons to specific nodes.
-- Call with mode "remove" when user wants icons removed.
-- Do NOT call for simple flowcharts, sequence diagrams, or non-tech diagrams unless user asks.
-
-CRITICAL FOR BEST RESULTS:
-- NodeIDs MUST be real brand/product names (e.g. "React", "PostgreSQL", "Docker", "Nginx") — this is how icons are matched.
-- Node labels should describe function (e.g. "Frontend App", "Primary Database") — NOT contain brand names.
-- Example: React["Frontend Application"] NOT WebApp["React Frontend"]`,
-    inputSchema: z.object({
-      mode: z
-        .enum(['all', 'selective', 'remove'])
-        .describe(
-          'all = attach icons to all nodes, selective = attach to specific nodes, remove = remove icons'
-        ),
-      nodes: z
-        .array(z.string())
-        .optional()
-        .describe('Node IDs to attach icons to (for selective mode)'),
-      removeAll: z.boolean().optional().describe('Remove all icons (for remove mode)'),
-      removeFromNodes: z
-        .array(z.string())
-        .optional()
-        .describe('Node IDs to remove icons from (for remove mode)')
-    }),
-    execute: async ({ mode, nodes: targetNodes, removeAll, removeFromNodes }) => {
-      const diagram = diagramStore.get(sessionId) || '';
-      if (!diagram.trim()) return { success: false, error: 'No diagram to iconify' };
-
-      const lines = diagram.split('\n');
-      const allNodes = parseMermaidNodes(diagram);
-      type IconResult = {
-        nodeId: string;
-        nodeText: string;
-        status: 'added' | 'removed' | 'skipped';
-        iconId?: string;
-        iconUrl?: string;
-        confidence?: number;
-      };
-      const results: IconResult[] = [];
-
-      if (mode === 'remove') {
-        // Remove icons: strip @{ img: ... } from same line
-        const removeSet = removeAll ? null : new Set(removeFromNodes || []);
-        for (let i = lines.length - 1; i >= 0; i--) {
-          const iconMatch = lines[i].match(/^(\s*[\w][\w]*\[[^\]]*\])\s*@\{\s*img:[^}]*\}/);
-          if (iconMatch) {
-            const nodeId = iconMatch[1].match(/\s*([\w][\w]*)\[/)?.[1];
-            if (nodeId && (removeSet === null || removeSet.has(nodeId))) {
-              lines[i] = iconMatch[1]; // Remove the @{...} part, keep the node definition
-              results.push({ nodeId, nodeText: '', status: 'removed' });
-            }
-          }
-        }
-        const newDiagram = lines.join('\n');
-        diagramStore.set(sessionId, newDiagram);
-        return {
-          success: true,
-          mode: 'remove',
-          results,
-          summary: `Removed icons from ${results.length} node(s)`,
-          content: newDiagram
-        };
-      }
-
-      // Mode: all or selective — resolve and attach icons
-      const nodesToProcess =
-        mode === 'all' ? allNodes : allNodes.filter((n) => targetNodes?.includes(n.id));
-
-      if (nodesToProcess.length === 0) {
-        return { success: false, error: 'No matching nodes found in diagram' };
-      }
-
-      // Resolve icons for each node and apply as separate annotation lines
-      let insertionOffset = 0;
-      for (const node of nodesToProcess) {
-        const result = await resolveIconForNode(node.id, node.text);
-        if (result) {
-          // Escape node.id for safe regex usage
-          const escapedId = node.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-          // Find the current line index for this node (may have shifted from previous insertions)
-          let currentLineIndex = -1;
-          for (let i = 0; i < lines.length; i++) {
-            if (
-              lines[i].includes(`${node.id}[`) ||
-              lines[i].includes(`${node.id}(`) ||
-              lines[i].match(new RegExp(`^\\s*${escapedId}\\s*\\[`))
-            ) {
-              currentLineIndex = i;
-              break;
-            }
-          }
-          if (currentLineIndex === -1) currentLineIndex = node.line + insertionOffset;
-
-          const iconLine = `    ${node.id}@{ img: "${result.url}", pos: "b", w: 60, h: 60, constraint: "on" }`;
-
-          // Check if an icon line already exists for this node and replace it
-          const existingIconIndex = lines.findIndex(
-            (line, idx) => idx > currentLineIndex && line.trim().startsWith(`${node.id}@{`)
-          );
-          if (existingIconIndex !== -1) {
-            lines[existingIconIndex] = iconLine;
-          } else {
-            // Insert new icon line after the node definition
-            lines.splice(currentLineIndex + 1, 0, iconLine);
-            insertionOffset++;
-          }
-
-          results.push({
-            nodeId: node.id,
-            nodeText: node.text,
-            status: 'added',
-            iconId: result.iconId,
-            iconUrl: result.url,
-            confidence: result.confidence
-          });
-        } else {
-          results.push({ nodeId: node.id, nodeText: node.text, status: 'skipped' });
-        }
-      }
-
-      const newDiagram = lines.join('\n');
-      diagramStore.set(sessionId, newDiagram);
-
-      const addedCount = results.filter((r) => r.status === 'added').length;
-      const skippedCount = results.filter((r) => r.status === 'skipped').length;
-
-      return {
-        success: true,
-        mode,
-        results,
-        summary: `Iconified ${addedCount} node(s)${skippedCount > 0 ? `, ${skippedCount} skipped (below 90% confidence)` : ''}`,
-        content: newDiagram
-      };
-    }
-  }),
-
-  webSearch: tool({
-    description:
-      'Search the web for information. Use this to look up documentation, find icon names, research diagram patterns, or answer questions that need current information. Returns structured results with sources.',
-    inputSchema: z.object({
-      query: z.string().describe('The search query'),
-      reason: z
-        .string()
-        .optional()
-        .describe('Brief reason why you are searching — shown to the user')
-    }),
-    execute: async ({ query, reason }) => {
-      try {
-        const encoded = encodeURIComponent(query);
-        const res = await fetch(
-          `https://api.duckduckgo.com/?q=${encoded}&format=json&no_html=1&skip_disambig=1`,
-          { signal: AbortSignal.timeout(6000) }
-        );
-        if (!res.ok) return { success: false, query, reason, error: 'Search request failed' };
-        const data = await res.json();
-
-        const results: { title: string; snippet: string; url?: string; source?: string }[] = [];
-
-        if (data.AbstractText) {
-          results.push({
-            title: data.Heading || query,
-            snippet: data.AbstractText,
-            url: data.AbstractURL,
-            source: data.AbstractSource || 'Wikipedia'
-          });
-        }
-        if (data.RelatedTopics) {
-          for (const topic of data.RelatedTopics.slice(0, 5)) {
-            if (topic.Text) {
-              const urlHost = topic.FirstURL
-                ? new URL(topic.FirstURL).hostname.replace('www.', '')
-                : undefined;
-              results.push({
-                title: topic.Text.slice(0, 80),
-                snippet: topic.Text,
-                url: topic.FirstURL,
-                source: urlHost
-              });
-            }
-          }
-        }
-        if (results.length === 0 && data.Answer) {
-          results.push({
-            title: 'Answer',
-            snippet: data.Answer,
-            source: data.AnswerType || 'DuckDuckGo'
-          });
-        }
-
-        return {
-          success: true,
-          query,
-          reason: reason || `Searching for "${query}"`,
-          resultCount: results.length,
-          results: results.slice(0, 5),
-          summary:
-            results.length > 0
-              ? `Found ${results.length} result(s) for "${query}"`
-              : `No results found for "${query}". Try rephrasing.`
-        };
-      } catch (e: any) {
-        return { success: false, query, reason, error: e?.message || 'Search failed' };
-      }
-    }
-  }),
-
-  askQuestions: tool({
-    description:
-      'Ask the user one or more multiple-choice or multi-select questions to clarify requirements before creating/editing a diagram. The user will see a questionnaire UI and can select answers. Use this when the request is ambiguous or you need to understand preferences (e.g. diagram type, level of detail, which components to include). Questions should be concise and options should be clear.',
-    inputSchema: z.object({
-      context: z.string().describe('Brief context about why you are asking these questions'),
-      questions: z
-        .array(
-          z.object({
-            id: z.string().describe('Unique question ID like q1, q2'),
-            text: z.string().describe('The question text'),
-            type: z
-              .enum(['single', 'multi'])
-              .describe('single = radio buttons, multi = checkboxes'),
-            options: z
-              .array(
-                z.object({
-                  id: z.string().describe('Option ID like a, b, c'),
-                  label: z.string().describe('Option label shown to user')
-                })
-              )
-              .describe('Answer options (2-6 options)')
-          })
-        )
-        .describe('Array of questions to ask')
-    })
-    // No execute — this is a client-handled tool (requires user interaction)
   }),
 
   errorChecker: tool({
@@ -861,7 +1327,11 @@ CRITICAL FOR BEST RESULTS:
           errors.push({ line: i + 1, message: 'Arrow "-->" has no target node' });
         }
         // Unmatched brackets (skip comment lines and style lines)
-        if (!trimmed.startsWith('%%') && !trimmed.startsWith('//') && !trimmed.startsWith('style ')) {
+        if (
+          !trimmed.startsWith('%%') &&
+          !trimmed.startsWith('//') &&
+          !trimmed.startsWith('style ')
+        ) {
           const opens = (trimmed.match(/\[/g) || []).length;
           const closes = (trimmed.match(/\]/g) || []).length;
           if (opens !== closes) {
@@ -871,205 +1341,412 @@ CRITICAL FOR BEST RESULTS:
       }
 
       return {
-        success: true,
-        valid: errors.length === 0,
+        content: diagram,
         errors,
         message:
           errors.length === 0 ? 'Diagram syntax looks valid' : `Found ${errors.length} issue(s)`,
-        content: diagram
+        success: true,
+        valid: errors.length === 0
       };
     }
   }),
 
-  autoStyler: tool({
-    description:
-      'Automatically style all nodes and subgraphs in the diagram with harmonious grouped colors. Applies fill, border, and text colors. Use when the user asks to "make it colorful", "style the diagram", or "add colors".',
-    inputSchema: z.object({
-      palette: z
-        .enum(['vibrant', 'pastel', 'earth', 'ocean', 'sunset', 'monochrome'])
-        .optional()
-        .describe('Color palette theme. Defaults to vibrant.'),
-      preserveExisting: z
-        .boolean()
-        .optional()
-        .describe('If true, only style nodes that have no existing style. Default false.')
-    }),
-    execute: async ({ palette = 'vibrant', preserveExisting = false }) => {
-      const diagram = diagramStore.get(sessionId) || '';
-      if (!diagram.trim()) {
-        return { success: false, message: 'No diagram to style' };
-      }
+  fileManager: tool({
+    description: `Manage uploaded files attached by the user. Use this to list, read, search, or delete files from the current session.
 
-      // Check if diagram type supports style directives
-      const firstLine = diagram.split('\n')[0]?.trim().split(/\s/)[0]?.toLowerCase() || '';
-      const noStyleTypes = [
-        'mindmap',
-        'timeline',
-        'pie',
-        'gantt',
-        'gitgraph',
-        'sequencediagram',
-        'erdiagram',
-        'sankey',
-        'packet',
-        'quadrantchart',
-        'xychart',
-        'journey'
-      ];
-      if (noStyleTypes.includes(firstLine)) {
+OPERATIONS:
+- "list" — List all files uploaded in this session (names, types, sizes)
+- "read" — Read the extracted text content of a specific file by fileId. Supports optional startChar/endChar for reading sections of large files.
+- "search" — Search across all session files for a keyword/phrase. Returns matching excerpts.
+- "delete" — Delete a file from the session store.
+- "summary" — Get a summary of a specific file (first 500 chars + metadata).
+
+WHEN TO USE:
+- When the user asks about their uploaded files ("what files did I upload?", "show my files")
+- When you need to reference content from a previously uploaded PDF or document
+- When the user asks to find something in their uploaded files
+- When the user wants to delete an uploaded file
+- For large PDFs, use "read" with startChar/endChar to read specific sections instead of the full text`,
+    inputSchema: z.object({
+      endChar: z.number().optional().describe('End character position for partial read'),
+      fileId: z.string().optional().describe('File ID (required for read, delete, summary)'),
+      operation: z
+        .enum(['list', 'read', 'search', 'delete', 'summary'])
+        .describe('The file operation to perform'),
+      query: z.string().optional().describe('Search query (required for search operation)'),
+      startChar: z
+        .number()
+        .optional()
+        .describe('Start character position for partial read (0-based)')
+    }),
+    execute: async ({ operation, fileId, startChar, endChar, query }) => {
+      if (operation === 'list') {
+        const files = await getSessionFiles(sessionId);
+        if (files.length === 0) {
+          return { success: true, files: [], message: 'No files uploaded in this session.' };
+        }
         return {
-          success: false,
-          message: `${firstLine} diagrams do not support style directives. Styling must be done through Mermaid theme configuration or by restructuring the diagram as a flowchart. You cannot add colors to ${firstLine} nodes with "style" lines.`
+          success: true,
+          fileCount: files.length,
+          files: files.map((f) => ({
+            filename: f.filename,
+            id: f.id,
+            mediaType: f.mediaType,
+            size: f.size,
+            sizeFormatted:
+              f.size > 1024 * 1024
+                ? `${(f.size / (1024 * 1024)).toFixed(1)}MB`
+                : `${(f.size / 1024).toFixed(1)}KB`,
+            storedAt: new Date(f.storedAt).toISOString(),
+            textLength: f.extractedText?.length || 0,
+            type: f.type
+          }))
         };
       }
 
-      const palettes: Record<string, { fill: string; stroke: string; text: string }[]> = {
-        vibrant: [
-          { fill: '#6366f1', stroke: '#4f46e5', text: '#ffffff' },
-          { fill: '#818cf8', stroke: '#6366f1', text: '#ffffff' },
-          { fill: '#14b8a6', stroke: '#0d9488', text: '#ffffff' },
-          { fill: '#f59e0b', stroke: '#d97706', text: '#ffffff' },
-          { fill: '#8b5cf6', stroke: '#7c3aed', text: '#ffffff' },
-          { fill: '#06b6d4', stroke: '#0891b2', text: '#ffffff' },
-          { fill: '#ef4444', stroke: '#dc2626', text: '#ffffff' },
-          { fill: '#22c55e', stroke: '#16a34a', text: '#ffffff' }
-        ],
-        pastel: [
-          { fill: '#c7d2fe', stroke: '#818cf8', text: '#312e81' },
-          { fill: '#e0e7ff', stroke: '#818cf8', text: '#312e81' },
-          { fill: '#99f6e4', stroke: '#2dd4bf', text: '#134e4a' },
-          { fill: '#fde68a', stroke: '#fbbf24', text: '#78350f' },
-          { fill: '#ddd6fe', stroke: '#a78bfa', text: '#4c1d95' },
-          { fill: '#a5f3fc', stroke: '#22d3ee', text: '#164e63' },
-          { fill: '#fecaca', stroke: '#f87171', text: '#7f1d1d' },
-          { fill: '#bbf7d0', stroke: '#4ade80', text: '#14532d' }
-        ],
-        earth: [
-          { fill: '#92400e', stroke: '#78350f', text: '#fef3c7' },
-          { fill: '#065f46', stroke: '#064e3b', text: '#d1fae5' },
-          { fill: '#7c2d12', stroke: '#6c2710', text: '#fed7aa' },
-          { fill: '#1e3a5f', stroke: '#172554', text: '#dbeafe' },
-          { fill: '#713f12', stroke: '#5c3210', text: '#fef9c3' },
-          { fill: '#4a1942', stroke: '#3b1336', text: '#fae8ff' }
-        ],
-        ocean: [
-          { fill: '#0ea5e9', stroke: '#0284c7', text: '#ffffff' },
-          { fill: '#06b6d4', stroke: '#0891b2', text: '#ffffff' },
-          { fill: '#14b8a6', stroke: '#0d9488', text: '#ffffff' },
-          { fill: '#3b82f6', stroke: '#2563eb', text: '#ffffff' },
-          { fill: '#6366f1', stroke: '#4f46e5', text: '#ffffff' },
-          { fill: '#0369a1', stroke: '#075985', text: '#ffffff' }
-        ],
-        sunset: [
-          { fill: '#ef4444', stroke: '#dc2626', text: '#ffffff' },
-          { fill: '#f97316', stroke: '#ea580c', text: '#ffffff' },
-          { fill: '#f59e0b', stroke: '#d97706', text: '#ffffff' },
-          { fill: '#818cf8', stroke: '#6366f1', text: '#ffffff' },
-          { fill: '#a855f7', stroke: '#9333ea', text: '#ffffff' },
-          { fill: '#e11d48', stroke: '#be123c', text: '#ffffff' }
-        ],
-        monochrome: [
-          { fill: '#374151', stroke: '#1f2937', text: '#f9fafb' },
-          { fill: '#6b7280', stroke: '#4b5563', text: '#f9fafb' },
-          { fill: '#9ca3af', stroke: '#6b7280', text: '#111827' },
-          { fill: '#d1d5db', stroke: '#9ca3af', text: '#111827' },
-          { fill: '#1f2937', stroke: '#111827', text: '#f9fafb' },
-          { fill: '#4b5563', stroke: '#374151', text: '#f9fafb' }
-        ]
-      };
+      if (operation === 'read') {
+        if (!fileId) return { success: false, error: 'fileId is required for read operation' };
+        const file = await getFileById(fileId);
+        if (!file) return { success: false, error: `File not found: ${fileId}` };
 
-      const colors = palettes[palette] || palettes.vibrant;
+        let text = file.extractedText || '';
+        const totalLength = text.length;
+
+        // Support partial reads for large files
+        if (startChar !== undefined || endChar !== undefined) {
+          const from = startChar || 0;
+          const to = endChar || text.length;
+          text = text.slice(from, to);
+          return {
+            content: text,
+            fileId: file.id,
+            filename: file.filename,
+            isPartial: true,
+            readFrom: from,
+            readTo: Math.min(to, totalLength),
+            success: true,
+            totalLength
+          };
+        }
+
+        return {
+          content: text,
+          fileId: file.id,
+          filename: file.filename,
+          mediaType: file.mediaType,
+          size: file.size,
+          success: true,
+          totalLength,
+          type: file.type
+        };
+      }
+
+      if (operation === 'search') {
+        if (!query) return { success: false, error: 'query is required for search operation' };
+        const files = await getSessionFiles(sessionId);
+        const results: {
+          fileId: string;
+          filename: string;
+          matches: { position: number; excerpt: string }[];
+        }[] = [];
+
+        const lowerQuery = query.toLowerCase();
+        for (const file of files) {
+          const extractedText = file.extractedText ?? '';
+          const text = extractedText.toLowerCase();
+          const matches: { position: number; excerpt: string }[] = [];
+          let pos = 0;
+          while ((pos = text.indexOf(lowerQuery, pos)) !== -1) {
+            const start = Math.max(0, pos - 80);
+            const end = Math.min(extractedText.length, pos + query.length + 80);
+            matches.push({
+              position: pos,
+              excerpt:
+                (start > 0 ? '...' : '') +
+                extractedText.slice(start, end) +
+                (end < extractedText.length ? '...' : '')
+            });
+            pos += query.length;
+            if (matches.length >= 5) break; // Max 5 matches per file
+          }
+          if (matches.length > 0) {
+            results.push({ fileId: file.id, filename: file.filename, matches });
+          }
+        }
+
+        return {
+          filesSearched: files.length,
+          query,
+          results,
+          success: true,
+          totalMatches: results.reduce((sum, r) => sum + r.matches.length, 0)
+        };
+      }
+
+      if (operation === 'delete') {
+        if (!fileId) return { success: false, error: 'fileId is required for delete operation' };
+        const success = await deleteFile(fileId);
+        if (!success) return { success: false, error: `File not found: ${fileId}` };
+        return { success: true, message: `File ${fileId} deleted.` };
+      }
+
+      if (operation === 'summary') {
+        if (!fileId) return { success: false, error: 'fileId is required for summary operation' };
+        const file = await getFileById(fileId);
+        if (!file) return { success: false, error: `File not found: ${fileId}` };
+
+        const preview = (file.extractedText || '').slice(0, 500);
+        return {
+          fileId: file.id,
+          filename: file.filename,
+          mediaType: file.mediaType,
+          preview: preview + (file.extractedText && file.extractedText.length > 500 ? '...' : ''),
+          size: file.size,
+          sizeFormatted:
+            file.size > 1024 * 1024
+              ? `${(file.size / (1024 * 1024)).toFixed(1)}MB`
+              : `${(file.size / 1024).toFixed(1)}KB`,
+          storedAt: new Date(file.storedAt).toISOString(),
+          success: true,
+          textLength: file.extractedText?.length || 0,
+          type: file.type
+        };
+      }
+
+      return { success: false, error: `Unknown operation: ${operation}` };
+    }
+  }),
+
+  iconifier: tool({
+    description: `Post-processing tool that attaches visual icons to diagram nodes AFTER a diagram is created.
+
+HOW IT WORKS:
+- You provide a mode and optional node list. The tool automatically resolves the best icon for each node.
+- Resolution order: (1) exact NodeID match against 2400+ local icons (AWS, Azure, GCP, K8s, Cisco, brands), (2) camelCase-split parts of NodeID, (3) node label text keywords, (4) Iconify web API fallback (200,000+ icons from logos, devicon, simple-icons, mdi, etc.)
+- Icons are inserted as @{ img: "url" } annotations on the node line in the Mermaid code.
+- The tool returns a summary showing which nodes got icons and which were skipped.
+
+WHEN TO CALL:
+- ALWAYS call with mode "all" immediately after creating any architecture/infrastructure/tech diagram.
+- Call with mode "selective" when user asks to add icons to specific nodes.
+- Call with mode "remove" when user wants icons removed.
+- Do NOT call for simple flowcharts, sequence diagrams, or non-tech diagrams unless user asks.
+
+CRITICAL FOR BEST RESULTS:
+- NodeIDs MUST be real brand/product names (e.g. "React", "PostgreSQL", "Docker", "Nginx") — this is how icons are matched.
+- Node labels should describe function (e.g. "Frontend App", "Primary Database") — NOT contain brand names.
+- Example: React["Frontend Application"] NOT WebApp["React Frontend"]`,
+    inputSchema: z.object({
+      mode: z
+        .enum(['all', 'selective', 'remove'])
+        .describe(
+          'all = attach icons to all nodes, selective = attach to specific nodes, remove = remove icons'
+        ),
+      nodes: z
+        .array(z.string())
+        .optional()
+        .describe('Node IDs to attach icons to (for selective mode)'),
+      removeAll: z.boolean().optional().describe('Remove all icons (for remove mode)'),
+      removeFromNodes: z
+        .array(z.string())
+        .optional()
+        .describe('Node IDs to remove icons from (for remove mode)')
+    }),
+    execute: async ({ mode, nodes: targetNodes, removeAll, removeFromNodes }) => {
+      const diagram = diagramStore.get(sessionId) || '';
+      if (!diagram.trim()) return { success: false, error: 'No diagram to iconify' };
+
       const lines = diagram.split('\n');
+      const allNodes = parseMermaidNodes(diagram);
+      interface IconResult {
+        nodeId: string;
+        nodeText: string;
+        status: 'added' | 'removed' | 'skipped';
+        iconId?: string;
+        iconUrl?: string;
+        confidence?: number;
+      }
+      const results: IconResult[] = [];
 
-      // Parse nodes: lines like "  NodeId[Label]" or "  NodeId(Label)" etc.
-      const nodePattern = /^\s*([A-Za-z_][\w]*)\s*[\[\(\{\<\|]|^\s*([A-Za-z_][\w]*)\s*@\{/;
-      const edgePattern = /(<-->|<-\.->|<==>|<---|-->|-\.->|==>|---)/;
-      const nodeIds: string[] = [];
-      const subgraphIds: string[] = [];
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (
-          trimmed.startsWith('%%') ||
-          trimmed.startsWith('style ') ||
-          trimmed.startsWith('classDef ') ||
-          trimmed.startsWith('class ') ||
-          trimmed.startsWith('linkStyle')
-        )
-          continue;
-        if (trimmed.startsWith('subgraph ')) {
-          const sgMatch = trimmed.match(/^subgraph\s+([A-Za-z_][\w]*)/);
-          if (sgMatch) subgraphIds.push(sgMatch[1]);
-          continue;
-        }
-        if (trimmed === 'end' || trimmed.startsWith('flowchart') || trimmed.startsWith('graph'))
-          continue;
-
-        // Extract node IDs from edge lines and definition lines
-        const nodeMatch = trimmed.match(nodePattern);
-        if (nodeMatch) {
-          const id = nodeMatch[1] || nodeMatch[2];
-          if (id && !nodeIds.includes(id)) nodeIds.push(id);
-        }
-        // Also extract from edge lines: A --> B
-        if (edgePattern.test(trimmed)) {
-          const parts = trimmed.split(edgePattern);
-          for (const part of parts) {
-            const idMatch = part.trim().match(/^([A-Za-z_][\w]*)/);
-            if (idMatch && !edgePattern.test(idMatch[1]) && !nodeIds.includes(idMatch[1])) {
-              nodeIds.push(idMatch[1]);
+      if (mode === 'remove') {
+        // Remove icons: strip @{ img: ... } from same line
+        const removeSet = removeAll ? null : new Set(removeFromNodes || []);
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const iconMatch = lines[i].match(/^(\s*[\w][\w]*\[[^\]]*\])\s*@\{\s*img:[^}]*\}/);
+          if (iconMatch) {
+            const nodeId = iconMatch[1].match(/\s*([\w][\w]*)\[/)?.[1];
+            if (nodeId && (removeSet === null || removeSet.has(nodeId))) {
+              lines[i] = iconMatch[1]; // Remove the @{...} part, keep the node definition
+              results.push({ nodeId, nodeText: '', status: 'removed' });
             }
           }
         }
+        const newDiagram = lines.join('\n');
+        diagramStore.set(sessionId, newDiagram);
+        return {
+          content: newDiagram,
+          mode: 'remove',
+          results,
+          success: true,
+          summary: `Removed icons from ${results.length} node(s)`
+        };
       }
 
-      // Remove existing style lines if not preserving
-      let cleanedLines = lines;
-      if (!preserveExisting) {
-        cleanedLines = lines.filter((l) => {
-          const t = l.trim();
-          return !t.startsWith('style ') && !t.startsWith('classDef ') && !t.startsWith('class ');
-        });
+      // Mode: all or selective — resolve and attach icons
+      const nodesToProcess =
+        mode === 'all' ? allNodes : allNodes.filter((n) => targetNodes?.includes(n.id));
+
+      if (nodesToProcess.length === 0) {
+        return { success: false, error: 'No matching nodes found in diagram' };
       }
 
-      // Assign colors: group nodes by subgraph membership or sequentially
-      const styleLines: string[] = [];
-      let colorIdx = 0;
-      for (const nodeId of nodeIds) {
-        const c = colors[colorIdx % colors.length];
-        styleLines.push(
-          `    style ${nodeId} fill:${c.fill},stroke:${c.stroke},stroke-width:2px,color:${c.text}`
-        );
-        colorIdx++;
+      // Resolve icons for each node and apply as separate annotation lines
+      let insertionOffset = 0;
+      for (const node of nodesToProcess) {
+        const result = await resolveIconForNode(node.id, node.text);
+        if (result) {
+          // Escape node.id for safe regex usage
+          const escapedId = node.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+          // Find the current line index for this node (may have shifted from previous insertions)
+          let currentLineIndex = -1;
+          for (let i = 0; i < lines.length; i++) {
+            if (
+              lines[i].includes(`${node.id}[`) ||
+              lines[i].includes(`${node.id}(`) ||
+              lines[i].match(new RegExp(`^\\s*${escapedId}\\s*\\[`))
+            ) {
+              currentLineIndex = i;
+              break;
+            }
+          }
+          if (currentLineIndex === -1) currentLineIndex = node.line + insertionOffset;
+
+          const iconLine = `    ${node.id}@{ img: "${result.url}", pos: "b", w: 60, h: 60, constraint: "on" }`;
+
+          // Check if an icon line already exists for this node and replace it
+          const existingIconIndex = lines.findIndex(
+            (line, idx) => idx > currentLineIndex && line.trim().startsWith(`${node.id}@{`)
+          );
+          if (existingIconIndex !== -1) {
+            lines[existingIconIndex] = iconLine;
+          } else {
+            // Insert new icon line after the node definition
+            lines.splice(currentLineIndex + 1, 0, iconLine);
+            insertionOffset++;
+          }
+
+          results.push({
+            confidence: result.confidence,
+            iconId: result.iconId,
+            iconUrl: result.url,
+            nodeId: node.id,
+            nodeText: node.text,
+            status: 'added'
+          });
+        } else {
+          results.push({ nodeId: node.id, nodeText: node.text, status: 'skipped' });
+        }
       }
 
-      // Style subgraphs
-      const sgFills = [
-        { fill: '#f0f0ff', stroke: '#6366f1' },
-        { fill: '#eef2ff', stroke: '#6366f1' },
-        { fill: '#f0fdfa', stroke: '#14b8a6' },
-        { fill: '#fffbeb', stroke: '#f59e0b' },
-        { fill: '#faf5ff', stroke: '#8b5cf6' },
-        { fill: '#ecfeff', stroke: '#06b6d4' }
-      ];
-      for (let i = 0; i < subgraphIds.length; i++) {
-        const sf = sgFills[i % sgFills.length];
-        styleLines.push(
-          `    style ${subgraphIds[i]} fill:${sf.fill},stroke:${sf.stroke},stroke-width:2px`
-        );
-      }
-
-      const newDiagram = cleanedLines.join('\n') + '\n' + styleLines.join('\n');
+      const newDiagram = lines.join('\n');
       diagramStore.set(sessionId, newDiagram);
 
+      const addedCount = results.filter((r) => r.status === 'added').length;
+      const skippedCount = results.filter((r) => r.status === 'skipped').length;
+
       return {
-        success: true,
         content: newDiagram,
-        summary: `Styled ${nodeIds.length} nodes and ${subgraphIds.length} subgraphs with ${palette} palette`,
-        nodesStyled: nodeIds.length,
-        subgraphsStyled: subgraphIds.length,
-        palette
+        mode,
+        results,
+        success: true,
+        summary: `Iconified ${addedCount} node(s)${skippedCount > 0 ? `, ${skippedCount} skipped (below 90% confidence)` : ''}`
       };
+    }
+  }),
+
+  longTermMemory: tool({
+    description: `Store and retrieve long-term memories about the user's preferences, past work, and context. Memories persist across sessions.
+
+OPERATIONS:
+- "save" — Save a new memory with a key and value. Overwrites if key exists.
+- "get" — Retrieve a specific memory by key.
+- "list" — List all saved memory keys.
+- "delete" — Delete a specific memory.
+- "search" — Search memories by keyword in keys and values.
+
+WHEN TO USE:
+- When the user says "remember that..." or "keep in mind..."
+- When you notice recurring preferences (preferred diagram style, colors, naming conventions)
+- When the user asks "do you remember..." or "what did I say about..."
+- To store project context that should persist across conversations`,
+    inputSchema: z.object({
+      operation: z.enum(['save', 'get', 'list', 'delete', 'search']).describe('Memory operation'),
+      key: z.string().optional().describe('Memory key (required for save, get, delete)'),
+      value: z.string().optional().describe('Memory value (required for save)'),
+      query: z.string().optional().describe('Search query (required for search)')
+    }),
+    execute: async ({ operation, key, value, query }) => {
+      const memoryKey = `memory_${sessionId}`;
+      const stored = memoryStore.get(memoryKey) || '{}';
+      let memories: Record<string, { value: string; savedAt: string }> = {};
+      try {
+        memories = JSON.parse(stored);
+      } catch {
+        /* ignore */
+      }
+
+      switch (operation) {
+        case 'save': {
+          if (!key || !value) return { success: false, error: 'key and value required for save' };
+          memories[key] = { value, savedAt: new Date().toISOString() };
+          memoryStore.set(memoryKey, JSON.stringify(memories));
+          return {
+            success: true,
+            message: `Remembered: "${key}"`,
+            totalMemories: Object.keys(memories).length
+          };
+        }
+        case 'get': {
+          if (!key) return { success: false, error: 'key required for get' };
+          const mem = memories[key];
+          if (!mem) return { success: false, error: `No memory found for key: "${key}"` };
+          return { success: true, key, value: mem.value, savedAt: mem.savedAt };
+        }
+        case 'list': {
+          const keys = Object.keys(memories);
+          return {
+            success: true,
+            totalMemories: keys.length,
+            memories: keys.map((k) => ({
+              key: k,
+              preview: memories[k].value.slice(0, 80),
+              savedAt: memories[k].savedAt
+            }))
+          };
+        }
+        case 'delete': {
+          if (!key) return { success: false, error: 'key required for delete' };
+          if (!memories[key]) return { success: false, error: `No memory found for key: "${key}"` };
+          memories = Object.fromEntries(Object.entries(memories).filter(([k]) => k !== key));
+          memoryStore.set(memoryKey, JSON.stringify(memories));
+          return {
+            success: true,
+            message: `Forgot: "${key}"`,
+            totalMemories: Object.keys(memories).length
+          };
+        }
+        case 'search': {
+          if (!query) return { success: false, error: 'query required for search' };
+          const q = query.toLowerCase();
+          const results = Object.entries(memories)
+            .filter(([k, v]) => k.toLowerCase().includes(q) || v.value.toLowerCase().includes(q))
+            .map(([k, v]) => ({ key: k, value: v.value, savedAt: v.savedAt }));
+          return { success: true, query, resultCount: results.length, results };
+        }
+        default:
+          return { success: false, error: `Unknown operation: ${operation}` };
+      }
     }
   }),
 
@@ -1125,6 +1802,113 @@ CRITICAL FOR BEST RESULTS:
     }
   }),
 
+  planWithProgress: tool({
+    description: `Create and manage a visible plan with progress tracking. The plan is shown to the user as a checklist that updates in real-time as steps are completed.
+
+OPERATIONS:
+- "create" — Create a new plan with steps. Each step has an id, title, and optional description.
+- "update" — Update a step's status to "pending", "in_progress", "done", or "skipped".
+- "get" — Get the current plan and all step statuses.
+
+WHEN TO USE:
+- When the user asks for something complex that requires multiple steps
+- When you want to show the user your progress on a multi-step task
+- After creating a plan, update each step as you work through it
+- Always create a plan before starting complex diagram creation tasks`,
+    inputSchema: z.object({
+      message: z.string().optional().describe('Progress message (for update)'),
+      operation: z.enum(['create', 'update', 'get']).describe('Plan operation'),
+      status: z
+        .enum(['pending', 'in_progress', 'done', 'skipped'])
+        .optional()
+        .describe('New status (for update)'),
+      stepId: z.string().optional().describe('Step ID to update (for update)'),
+      steps: z
+        .array(
+          z.object({
+            id: z.string().describe('Step ID like step1, step2'),
+            title: z.string().describe('Step title'),
+            description: z.string().optional().describe('Step description')
+          })
+        )
+        .optional()
+        .describe('Plan steps (for create)'),
+      title: z.string().optional().describe('Plan title (for create)')
+    }),
+    execute: async ({ operation, title, steps, stepId, status, message }) => {
+      const planKey = `plan_${sessionId}`;
+      let plan: {
+        title: string;
+        createdAt: string;
+        steps: {
+          id: string;
+          title: string;
+          description: string;
+          status: string;
+          message: string;
+          updatedAt: string;
+        }[];
+      } | null = null;
+      try {
+        const stored = planStore.get(planKey);
+        if (stored) plan = JSON.parse(stored);
+      } catch {
+        /* ignore */
+      }
+
+      switch (operation) {
+        case 'create': {
+          if (!title || !steps || steps.length === 0)
+            return { success: false, error: 'title and steps required for create' };
+          plan = {
+            title,
+            createdAt: new Date().toISOString(),
+            steps: steps.map((s) => ({
+              description: s.description || '',
+              id: s.id,
+              message: '',
+              status: 'pending' as const,
+              title: s.title,
+              updatedAt: new Date().toISOString()
+            }))
+          };
+          planStore.set(planKey, JSON.stringify(plan));
+          return {
+            success: true,
+            plan,
+            message: `Plan created: "${title}" with ${steps.length} steps`
+          };
+        }
+        case 'update': {
+          if (!plan) return { success: false, error: 'No active plan. Create one first.' };
+          if (!stepId || !status)
+            return { success: false, error: 'stepId and status required for update' };
+          const step = plan.steps.find((s) => s.id === stepId);
+          if (!step) return { success: false, error: `Step not found: ${stepId}` };
+          step.status = status;
+          step.message = message || '';
+          step.updatedAt = new Date().toISOString();
+          planStore.set(planKey, JSON.stringify(plan));
+          const done = plan.steps.filter((s) => s.status === 'done').length;
+          const total = plan.steps.length;
+          return {
+            success: true,
+            plan,
+            progress: `${done}/${total} steps done`,
+            stepUpdated: stepId
+          };
+        }
+        case 'get': {
+          if (!plan) return { success: false, error: 'No active plan.' };
+          const done = plan.steps.filter((s) => s.status === 'done').length;
+          return { success: true, plan, progress: `${done}/${plan.steps.length} steps done` };
+        }
+        default:
+          return { success: false, error: `Unknown operation: ${operation}` };
+      }
+    }
+  }),
+
   planner: tool({
     description:
       'Decompose a complex task into a step-by-step plan. Use this when the user asks for something complex that requires multiple steps (e.g. "Create architecture diagram for RAG system"). Returns a structured plan that you should execute step-by-step using other tools.',
@@ -1140,62 +1924,123 @@ CRITICAL FOR BEST RESULTS:
       const markdown = markdownStore.get(sessionId) || '';
 
       return {
-        success: true,
-        task,
+        context: context || '',
         currentState: {
           hasDiagram: diagram.trim().length > 0,
           diagramLines: diagram.split('\n').length,
           hasDocument: markdown.trim().length > 0,
           documentLines: markdown.split('\n').length
         },
-        context: context || '',
         instruction:
-          'Analyze the task and create a step-by-step plan. For each step, identify which tool to use. Then execute the plan step-by-step, calling the appropriate tools. After completing all steps, summarize what was done.'
+          'Analyze the task and create a step-by-step plan. For each step, identify which tool to use. Then execute the plan step-by-step, calling the appropriate tools. After completing all steps, summarize what was done.',
+        success: true,
+        task
       };
     }
   }),
 
-  actionItemExtractor: tool({
+  selfCritique: tool({
     description:
-      'Extract action items, tasks, KPIs, risks, and key entities from the current document or a provided text. Returns structured data that can be used to create diagrams or task lists. Use when the user asks to "extract action items", "find tasks", "identify risks", or "summarize key points".',
+      'Evaluate and improve the current diagram or document. Reviews the content for quality, completeness, best practices, and potential issues. Use after creating or editing a diagram to ensure quality, or when the user asks to "review", "improve", or "critique" the work.',
     inputSchema: z.object({
-      source: z
-        .enum(['document', 'text'])
-        .describe(
-          'Where to extract from: "document" = current markdown panel, "text" = provided text'
-        ),
-      text: z
-        .string()
+      target: z
+        .enum(['diagram', 'document', 'both'])
+        .describe('What to critique: diagram, document, or both'),
+      criteria: z
+        .array(
+          z.enum([
+            'completeness',
+            'clarity',
+            'best-practices',
+            'accessibility',
+            'complexity',
+            'naming'
+          ])
+        )
         .optional()
-        .describe('Text to extract from (only used when source is "text")'),
-      extractTypes: z
-        .array(z.enum(['actions', 'risks', 'kpis', 'entities', 'decisions', 'deadlines']))
-        .optional()
-        .describe('Types of items to extract. Defaults to all.')
+        .describe('Specific criteria to evaluate. Defaults to all.')
     }),
-    execute: async ({ source, text, extractTypes }) => {
-      const content = source === 'document' ? markdownStore.get(sessionId) || '' : text || '';
-      if (!content.trim()) {
-        return { success: false, error: 'No content to extract from' };
-      }
-
-      const types = extractTypes || [
-        'actions',
-        'risks',
-        'kpis',
-        'entities',
-        'decisions',
-        'deadlines'
+    execute: async ({ target, criteria }) => {
+      const diagram = diagramStore.get(sessionId) || '';
+      const markdown = markdownStore.get(sessionId) || '';
+      const evalCriteria = criteria || [
+        'completeness',
+        'clarity',
+        'best-practices',
+        'accessibility',
+        'complexity',
+        'naming'
       ];
 
-      return {
+      const result: Record<string, unknown> = {
         success: true,
-        sourceLength: content.length,
-        sourceLines: content.split('\n').length,
-        content: content,
-        requestedTypes: types,
+        criteria: evalCriteria,
         instruction:
-          'Analyze the provided content and extract the requested item types. Return structured results with: actions (who, what, when), risks (description, severity, mitigation), KPIs (metric, target, current), entities (name, type, role), decisions (what, rationale, impact), deadlines (task, date, owner). Format as a clear summary.'
+          'Evaluate the content against each criterion. For each, provide: (1) a score 1-5, (2) specific issues found, (3) concrete improvement suggestions. Then apply the top 3 most impactful improvements automatically using the appropriate tools. Summarize what was improved.'
+      };
+
+      if (target === 'diagram' || target === 'both') {
+        if (!diagram.trim()) {
+          result.diagram = { error: 'No diagram to critique' };
+        } else {
+          const lines = diagram.split('\n');
+          const nodes = parseMermaidNodes(diagram);
+          result.diagram = {
+            content: diagram,
+            hasComments: lines.some((l: string) => l.trim().startsWith('%%')),
+            hasIcons: lines.some((l: string) => l.includes('@{')),
+            hasStyles: lines.some((l: string) => l.trim().startsWith('style ')),
+            hasSubgraphs: lines.some((l: string) => l.trim().startsWith('subgraph ')),
+            lineCount: lines.length,
+            nodeCount: nodes.length
+          };
+        }
+      }
+
+      if (target === 'document' || target === 'both') {
+        if (!markdown.trim()) {
+          result.document = { error: 'No document to critique' };
+        } else {
+          result.document = {
+            content: markdown,
+            hasCodeBlocks: /```/.test(markdown),
+            hasHeadings: /^#{1,6}\s/m.test(markdown),
+            hasLists: /^[-*]\s/m.test(markdown),
+            lineCount: markdown.split('\n').length,
+            wordCount: markdown.split(/\s+/).length
+          };
+        }
+      }
+
+      return result;
+    }
+  }),
+
+  sequentialThinking: tool({
+    description: `Think through a problem step-by-step before acting. Use this for complex reasoning, analysis, or when you need to break down a problem before creating a diagram.
+
+This tool lets you record your thought process visibly to the user, showing them your reasoning chain. Each thought builds on the previous one.
+
+WHEN TO USE:
+- Before creating complex architecture diagrams (think about components, relationships, data flow)
+- When analyzing requirements or trade-offs
+- When the user asks "how would you approach..." or "what's the best way to..."
+- For debugging complex diagram issues
+- When you need to reason about multiple options before choosing one`,
+    inputSchema: z.object({
+      thought: z.string().describe('Your current thought/reasoning step'),
+      thoughtNumber: z.number().int().min(1).describe('Current thought number (1, 2, 3...)'),
+      totalThoughts: z.number().int().min(1).describe('Estimated total thoughts needed'),
+      nextAction: z.string().optional().describe('What you plan to do next based on this thought')
+    }),
+    execute: async ({ thought, thoughtNumber, totalThoughts, nextAction }) => {
+      return {
+        isComplete: thoughtNumber >= totalThoughts,
+        nextAction: nextAction || '',
+        success: true,
+        thought,
+        thoughtNumber,
+        totalThoughts
       };
     }
   }),
@@ -1243,7 +2088,21 @@ CRITICAL FOR BEST RESULTS:
       }
 
       // Calculate statistics for numeric columns
-      const stats: Record<string, any> = {};
+      const stats: Record<
+        string,
+        {
+          count: number;
+          max: number;
+          mean: number;
+          median: number;
+          min: number;
+          outlierCount: number;
+          outliers: number[];
+          q1: number;
+          q3: number;
+          stdDev: number;
+        }
+      > = {};
       for (const [col, values] of Object.entries(numericColumns)) {
         const sorted = [...values].sort((a, b) => a - b);
         const sum = values.reduce((a, b) => a + b, 0);
@@ -1261,15 +2120,15 @@ CRITICAL FOR BEST RESULTS:
 
         stats[col] = {
           count: values.length,
-          min: sorted[0],
           max: sorted[sorted.length - 1],
           mean: Math.round(mean * 100) / 100,
           median: Math.round(median * 100) / 100,
-          stdDev: Math.round(stdDev * 100) / 100,
+          min: sorted[0],
+          outlierCount: outliers.length,
+          outliers: outliers.slice(0, 5),
           q1: Math.round(q1 * 100) / 100,
           q3: Math.round(q3 * 100) / 100,
-          outlierCount: outliers.length,
-          outliers: outliers.slice(0, 5)
+          stdDev: Math.round(stdDev * 100) / 100
         };
       }
 
@@ -1283,14 +2142,13 @@ CRITICAL FOR BEST RESULTS:
       if (rows.length > 5 && numCols >= 1) chartSuggestions.push('line chart (trend)');
 
       return {
-        success: true,
-        rowCount: rows.length,
+        categoricalColumns: headers.filter((h: string) => !numericColumns[h]),
+        chartSuggestions,
         columnCount: headers.length,
         headers,
+        instruction:
+          'Present the analysis results clearly. For each numeric column, show key statistics. Highlight any outliers or interesting trends. If the user wants a chart, create a Mermaid xychart or pie chart using diagramWrite. Format the summary as markdown if writing to the document panel.',
         numericColumns: Object.keys(numericColumns),
-        categoricalColumns: headers.filter((h: string) => !numericColumns[h]),
-        statistics: stats,
-        chartSuggestions,
         operations: operations || [
           'summary',
           'statistics',
@@ -1298,899 +2156,85 @@ CRITICAL FOR BEST RESULTS:
           'outliers',
           'chart-suggestion'
         ],
-        instruction:
-          'Present the analysis results clearly. For each numeric column, show key statistics. Highlight any outliers or interesting trends. If the user wants a chart, create a Mermaid xychart or pie chart using diagramWrite. Format the summary as markdown if writing to the document panel.'
+        rowCount: rows.length,
+        statistics: stats,
+        success: true
       };
     }
   }),
 
-  dataAnalyzer: tool({
-    description: `Perform computational analysis on CSV/tabular data from uploaded files. Use this when the user asks to analyze data, find patterns, frequencies, trends, top values, or any computation on uploaded CSV/Excel files.
-
-OPERATIONS:
-- "frequency" — Count how often each unique value appears in a column. Great for finding most common items, popular numbers, etc.
-- "groupBy" — Group rows by one column and aggregate another column (sum, count, avg, min, max).
-- "filter" — Filter rows where a column matches a condition (equals, contains, gt, lt, gte, lte).
-- "topN" — Get the top N rows sorted by a column (ascending or descending).
-- "crossTab" — Cross-tabulate two columns to see how values co-occur.
-- "valueCounts" — Count occurrences of specific values across multiple columns (useful for lottery numbers across draw columns).
-- "correlate" — Find correlation between two numeric columns.
-
-WHEN TO USE:
-- User asks "find me good numbers" from lottery data → use frequency + valueCounts
-- User asks "what are the most common X" → use frequency
-- User asks "group by X and sum Y" → use groupBy
-- User asks "show top 10 by sales" → use topN
-- User asks "filter where price > 100" → use filter
-- Any data analysis request on uploaded CSV files`,
+  webSearch: tool({
+    description:
+      'Search the web for information. Use this to look up documentation, find icon names, research diagram patterns, or answer questions that need current information. Returns structured results with sources.',
     inputSchema: z.object({
-      fileId: z.string().describe('File ID of the uploaded CSV file to analyze'),
-      operation: z
-        .enum(['frequency', 'groupBy', 'filter', 'topN', 'crossTab', 'valueCounts', 'correlate'])
-        .describe('The analysis operation to perform'),
-      column: z.string().optional().describe('Primary column name to analyze'),
-      column2: z
+      query: z.string().describe('The search query'),
+      reason: z
         .string()
         .optional()
-        .describe('Secondary column (for groupBy aggregation, crossTab, correlate)'),
-      aggregation: z
-        .enum(['sum', 'count', 'avg', 'min', 'max'])
-        .optional()
-        .describe('Aggregation function for groupBy'),
-      filterOp: z
-        .enum(['equals', 'contains', 'gt', 'lt', 'gte', 'lte', 'notEquals'])
-        .optional()
-        .describe('Filter comparison operator'),
-      filterValue: z.string().optional().describe('Value to filter by'),
-      n: z.number().optional().describe('Number of results for topN (default 20)'),
-      ascending: z.boolean().optional().describe('Sort ascending (default false = descending)'),
-      columns: z.array(z.string()).optional().describe('Multiple columns for valueCounts operation')
+        .describe('Brief reason why you are searching — shown to the user')
     }),
-    execute: async ({
-      fileId,
-      operation,
-      column,
-      column2,
-      aggregation,
-      filterOp,
-      filterValue,
-      n = 20,
-      ascending = false,
-      columns: multiColumns
-    }) => {
-      const file = await getFileById(fileId);
-      if (!file) return { success: false, error: `File not found: ${fileId}` };
+    execute: async ({ query, reason }) => {
+      try {
+        const encoded = encodeURIComponent(query);
+        const res = await fetch(
+          `https://api.duckduckgo.com/?q=${encoded}&format=json&no_html=1&skip_disambig=1`,
+          { signal: AbortSignal.timeout(6000) }
+        );
+        if (!res.ok) return { success: false, query, reason, error: 'Search request failed' };
+        const data = await res.json();
 
-      const rawText = file.extractedText || '';
-      if (!rawText.trim()) return { success: false, error: 'File has no extracted text content' };
+        const results: { title: string; snippet: string; url?: string; source?: string }[] = [];
 
-      // Parse CSV — handle both raw CSV and markdown-table format
-      let headers: string[] = [];
-      let rows: string[][] = [];
-
-      // Check if it's markdown table format (from csvToMarkdown)
-      if (rawText.includes('| ') && rawText.includes(' | ')) {
-        const lines = rawText.split('\n').filter((l: string) => l.trim().startsWith('|'));
-        if (lines.length >= 2) {
-          headers = lines[0]
-            .split('|')
-            .map((h: string) => h.trim())
-            .filter(Boolean);
-          // Skip separator line (---)
-          for (let i = 1; i < lines.length; i++) {
-            const cells = lines[i]
-              .split('|')
-              .map((c: string) => c.trim())
-              .filter(Boolean);
-            if (cells.some((c: string) => /^-+$/.test(c))) continue; // skip separator
-            if (cells.length > 0) rows.push(cells);
+        if (data.AbstractText) {
+          results.push({
+            title: data.Heading || query,
+            snippet: data.AbstractText,
+            url: data.AbstractURL,
+            source: data.AbstractSource || 'Wikipedia'
+          });
+        }
+        if (data.RelatedTopics) {
+          for (const topic of data.RelatedTopics.slice(0, 5)) {
+            if (topic.Text) {
+              const urlHost = topic.FirstURL
+                ? new URL(topic.FirstURL).hostname.replace('www.', '')
+                : undefined;
+              results.push({
+                title: topic.Text.slice(0, 80),
+                snippet: topic.Text,
+                url: topic.FirstURL,
+                source: urlHost
+              });
+            }
           }
         }
-      }
+        if (results.length === 0 && data.Answer) {
+          results.push({
+            title: 'Answer',
+            snippet: data.Answer,
+            source: data.AnswerType || 'DuckDuckGo'
+          });
+        }
 
-      // Fallback: try raw CSV parsing
-      if (headers.length === 0) {
-        const lines = rawText.trim().split('\n');
-        const sep = lines[0].includes('\t') ? '\t' : ',';
-        headers = lines[0].split(sep).map((h: string) => h.trim().replace(/^["']|["']$/g, ''));
-        rows = lines
-          .slice(1)
-          .map((line: string) =>
-            line.split(sep).map((cell: string) => cell.trim().replace(/^["']|["']$/g, ''))
-          );
-      }
-
-      if (headers.length === 0 || rows.length === 0) {
+        return {
+          query,
+          reason: reason || `Searching for "${query}"`,
+          resultCount: results.length,
+          results: results.slice(0, 5),
+          success: true,
+          summary:
+            results.length > 0
+              ? `Found ${results.length} result(s) for "${query}"`
+              : `No results found for "${query}". Try rephrasing.`
+        };
+      } catch (e: unknown) {
         return {
           success: false,
-          error: 'Could not parse tabular data from file',
-          headers: [],
-          rowCount: 0
-        };
-      }
-
-      const colIndex = (name: string) => {
-        const idx = headers.findIndex((h: string) => h.toLowerCase() === name.toLowerCase());
-        if (idx >= 0) return idx;
-        // Fuzzy match: partial match
-        return headers.findIndex((h: string) => h.toLowerCase().includes(name.toLowerCase()));
-      };
-
-      try {
-        switch (operation) {
-          case 'frequency': {
-            if (!column)
-              return {
-                success: false,
-                error: 'column is required for frequency operation',
-                availableColumns: headers
-              };
-            const ci = colIndex(column);
-            if (ci < 0)
-              return {
-                success: false,
-                error: `Column "${column}" not found`,
-                availableColumns: headers
-              };
-            const freq: Record<string, number> = {};
-            for (const row of rows) {
-              const val = (row[ci] || '').trim();
-              if (val) freq[val] = (freq[val] || 0) + 1;
-            }
-            const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
-            return {
-              success: true,
-              operation: 'frequency',
-              column,
-              totalRows: rows.length,
-              uniqueValues: sorted.length,
-              results: sorted.slice(0, n).map(([value, count]) => ({
-                value,
-                count,
-                percentage: Math.round((count / rows.length) * 10000) / 100
-              })),
-              instruction:
-                'Present the frequency results as a clear ranked list. Highlight the most common values. If the user wants lottery numbers, emphasize the "hot" numbers (most frequent) and suggest combinations.'
-            };
-          }
-
-          case 'valueCounts': {
-            const cols = multiColumns || (column ? [column] : []);
-            if (cols.length === 0)
-              return {
-                success: false,
-                error: 'columns or column is required for valueCounts',
-                availableColumns: headers
-              };
-            const indices = cols.map((c: string) => colIndex(c)).filter((i: number) => i >= 0);
-            if (indices.length === 0)
-              return {
-                success: false,
-                error: `None of the specified columns found`,
-                availableColumns: headers
-              };
-            // Count every value across all specified columns
-            const freq: Record<string, number> = {};
-            for (const row of rows) {
-              for (const ci of indices) {
-                const val = (row[ci] || '').trim();
-                if (val) freq[val] = (freq[val] || 0) + 1;
-              }
-            }
-            const sorted = Object.entries(freq).sort((a, b) =>
-              ascending ? a[1] - b[1] : b[1] - a[1]
-            );
-            return {
-              success: true,
-              operation: 'valueCounts',
-              columnsAnalyzed: cols,
-              totalValues: Object.values(freq).reduce((a, b) => a + b, 0),
-              uniqueValues: sorted.length,
-              results: sorted.slice(0, n).map(([value, count]) => ({ value, count })),
-              instruction:
-                'Present the value counts clearly. For lottery analysis, these are the "hot numbers" that appear most frequently across all draw columns. Suggest the top values as recommended picks.'
-            };
-          }
-
-          case 'groupBy': {
-            if (!column)
-              return {
-                success: false,
-                error: 'column is required for groupBy',
-                availableColumns: headers
-              };
-            const ci = colIndex(column);
-            if (ci < 0)
-              return {
-                success: false,
-                error: `Column "${column}" not found`,
-                availableColumns: headers
-              };
-            const agg = aggregation || 'count';
-            const ci2 = column2 ? colIndex(column2) : -1;
-            if (agg !== 'count' && ci2 < 0)
-              return {
-                success: false,
-                error: `column2 is required for ${agg} aggregation`,
-                availableColumns: headers
-              };
-
-            const groups: Record<string, number[]> = {};
-            for (const row of rows) {
-              const key = (row[ci] || '').trim();
-              if (!key) continue;
-              if (!groups[key]) groups[key] = [];
-              if (ci2 >= 0) {
-                const num = parseFloat(row[ci2]);
-                if (!isNaN(num)) groups[key].push(num);
-              } else {
-                groups[key].push(1);
-              }
-            }
-
-            const results = Object.entries(groups)
-              .map(([key, vals]) => {
-                let aggVal: number;
-                switch (agg) {
-                  case 'sum':
-                    aggVal = vals.reduce((a, b) => a + b, 0);
-                    break;
-                  case 'avg':
-                    aggVal = vals.length
-                      ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 100) / 100
-                      : 0;
-                    break;
-                  case 'min':
-                    aggVal = Math.min(...vals);
-                    break;
-                  case 'max':
-                    aggVal = Math.max(...vals);
-                    break;
-                  default:
-                    aggVal = vals.length;
-                }
-                return { group: key, [agg]: aggVal, count: vals.length };
-              })
-              .sort((a, b) =>
-                ascending ? (a as any)[agg] - (b as any)[agg] : (b as any)[agg] - (a as any)[agg]
-              );
-
-            return {
-              success: true,
-              operation: 'groupBy',
-              groupColumn: column,
-              aggregation: agg,
-              valueColumn: column2 || '(count)',
-              groupCount: results.length,
-              results: results.slice(0, n)
-            };
-          }
-
-          case 'filter': {
-            if (!column || !filterOp || filterValue === undefined)
-              return {
-                success: false,
-                error: 'column, filterOp, and filterValue are required',
-                availableColumns: headers
-              };
-            const ci = colIndex(column);
-            if (ci < 0)
-              return {
-                success: false,
-                error: `Column "${column}" not found`,
-                availableColumns: headers
-              };
-            const filtered = rows.filter((row: string[]) => {
-              const val = (row[ci] || '').trim();
-              const numVal = parseFloat(val);
-              const numFilter = parseFloat(filterValue);
-              switch (filterOp) {
-                case 'equals':
-                  return val.toLowerCase() === filterValue.toLowerCase();
-                case 'notEquals':
-                  return val.toLowerCase() !== filterValue.toLowerCase();
-                case 'contains':
-                  return val.toLowerCase().includes(filterValue.toLowerCase());
-                case 'gt':
-                  return !isNaN(numVal) && !isNaN(numFilter) && numVal > numFilter;
-                case 'lt':
-                  return !isNaN(numVal) && !isNaN(numFilter) && numVal < numFilter;
-                case 'gte':
-                  return !isNaN(numVal) && !isNaN(numFilter) && numVal >= numFilter;
-                case 'lte':
-                  return !isNaN(numVal) && !isNaN(numFilter) && numVal <= numFilter;
-                default:
-                  return false;
-              }
-            });
-            return {
-              success: true,
-              operation: 'filter',
-              column,
-              filterOp,
-              filterValue,
-              matchedRows: filtered.length,
-              totalRows: rows.length,
-              results: filtered.slice(0, n).map((row: string[]) => {
-                const obj: Record<string, string> = {};
-                headers.forEach((h: string, i: number) => {
-                  obj[h] = row[i] || '';
-                });
-                return obj;
-              })
-            };
-          }
-
-          case 'topN': {
-            if (!column)
-              return {
-                success: false,
-                error: 'column is required for topN',
-                availableColumns: headers
-              };
-            const ci = colIndex(column);
-            if (ci < 0)
-              return {
-                success: false,
-                error: `Column "${column}" not found`,
-                availableColumns: headers
-              };
-            const sorted = [...rows].sort((a: string[], b: string[]) => {
-              const va = parseFloat(a[ci]);
-              const vb = parseFloat(b[ci]);
-              if (!isNaN(va) && !isNaN(vb)) return ascending ? va - vb : vb - va;
-              return ascending
-                ? (a[ci] || '').localeCompare(b[ci] || '')
-                : (b[ci] || '').localeCompare(a[ci] || '');
-            });
-            return {
-              success: true,
-              operation: 'topN',
-              column,
-              n,
-              ascending,
-              totalRows: rows.length,
-              results: sorted.slice(0, n).map((row: string[]) => {
-                const obj: Record<string, string> = {};
-                headers.forEach((h: string, i: number) => {
-                  obj[h] = row[i] || '';
-                });
-                return obj;
-              })
-            };
-          }
-
-          case 'crossTab': {
-            if (!column || !column2)
-              return {
-                success: false,
-                error: 'column and column2 are required for crossTab',
-                availableColumns: headers
-              };
-            const ci1 = colIndex(column);
-            const ci2 = colIndex(column2);
-            if (ci1 < 0)
-              return {
-                success: false,
-                error: `Column "${column}" not found`,
-                availableColumns: headers
-              };
-            if (ci2 < 0)
-              return {
-                success: false,
-                error: `Column "${column2}" not found`,
-                availableColumns: headers
-              };
-            const cross: Record<string, Record<string, number>> = {};
-            for (const row of rows) {
-              const v1 = (row[ci1] || '').trim();
-              const v2 = (row[ci2] || '').trim();
-              if (!v1 || !v2) continue;
-              if (!cross[v1]) cross[v1] = {};
-              cross[v1][v2] = (cross[v1][v2] || 0) + 1;
-            }
-            return {
-              success: true,
-              operation: 'crossTab',
-              column1: column,
-              column2,
-              results: cross
-            };
-          }
-
-          case 'correlate': {
-            if (!column || !column2)
-              return {
-                success: false,
-                error: 'column and column2 are required for correlate',
-                availableColumns: headers
-              };
-            const ci1 = colIndex(column);
-            const ci2 = colIndex(column2);
-            if (ci1 < 0 || ci2 < 0)
-              return { success: false, error: 'Column(s) not found', availableColumns: headers };
-            const pairs: [number, number][] = [];
-            for (const row of rows) {
-              const v1 = parseFloat(row[ci1]);
-              const v2 = parseFloat(row[ci2]);
-              if (!isNaN(v1) && !isNaN(v2)) pairs.push([v1, v2]);
-            }
-            if (pairs.length < 3)
-              return { success: false, error: 'Not enough numeric pairs for correlation' };
-            const n1 = pairs.length;
-            const sumX = pairs.reduce((s, p) => s + p[0], 0);
-            const sumY = pairs.reduce((s, p) => s + p[1], 0);
-            const sumXY = pairs.reduce((s, p) => s + p[0] * p[1], 0);
-            const sumX2 = pairs.reduce((s, p) => s + p[0] ** 2, 0);
-            const sumY2 = pairs.reduce((s, p) => s + p[1] ** 2, 0);
-            const num = n1 * sumXY - sumX * sumY;
-            const den = Math.sqrt((n1 * sumX2 - sumX ** 2) * (n1 * sumY2 - sumY ** 2));
-            const r = den === 0 ? 0 : Math.round((num / den) * 10000) / 10000;
-            return {
-              success: true,
-              operation: 'correlate',
-              column1: column,
-              column2,
-              pairCount: n1,
-              correlation: r,
-              strength: Math.abs(r) > 0.7 ? 'strong' : Math.abs(r) > 0.4 ? 'moderate' : 'weak'
-            };
-          }
-
-          default:
-            return { success: false, error: `Unknown operation: ${operation}` };
-        }
-      } catch (e) {
-        return { success: false, error: e instanceof Error ? e.message : 'Analysis failed' };
-      }
-    }
-  }),
-
-  selfCritique: tool({
-    description:
-      'Evaluate and improve the current diagram or document. Reviews the content for quality, completeness, best practices, and potential issues. Use after creating or editing a diagram to ensure quality, or when the user asks to "review", "improve", or "critique" the work.',
-    inputSchema: z.object({
-      target: z
-        .enum(['diagram', 'document', 'both'])
-        .describe('What to critique: diagram, document, or both'),
-      criteria: z
-        .array(
-          z.enum([
-            'completeness',
-            'clarity',
-            'best-practices',
-            'accessibility',
-            'complexity',
-            'naming'
-          ])
-        )
-        .optional()
-        .describe('Specific criteria to evaluate. Defaults to all.')
-    }),
-    execute: async ({ target, criteria }) => {
-      const diagram = diagramStore.get(sessionId) || '';
-      const markdown = markdownStore.get(sessionId) || '';
-      const evalCriteria = criteria || [
-        'completeness',
-        'clarity',
-        'best-practices',
-        'accessibility',
-        'complexity',
-        'naming'
-      ];
-
-      const result: any = {
-        success: true,
-        criteria: evalCriteria,
-        instruction:
-          'Evaluate the content against each criterion. For each, provide: (1) a score 1-5, (2) specific issues found, (3) concrete improvement suggestions. Then apply the top 3 most impactful improvements automatically using the appropriate tools. Summarize what was improved.'
-      };
-
-      if (target === 'diagram' || target === 'both') {
-        if (!diagram.trim()) {
-          result.diagram = { error: 'No diagram to critique' };
-        } else {
-          const lines = diagram.split('\n');
-          const nodes = parseMermaidNodes(diagram);
-          result.diagram = {
-            content: diagram,
-            lineCount: lines.length,
-            nodeCount: nodes.length,
-            hasStyles: lines.some((l: string) => l.trim().startsWith('style ')),
-            hasSubgraphs: lines.some((l: string) => l.trim().startsWith('subgraph ')),
-            hasIcons: lines.some((l: string) => l.includes('@{')),
-            hasComments: lines.some((l: string) => l.trim().startsWith('%%'))
-          };
-        }
-      }
-
-      if (target === 'document' || target === 'both') {
-        if (!markdown.trim()) {
-          result.document = { error: 'No document to critique' };
-        } else {
-          result.document = {
-            content: markdown,
-            lineCount: markdown.split('\n').length,
-            wordCount: markdown.split(/\s+/).length,
-            hasHeadings: /^#{1,6}\s/m.test(markdown),
-            hasLists: /^[-*]\s/m.test(markdown),
-            hasCodeBlocks: /```/.test(markdown)
-          };
-        }
-      }
-
-      return result;
-    }
-  }),
-
-  fileManager: tool({
-    description: `Manage uploaded files attached by the user. Use this to list, read, search, or delete files from the current session.
-
-OPERATIONS:
-- "list" — List all files uploaded in this session (names, types, sizes)
-- "read" — Read the extracted text content of a specific file by fileId. Supports optional startChar/endChar for reading sections of large files.
-- "search" — Search across all session files for a keyword/phrase. Returns matching excerpts.
-- "delete" — Delete a file from the session store.
-- "summary" — Get a summary of a specific file (first 500 chars + metadata).
-
-WHEN TO USE:
-- When the user asks about their uploaded files ("what files did I upload?", "show my files")
-- When you need to reference content from a previously uploaded PDF or document
-- When the user asks to find something in their uploaded files
-- When the user wants to delete an uploaded file
-- For large PDFs, use "read" with startChar/endChar to read specific sections instead of the full text`,
-    inputSchema: z.object({
-      operation: z
-        .enum(['list', 'read', 'search', 'delete', 'summary'])
-        .describe('The file operation to perform'),
-      fileId: z.string().optional().describe('File ID (required for read, delete, summary)'),
-      startChar: z
-        .number()
-        .optional()
-        .describe('Start character position for partial read (0-based)'),
-      endChar: z.number().optional().describe('End character position for partial read'),
-      query: z.string().optional().describe('Search query (required for search operation)')
-    }),
-    execute: async ({ operation, fileId, startChar, endChar, query }) => {
-      if (operation === 'list') {
-        const files = await getSessionFiles(sessionId);
-        if (files.length === 0) {
-          return { success: true, files: [], message: 'No files uploaded in this session.' };
-        }
-        return {
-          success: true,
-          fileCount: files.length,
-          files: files.map((f) => ({
-            id: f.id,
-            filename: f.filename,
-            type: f.type,
-            mediaType: f.mediaType,
-            size: f.size,
-            sizeFormatted:
-              f.size > 1024 * 1024
-                ? `${(f.size / (1024 * 1024)).toFixed(1)}MB`
-                : `${(f.size / 1024).toFixed(1)}KB`,
-            textLength: f.extractedText?.length || 0,
-            storedAt: new Date(f.storedAt).toISOString()
-          }))
-        };
-      }
-
-      if (operation === 'read') {
-        if (!fileId) return { success: false, error: 'fileId is required for read operation' };
-        const file = await getFileById(fileId);
-        if (!file) return { success: false, error: `File not found: ${fileId}` };
-
-        let text = file.extractedText || '';
-        const totalLength = text.length;
-
-        // Support partial reads for large files
-        if (startChar !== undefined || endChar !== undefined) {
-          const from = startChar || 0;
-          const to = endChar || text.length;
-          text = text.slice(from, to);
-          return {
-            success: true,
-            fileId: file.id,
-            filename: file.filename,
-            content: text,
-            isPartial: true,
-            readFrom: from,
-            readTo: Math.min(to, totalLength),
-            totalLength
-          };
-        }
-
-        return {
-          success: true,
-          fileId: file.id,
-          filename: file.filename,
-          type: file.type,
-          mediaType: file.mediaType,
-          size: file.size,
-          content: text,
-          totalLength
-        };
-      }
-
-      if (operation === 'search') {
-        if (!query) return { success: false, error: 'query is required for search operation' };
-        const files = await getSessionFiles(sessionId);
-        const results: {
-          fileId: string;
-          filename: string;
-          matches: { position: number; excerpt: string }[];
-        }[] = [];
-
-        const lowerQuery = query.toLowerCase();
-        for (const file of files) {
-          const text = (file.extractedText || '').toLowerCase();
-          const matches: { position: number; excerpt: string }[] = [];
-          let pos = 0;
-          while ((pos = text.indexOf(lowerQuery, pos)) !== -1) {
-            const start = Math.max(0, pos - 80);
-            const end = Math.min(file.extractedText!.length, pos + query.length + 80);
-            matches.push({
-              position: pos,
-              excerpt:
-                (start > 0 ? '...' : '') +
-                file.extractedText!.slice(start, end) +
-                (end < file.extractedText!.length ? '...' : '')
-            });
-            pos += query.length;
-            if (matches.length >= 5) break; // Max 5 matches per file
-          }
-          if (matches.length > 0) {
-            results.push({ fileId: file.id, filename: file.filename, matches });
-          }
-        }
-
-        return {
-          success: true,
           query,
-          totalMatches: results.reduce((sum, r) => sum + r.matches.length, 0),
-          filesSearched: files.length,
-          results
+          reason,
+          error: e instanceof Error ? e.message : 'Search failed'
         };
       }
-
-      if (operation === 'delete') {
-        if (!fileId) return { success: false, error: 'fileId is required for delete operation' };
-        const success = await deleteFile(fileId);
-        if (!success) return { success: false, error: `File not found: ${fileId}` };
-        return { success: true, message: `File ${fileId} deleted.` };
-      }
-
-      if (operation === 'summary') {
-        if (!fileId) return { success: false, error: 'fileId is required for summary operation' };
-        const file = await getFileById(fileId);
-        if (!file) return { success: false, error: `File not found: ${fileId}` };
-
-        const preview = (file.extractedText || '').slice(0, 500);
-        return {
-          success: true,
-          fileId: file.id,
-          filename: file.filename,
-          type: file.type,
-          mediaType: file.mediaType,
-          size: file.size,
-          sizeFormatted:
-            file.size > 1024 * 1024
-              ? `${(file.size / (1024 * 1024)).toFixed(1)}MB`
-              : `${(file.size / 1024).toFixed(1)}KB`,
-          textLength: file.extractedText?.length || 0,
-          preview: preview + (file.extractedText && file.extractedText.length > 500 ? '...' : ''),
-          storedAt: new Date(file.storedAt).toISOString()
-        };
-      }
-
-      return { success: false, error: `Unknown operation: ${operation}` };
-    }
-  }),
-
-  longTermMemory: tool({
-    description: `Store and retrieve long-term memories about the user's preferences, past work, and context. Memories persist across sessions.
-
-OPERATIONS:
-- "save" — Save a new memory with a key and value. Overwrites if key exists.
-- "get" — Retrieve a specific memory by key.
-- "list" — List all saved memory keys.
-- "delete" — Delete a specific memory.
-- "search" — Search memories by keyword in keys and values.
-
-WHEN TO USE:
-- When the user says "remember that..." or "keep in mind..."
-- When you notice recurring preferences (preferred diagram style, colors, naming conventions)
-- When the user asks "do you remember..." or "what did I say about..."
-- To store project context that should persist across conversations`,
-    inputSchema: z.object({
-      operation: z.enum(['save', 'get', 'list', 'delete', 'search']).describe('Memory operation'),
-      key: z.string().optional().describe('Memory key (required for save, get, delete)'),
-      value: z.string().optional().describe('Memory value (required for save)'),
-      query: z.string().optional().describe('Search query (required for search)')
-    }),
-    execute: async ({ operation, key, value, query }) => {
-      const memoryKey = `memory_${sessionId}`;
-      const stored = memoryStore.get(memoryKey) || '{}';
-      let memories: Record<string, { value: string; savedAt: string }> = {};
-      try {
-        memories = JSON.parse(stored);
-      } catch {}
-
-      switch (operation) {
-        case 'save': {
-          if (!key || !value) return { success: false, error: 'key and value required for save' };
-          memories[key] = { value, savedAt: new Date().toISOString() };
-          memoryStore.set(memoryKey, JSON.stringify(memories));
-          return {
-            success: true,
-            message: `Remembered: "${key}"`,
-            totalMemories: Object.keys(memories).length
-          };
-        }
-        case 'get': {
-          if (!key) return { success: false, error: 'key required for get' };
-          const mem = memories[key];
-          if (!mem) return { success: false, error: `No memory found for key: "${key}"` };
-          return { success: true, key, value: mem.value, savedAt: mem.savedAt };
-        }
-        case 'list': {
-          const keys = Object.keys(memories);
-          return {
-            success: true,
-            totalMemories: keys.length,
-            memories: keys.map((k) => ({
-              key: k,
-              preview: memories[k].value.slice(0, 80),
-              savedAt: memories[k].savedAt
-            }))
-          };
-        }
-        case 'delete': {
-          if (!key) return { success: false, error: 'key required for delete' };
-          if (!memories[key]) return { success: false, error: `No memory found for key: "${key}"` };
-          delete memories[key];
-          memoryStore.set(memoryKey, JSON.stringify(memories));
-          return {
-            success: true,
-            message: `Forgot: "${key}"`,
-            totalMemories: Object.keys(memories).length
-          };
-        }
-        case 'search': {
-          if (!query) return { success: false, error: 'query required for search' };
-          const q = query.toLowerCase();
-          const results = Object.entries(memories)
-            .filter(([k, v]) => k.toLowerCase().includes(q) || v.value.toLowerCase().includes(q))
-            .map(([k, v]) => ({ key: k, value: v.value, savedAt: v.savedAt }));
-          return { success: true, query, resultCount: results.length, results };
-        }
-        default:
-          return { success: false, error: `Unknown operation: ${operation}` };
-      }
-    }
-  }),
-
-  planWithProgress: tool({
-    description: `Create and manage a visible plan with progress tracking. The plan is shown to the user as a checklist that updates in real-time as steps are completed.
-
-OPERATIONS:
-- "create" — Create a new plan with steps. Each step has an id, title, and optional description.
-- "update" — Update a step's status to "pending", "in_progress", "done", or "skipped".
-- "get" — Get the current plan and all step statuses.
-
-WHEN TO USE:
-- When the user asks for something complex that requires multiple steps
-- When you want to show the user your progress on a multi-step task
-- After creating a plan, update each step as you work through it
-- Always create a plan before starting complex diagram creation tasks`,
-    inputSchema: z.object({
-      operation: z.enum(['create', 'update', 'get']).describe('Plan operation'),
-      title: z.string().optional().describe('Plan title (for create)'),
-      steps: z
-        .array(
-          z.object({
-            id: z.string().describe('Step ID like step1, step2'),
-            title: z.string().describe('Step title'),
-            description: z.string().optional().describe('Step description')
-          })
-        )
-        .optional()
-        .describe('Plan steps (for create)'),
-      stepId: z.string().optional().describe('Step ID to update (for update)'),
-      status: z
-        .enum(['pending', 'in_progress', 'done', 'skipped'])
-        .optional()
-        .describe('New status (for update)'),
-      message: z.string().optional().describe('Progress message (for update)')
-    }),
-    execute: async ({ operation, title, steps, stepId, status, message }) => {
-      const planKey = `plan_${sessionId}`;
-      let plan: any = null;
-      try {
-        const stored = planStore.get(planKey);
-        if (stored) plan = JSON.parse(stored);
-      } catch {}
-
-      switch (operation) {
-        case 'create': {
-          if (!title || !steps || steps.length === 0)
-            return { success: false, error: 'title and steps required for create' };
-          plan = {
-            title,
-            createdAt: new Date().toISOString(),
-            steps: steps.map((s) => ({
-              id: s.id,
-              title: s.title,
-              description: s.description || '',
-              status: 'pending' as const,
-              message: '',
-              updatedAt: new Date().toISOString()
-            }))
-          };
-          planStore.set(planKey, JSON.stringify(plan));
-          return {
-            success: true,
-            plan,
-            message: `Plan created: "${title}" with ${steps.length} steps`
-          };
-        }
-        case 'update': {
-          if (!plan) return { success: false, error: 'No active plan. Create one first.' };
-          if (!stepId || !status)
-            return { success: false, error: 'stepId and status required for update' };
-          const step = plan.steps.find((s: any) => s.id === stepId);
-          if (!step) return { success: false, error: `Step not found: ${stepId}` };
-          step.status = status;
-          step.message = message || '';
-          step.updatedAt = new Date().toISOString();
-          planStore.set(planKey, JSON.stringify(plan));
-          const done = plan.steps.filter((s: any) => s.status === 'done').length;
-          const total = plan.steps.length;
-          return {
-            success: true,
-            plan,
-            progress: `${done}/${total} steps done`,
-            stepUpdated: stepId
-          };
-        }
-        case 'get': {
-          if (!plan) return { success: false, error: 'No active plan.' };
-          const done = plan.steps.filter((s: any) => s.status === 'done').length;
-          return { success: true, plan, progress: `${done}/${plan.steps.length} steps done` };
-        }
-        default:
-          return { success: false, error: `Unknown operation: ${operation}` };
-      }
-    }
-  }),
-
-  sequentialThinking: tool({
-    description: `Think through a problem step-by-step before acting. Use this for complex reasoning, analysis, or when you need to break down a problem before creating a diagram.
-
-This tool lets you record your thought process visibly to the user, showing them your reasoning chain. Each thought builds on the previous one.
-
-WHEN TO USE:
-- Before creating complex architecture diagrams (think about components, relationships, data flow)
-- When analyzing requirements or trade-offs
-- When the user asks "how would you approach..." or "what's the best way to..."
-- For debugging complex diagram issues
-- When you need to reason about multiple options before choosing one`,
-    inputSchema: z.object({
-      thought: z.string().describe('Your current thought/reasoning step'),
-      thoughtNumber: z.number().int().min(1).describe('Current thought number (1, 2, 3...)'),
-      totalThoughts: z.number().int().min(1).describe('Estimated total thoughts needed'),
-      nextAction: z.string().optional().describe('What you plan to do next based on this thought')
-    }),
-    execute: async ({ thought, thoughtNumber, totalThoughts, nextAction }) => {
-      return {
-        success: true,
-        thought,
-        thoughtNumber,
-        totalThoughts,
-        nextAction: nextAction || '',
-        isComplete: thoughtNumber >= totalThoughts
-      };
     }
   })
 });
@@ -2378,17 +2422,17 @@ export const GET: RequestHandler = async ({ request }) => {
     const db = getDb();
     const enabledModels = await db.listEnabledModels(true);
 
-    const models = enabledModels.map((m: any) => ({
-      id: m.model_id,
-      name: m.model_name,
-      provider: m.provider || 'openrouter',
+    const models = enabledModels.map((m) => ({
       category: m.category || 'General',
-      toolSupport: m.tool_support || false,
       description: m.description || '',
       gemsPerMessage: m.gems_per_message ?? 2,
-      isFree: m.is_free || false,
+      id: m.model_id,
       isEnabled: true,
-      maxTokens: m.max_tokens || 4000
+      isFree: m.is_free || false,
+      maxTokens: m.max_tokens || 4000,
+      name: m.model_name,
+      provider: m.provider || 'openrouter',
+      toolSupport: m.tool_support || false
     }));
 
     return json({ success: true, data: models });
@@ -2484,11 +2528,10 @@ export const POST: RequestHandler = async ({ request }) => {
     // Build messages array — always text-only (images are pre-processed in /api/upload)
     const userContent = message;
 
-    const systemPrompt = engineName === 'structurizr'
-      ? buildStructurizrSystemPrompt()
-      : buildMultiStepSystemPrompt();
+    const systemPrompt =
+      engineName === 'structurizr' ? buildStructurizrSystemPrompt() : buildMultiStepSystemPrompt();
 
-    let messages: any[] = [
+    const messages: Record<string, unknown>[] = [
       { role: 'system', content: systemPrompt },
       ...(uiMessages || []),
       { role: 'user', content: userContent }
@@ -2498,22 +2541,22 @@ export const POST: RequestHandler = async ({ request }) => {
     let allTools = createDiagramTools(diagramSessionId);
     if (enabledTools && Array.isArray(enabledTools)) {
       const enabledSet = new Set(enabledTools as string[]);
-      const filtered: Record<string, any> = {};
+      const filtered: Partial<typeof allTools> = {};
       for (const [key, value] of Object.entries(allTools)) {
         if (enabledSet.has(key)) {
-          filtered[key] = value;
+          (filtered as Record<string, typeof value>)[key] = value;
         }
       }
-      allTools = filtered as any;
+      allTools = filtered as typeof allTools;
     }
 
     // Convert to AI SDK format and stream with multi-step tool calling
     const result = streamText({
-      model: openrouter.chat(actualModelId),
       messages: messages,
-      tools: allTools,
+      model: openrouter.chat(actualModelId),
       stopWhen: stepCountIs(5),
-      temperature: 0.7
+      temperature: 0.7,
+      tools: allTools
     });
 
     // Track usage after stream completes (fire-and-forget)
@@ -2521,25 +2564,27 @@ export const POST: RequestHandler = async ({ request }) => {
       .then(async (usage) => {
         try {
           const db = getDb();
-          const client = (db as any).client;
+          const client = (db as unknown as { client?: unknown }).client;
           if (client && userId) {
             const prompt = usage?.inputTokens || 0;
             const completion = usage?.outputTokens || 0;
             await client.from('usage_stats').insert({
-              user_id: userId,
+              completion_tokens: completion,
+              conversation_id: conversationId || null,
+              created_at: new Date().toISOString(),
               model: model,
               prompt_tokens: prompt,
-              completion_tokens: completion,
               total_tokens: prompt + completion,
-              conversation_id: conversationId || null,
-              created_at: new Date().toISOString()
+              user_id: userId
             });
           }
         } catch (e) {
           console.error('[Usage tracking] Error:', e);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        /* no-op */
+      });
 
     // Return streaming response
     const response = result.toUIMessageStreamResponse({
@@ -2560,7 +2605,9 @@ export const POST: RequestHandler = async ({ request }) => {
       .logError(err instanceof Error ? err : new Error(errorMessage), {
         metadata: { endpoint: '/api/chat', model: 'unknown' }
       })
-      .catch(() => {});
+      .catch(() => {
+        /* no-op */
+      });
     return error(500, errorMessage);
   }
 };
@@ -2578,7 +2625,8 @@ export const OPTIONS: RequestHandler = async () => {
 };
 
 // Cursor-style system prompt for diagram editing
-function buildCursorSystemPrompt(): string {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function _buildCursorSystemPrompt(): string {
   return `You are an AI coding assistant operating inside a code editor.
 
 You are editing a Mermaid diagram.
@@ -2768,14 +2816,15 @@ function applyPatch(
 }
 
 // Cursor-style agent loop for diagram editing
-async function runDiagramAgent(
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+async function _runDiagramAgent(
   userMessage: string,
   systemPrompt: string,
   initialDiagram: string,
   modelId: string
 ) {
   let diagram = initialDiagram;
-  let messages: any[] = [
+  const messages: Record<string, unknown>[] = [
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userMessage }
   ];
@@ -2799,7 +2848,8 @@ async function runDiagramAgent(
           });
 
           let fullOutput = '';
-          let artifactCounter = 0;
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const _artifactCounter = 0;
 
           // Stream LLM text deltas to client in real-time for live artifact preview
           for await (const delta of result.textStream) {
@@ -3008,12 +3058,12 @@ async function runDiagramAgent(
 
   return new Response(stream, {
     headers: {
-      'Content-Type': 'text/event-stream',
+      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Methods': 'GET, POST',
+      'Access-Control-Allow-Origin': '*',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST',
-      'Access-Control-Allow-Headers': 'Content-Type'
+      'Content-Type': 'text/event-stream'
     }
   });
 }
@@ -3025,4 +3075,5 @@ type DiagramToolCall =
   | { type: 'write'; content: string }
   | { type: 'delete' };
 
-type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _MessageRole = 'system' | 'user' | 'assistant' | 'tool';

@@ -61,7 +61,7 @@
     Zap
   } from 'lucide-svelte';
   import { onMount, tick } from 'svelte';
-  import { get } from 'svelte/store';
+  // get from svelte/store not needed — removed
   import { v4 as uuidv4 } from 'uuid';
 
   // Per-file chat state: each file gets its own conversation
@@ -98,11 +98,15 @@
     try {
       const saved = kv.get<string>('chat', chatKey('sessionId'));
       if (saved) return saved;
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     const id = uuidv4();
     try {
       kv.set('chat', chatKey('sessionId'), id);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     return id;
   })();
 
@@ -127,7 +131,9 @@
     try {
       if (id) kv.set('chat', chatKey('dbConvId'), id);
       else kv.delete('chat', chatKey('dbConvId'));
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   }
 
   async function ensureDbConversation(): Promise<string | null> {
@@ -157,18 +163,24 @@
         if (newConvId) {
           try {
             kv.set('chat', 'activeConversationId', newConvId);
-          } catch {}
+          } catch {
+            /* ignore */
+          }
           // Refresh conversations list so history panel shows the new conversation
           import('$lib/stores/conversations.svelte')
             .then(({ conversationsStore }) => {
               conversationsStore.fetch();
               conversationsStore.setActive(newConvId);
             })
-            .catch(() => {});
+            .catch(() => {
+              /* ignore */
+            });
         }
         return dbConversationId;
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     return null;
   }
 
@@ -180,16 +192,19 @@
     const newMessages = messages.slice(dbSyncedMessageCount);
     if (newMessages.length === 0) return;
     try {
-      const payload = newMessages.map((m: any, i: number) => {
+      const payload = newMessages.map((m: Record<string, unknown>, i: number) => {
         const globalIdx = dbSyncedMessageCount + i;
         // Sanitize parts to be JSON-safe
         let safeParts = null;
         try {
           const raw = messageParts[globalIdx];
           if (raw) safeParts = JSON.parse(JSON.stringify(raw));
-        } catch {}
+        } catch {
+          /* ignore */
+        }
         // DB has content_not_empty constraint — never send empty string
-        const content = m.content && m.content.trim() ? m.content : '[tool call]';
+        const rawContent = m.content as string | undefined;
+        const content = rawContent && rawContent.trim() ? rawContent : '[tool call]';
         return {
           role: m.role,
           content,
@@ -206,7 +221,9 @@
       if (res.ok) {
         dbSyncedMessageCount = messages.length;
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   }
 
   function debouncedDbSync() {
@@ -228,18 +245,20 @@
       if (!res.ok) return false;
       const data = await res.json();
       if (!data.messages || data.messages.length === 0) return false;
-      messages = data.messages.map((m: any) => ({
+      messages = data.messages.map((m: Record<string, unknown>) => ({
         role: m.role,
         content: m.content,
-        timestamp: m.metadata?.timestamp || new Date(m.created_at).getTime(),
-        attachments: m.metadata?.attachments || []
+        timestamp:
+          (m.metadata as Record<string, unknown>)?.timestamp ||
+          new Date(m.created_at as string).getTime(),
+        attachments: (m.metadata as Record<string, unknown>)?.attachments || []
       }));
       // Restore parts from DB
-      const parts: Record<number, any[]> = {};
-      data.messages.forEach((m: any, i: number) => {
-        if (m.parts) parts[i] = m.parts;
+      const parts: Record<number, ContentPart[]> = {};
+      data.messages.forEach((m: Record<string, unknown>, i: number) => {
+        if (m.parts) parts[i] = m.parts as ContentPart[];
         else if (m.role === 'assistant' && m.content)
-          parts[i] = [{ type: 'text', text: m.content }];
+          parts[i] = [{ type: 'text', text: m.content as string }];
       });
       messageParts = parts;
       dbConversationId = convId;
@@ -302,7 +321,9 @@
           kv.delete('chat', chatKey('checkpoints'));
           kv.delete('chat', chatKey('diagramCode'));
           kv.set('chat', 'activeConversationId', null);
-        } catch {}
+        } catch {
+          /* ignore */
+        }
         messages = [];
         messageParts = {};
         artifactMap = {};
@@ -334,7 +355,9 @@
           kv.delete('chat', chatKey('diagramCode'));
           kv.set('chat', 'activeConversationId', null);
           kv.flush();
-        } catch {}
+        } catch {
+          /* ignore */
+        }
       }
     };
     window.addEventListener('conversation-deleted', handleConversationDeleted as EventListener);
@@ -387,7 +410,9 @@
         sessionId = id;
         kv.set('chat', chatKey('sessionId'), id);
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     // Update DB conversation ID for new file
     dbConversationId = getDbConversationId();
     dbSyncedMessageCount = 0;
@@ -402,7 +427,7 @@
   }
 
   let isDataReady = $state(false);
-  let messages: any[] = $state([]);
+  let messages: Record<string, unknown>[] = $state([]);
   let inputText = $state('');
   let fileError = $state<string | null>(null);
   let isLoading = $state(false);
@@ -422,8 +447,6 @@
     label: string;
     ids: string[];
   }>({ type: null, label: '', ids: [] });
-  let showContextInInput = $state(false);
-
   function handleNodeSelectedForContext(e: CustomEvent) {
     const detail = e.detail || {};
     selectedContext = {
@@ -577,7 +600,7 @@
   let currentArtifactId = $state<string | null>(null);
   // Track whether the last part for the current message is text (to append to it)
   let lastPartWasText = $state(false);
-  let lastPartWasReasoning = $state(false);
+  // lastPartWasReasoning tracking removed — was unused
   let isProcessingFiles = $state(false);
   let selectedModelId = $derived(modelsStore.selectedModelId);
   let modelSearchQuery = $state('');
@@ -694,16 +717,6 @@
     ];
   });
 
-  // Relative time formatter
-  function timeAgo(ts: number): string {
-    const seconds = Math.floor((Date.now() - ts) / 1000);
-    if (seconds < 60) return 'just now';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.floor(hours / 24)}d ago`;
-  }
   let chatStatus = $derived<'idle' | 'submitted' | 'streaming' | 'error'>(
     isLoading ? 'streaming' : 'idle'
   );
@@ -745,8 +758,8 @@
       recorder.start();
       mediaRecorder = recorder;
       isRecording = true;
-    } catch (e: any) {
-      const msg = e?.message || '';
+    } catch (e: unknown) {
+      const msg = (e instanceof Error ? e.message : String(e)) || '';
       if (msg.includes('Permission') || msg.includes('NotAllowedError') || msg.includes('policy')) {
         alert(
           'Microphone access is not available. This may be blocked by your browser or site permissions policy. Please check your browser settings.'
@@ -817,27 +830,29 @@
   function saveChatState() {
     try {
       // Save messages (include attachments for user messages)
-      const simpleMessages = messages.map((m: any) => {
-        const msg: any = { role: m.role, content: m.content };
-        if (m.attachments?.length > 0) {
-          msg.attachments = m.attachments.map((a: any) => ({
-            filename: a.filename,
-            mediaType: a.mediaType,
-            ext: a.ext,
-            url: a.mediaType?.startsWith('image/') ? a.url : null,
-            fileId: a.fileId,
-            size: a.size,
-            type: a.type
-          }));
+      const simpleMessages = messages.map((m: Record<string, unknown>) => {
+        const msg: Record<string, unknown> = { role: m.role, content: m.content };
+        if ((m.attachments as Record<string, unknown>[] | undefined)?.length) {
+          msg.attachments = (m.attachments as Record<string, unknown>[]).map(
+            (a: Record<string, unknown>) => ({
+              ext: a.ext,
+              fileId: a.fileId,
+              filename: a.filename,
+              mediaType: a.mediaType,
+              size: a.size,
+              type: a.type,
+              url: (a.mediaType as string)?.startsWith('image/') ? a.url : null
+            })
+          );
         }
         if (m.timestamp) msg.timestamp = m.timestamp;
         return msg;
       });
       kv.set('chat', chatKey('messages'), simpleMessages);
       // Save all message parts (including artifact refs and reasoning refs)
-      const allParts: Record<number, any[]> = {};
+      const allParts: Record<number, ContentPart[]> = {};
       for (const [idx, parts] of Object.entries(messageParts)) {
-        allParts[Number(idx)] = (parts as any[]).map((p: any) => {
+        allParts[Number(idx)] = (parts as ContentPart[]).map((p: ContentPart) => {
           if (p.type === 'text') return { type: 'text', text: p.text };
           if (p.type === 'artifact') return { type: 'artifact', artifactId: p.artifactId };
           if (p.type === 'reasoning') return { type: 'reasoning', id: p.id };
@@ -847,7 +862,7 @@
       }
       kv.set('chat', chatKey('parts'), allParts);
       // Save artifacts (only finalized, non-streaming)
-      const savedArtifacts: Record<string, any> = {};
+      const savedArtifacts: Record<string, Artifact> = {};
       for (const [id, art] of Object.entries(artifactMap)) {
         if (!art.isStreaming) {
           savedArtifacts[id] = { ...art, isStreaming: false };
@@ -855,7 +870,7 @@
       }
       kv.set('chat', chatKey('artifacts'), savedArtifacts);
       // Save reasoning blocks (only finalized)
-      const savedReasoning: Record<string, any> = {};
+      const savedReasoning: Record<string, ReasoningData> = {};
       for (const [id, r] of Object.entries(reasoningMap)) {
         if (!r.isStreaming) {
           savedReasoning[id] = { ...r, isStreaming: false };
@@ -866,10 +881,12 @@
       kv.set('chat', chatKey('checkpoints'), checkpoints);
       // Save current diagram code so it renders on refresh
       try {
-        const currentCode = (inputStateStore as any)?.get?.()?.code;
+        const currentCode = (
+          inputStateStore as unknown as { get?: () => Record<string, unknown> }
+        )?.get?.()?.code;
         if (!currentCode) {
-          let storeVal: any = null;
-          const unsub = inputStateStore.subscribe((s: any) => {
+          let storeVal: Record<string, unknown> | null = null;
+          const unsub = inputStateStore.subscribe((s: Record<string, unknown>) => {
             storeVal = s;
           });
           unsub();
@@ -877,8 +894,12 @@
         } else {
           kv.set('chat', chatKey('diagramCode'), currentCode);
         }
-      } catch {}
-    } catch {}
+      } catch {
+        /* ignore */
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
   // Restore chat state from localStorage — per-file
@@ -892,10 +913,10 @@
     conversationStarted = false;
     conversationTitle = null;
     try {
-      const savedMessages = kv.get<any[]>('chat', chatKey('messages'));
-      const savedParts = kv.get<Record<number, any[]>>('chat', chatKey('parts'));
-      const savedArtifacts = kv.get<Record<string, any>>('chat', chatKey('artifacts'));
-      const savedReasoning = kv.get<Record<string, any>>('chat', chatKey('reasoning'));
+      const savedMessages = kv.get<Record<string, unknown>[]>('chat', chatKey('messages'));
+      const savedParts = kv.get<Record<number, ContentPart[]>>('chat', chatKey('parts'));
+      const savedArtifacts = kv.get<Record<string, Artifact>>('chat', chatKey('artifacts'));
+      const savedReasoning = kv.get<Record<string, ReasoningData>>('chat', chatKey('reasoning'));
       if (savedMessages && Array.isArray(savedMessages) && savedMessages.length > 0) {
         messages = savedMessages;
         conversationStarted = true;
@@ -903,10 +924,10 @@
           messageParts = savedParts;
         } else {
           // Rebuild simple text parts from messages
-          const parts: Record<number, any[]> = {};
-          savedMessages.forEach((m: any, i: number) => {
+          const parts: Record<number, ContentPart[]> = {};
+          savedMessages.forEach((m: Record<string, unknown>, i: number) => {
             if (m.role === 'assistant' && m.content) {
-              parts[i] = [{ type: 'text', text: m.content }];
+              parts[i] = [{ type: 'text', text: m.content as string }];
             }
           });
           messageParts = parts;
@@ -920,7 +941,7 @@
           reasoningMap = savedReasoning;
         }
         // Restore checkpoints
-        const savedCheckpoints = kv.get<any[]>('chat', chatKey('checkpoints'));
+        const savedCheckpoints = kv.get<Checkpoint[]>('chat', chatKey('checkpoints'));
         if (savedCheckpoints) {
           checkpoints = savedCheckpoints;
         }
@@ -930,7 +951,9 @@
           inputStateStore.update((s) => ({ ...s, code: savedDiagramCode, updateDiagram: true }));
         }
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   }
 
   // Exported methods for parent component access via bind:this
@@ -958,7 +981,9 @@
       const newId = uuidv4();
       sessionId = newId;
       kv.set('chat', chatKey('sessionId'), newId);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     window.dispatchEvent(new CustomEvent('conversation-cleared'));
   }
 
@@ -997,11 +1022,15 @@
       kv.delete('chat', chatKey('reasoning'));
       kv.delete('chat', chatKey('checkpoints'));
       kv.delete('chat', chatKey('diagramCode'));
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     // Persist the active conversation ID as null (new chat)
     try {
       kv.set('chat', 'activeConversationId', null);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     window.dispatchEvent(new CustomEvent('conversation-cleared'));
   }
 
@@ -1033,13 +1062,17 @@
     // Persist active conversation ID so it survives refresh
     try {
       kv.set('chat', 'activeConversationId', convId);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     // Generate a new session ID for this conversation
     const newId = uuidv4();
     sessionId = newId;
     try {
       kv.set('chat', chatKey('sessionId'), newId);
-    } catch {}
+    } catch {
+      /* ignore */
+    }
     // Load messages from DB
     try {
       const res = await fetch(`/api/conversations/messages?conversation_id=${convId}`, {
@@ -1048,18 +1081,20 @@
       if (!res.ok) return;
       const data = await res.json();
       if (!data.messages || data.messages.length === 0) return;
-      messages = data.messages.map((m: any) => ({
+      messages = data.messages.map((m: Record<string, unknown>) => ({
         role: m.role,
         content: m.content,
-        timestamp: m.metadata?.timestamp || new Date(m.created_at).getTime(),
-        attachments: m.metadata?.attachments || []
+        timestamp:
+          (m.metadata as Record<string, unknown>)?.timestamp ||
+          new Date(m.created_at as string).getTime(),
+        attachments: (m.metadata as Record<string, unknown>)?.attachments || []
       }));
       // Restore parts from DB
-      const parts: Record<number, any[]> = {};
-      data.messages.forEach((m: any, i: number) => {
-        if (m.parts) parts[i] = m.parts;
+      const parts: Record<number, ContentPart[]> = {};
+      data.messages.forEach((m: Record<string, unknown>, i: number) => {
+        if (m.parts) parts[i] = m.parts as ContentPart[];
         else if (m.role === 'assistant' && m.content)
-          parts[i] = [{ type: 'text', text: m.content }];
+          parts[i] = [{ type: 'text', text: m.content as string }];
       });
       messageParts = parts;
       dbSyncedMessageCount = messages.length;
@@ -1069,7 +1104,9 @@
       // Scroll to bottom after loading
       await tick();
       scrollToBottom();
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   }
 
   export async function sendMessageExternal(
@@ -1102,7 +1139,9 @@
           promptEnhancerModel = data.data.model;
         }
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   }
 
   async function improvePrompt() {
@@ -1114,14 +1153,14 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: `Improve this prompt for a Mermaid diagram AI assistant. Make it clearer, more specific, and actionable. Return ONLY the improved prompt text, nothing else. No quotes, no explanation.\n\nOriginal: ${raw}`,
-          model: promptEnhancerModel,
           currentDiagram: '',
           currentMarkdown: '',
           enabledTools: [],
-          sessionId: `improve-${Date.now()}`,
           isRepair: false,
-          messages: []
+          message: `Improve this prompt for a Mermaid diagram AI assistant. Make it clearer, more specific, and actionable. Return ONLY the improved prompt text, nothing else. No quotes, no explanation.\n\nOriginal: ${raw}`,
+          messages: [],
+          model: promptEnhancerModel,
+          sessionId: `improve-${Date.now()}`
         })
       });
       if (!res.ok) {
@@ -1143,7 +1182,9 @@
               if (data.type === 'text-delta' || data.type === 'content_block_delta') {
                 improved += data.content || data.delta || data.textDelta || '';
               }
-            } catch {}
+            } catch {
+              /* ignore */
+            }
           }
         }
       }
@@ -1300,12 +1341,12 @@
     }
 
     // --- Process files FIRST (lock send button) ---
-    let fileContents: any[] = [];
+    let fileContents: Record<string, unknown>[] = [];
     if (files.length > 0) {
       isProcessingFiles = true;
       try {
         const results = await Promise.all(files.map(uploadFile));
-        fileContents = results.filter(Boolean) as any[];
+        fileContents = results.filter(Boolean) as Record<string, unknown>[];
       } catch (err) {
         console.error('File processing error:', err);
       }
@@ -1327,23 +1368,27 @@
     // Helper to get file extension
     const getExt = (name: string) => {
       const parts = name.split('.');
-      return parts.length > 1 ? parts.pop()!.toUpperCase() : '?';
+      return parts.length > 1 ? (parts.pop() ?? '?').toUpperCase() : '?';
     };
 
-    const userMessage: any = { role: 'user', content: text || '', timestamp: Date.now() };
+    const userMessage: Record<string, unknown> = {
+      role: 'user',
+      content: text || '',
+      timestamp: Date.now()
+    };
     // Store attachments for display — merge upload results for richer metadata
     if (files.length > 0) {
-      userMessage.attachments = files.map((f: any, idx: number) => {
+      userMessage.attachments = files.map((f: Record<string, unknown>, idx: number) => {
         const uploaded = fileContents[idx];
         return {
-          filename: f.filename || 'file',
-          mediaType: f.mediaType || '',
-          url: f.url || null,
           ext: getExt(f.filename || 'file'),
           fileId: uploaded?.fileId || null,
+          filename: f.filename || 'file',
+          mediaType: f.mediaType || '',
+          pageCount: uploaded?.pageCount || null,
           size: uploaded?.size || 0,
           type: uploaded?.type || 'unknown',
-          pageCount: uploaded?.pageCount || null
+          url: f.url || null
         };
       });
     }
@@ -1366,7 +1411,6 @@
     currentToolInputJson = '';
     currentArtifactId = null;
     lastPartWasText = false;
-    lastPartWasReasoning = false;
     currentReasoningId = null;
     scrollToBottom();
 
@@ -1390,18 +1434,21 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: fullMessage,
-          model: selectedModelId,
           currentDiagram: $stateStore.code,
           currentMarkdown: documentMarkdownStore.value,
           enabledTools: toolsStore.getEnabledToolIds(),
-          sessionId: sessionId,
-          isRepair,
           engine: workspaceStore.workspace?.document?.engine ?? 'mermaid',
+          isRepair,
+          message: fullMessage,
           messages: messages
             .slice(0, -1)
-            .filter((m: any) => m.role === 'user' || (m.role === 'assistant' && m.content))
-            .map((m: any) => ({ role: m.role, content: m.content }))
+            .filter(
+              (m: Record<string, unknown>) =>
+                m.role === 'user' || (m.role === 'assistant' && m.content)
+            )
+            .map((m: Record<string, unknown>) => ({ role: m.role, content: m.content })),
+          model: selectedModelId,
+          sessionId: sessionId
         }),
         signal: abortController?.signal
       });
@@ -1430,7 +1477,9 @@
               scrollToBottom();
               return;
             }
-          } catch {}
+          } catch {
+            /* ignore */
+          }
           throw new Error(`API error ${res.status}`);
         }
 
@@ -1468,7 +1517,6 @@
                       };
                       reasoningMap = { ...reasoningMap };
                       currentReasoningId = null;
-                      lastPartWasReasoning = false;
                     }
                     const content = data.content || data.delta || data.textDelta || '';
                     // Append to last text part, or create a new text part
@@ -1511,7 +1559,6 @@
                       parts.push({ type: 'reasoning', id: currentReasoningId });
                       messageParts[assistantIndex] = [...parts];
                       lastPartWasText = false;
-                      lastPartWasReasoning = true;
                     } else {
                       // Append to existing reasoning block
                       reasoningMap[currentReasoningId] = {
@@ -1531,7 +1578,6 @@
                       };
                       reasoningMap = { ...reasoningMap };
                       currentReasoningId = null;
-                      lastPartWasReasoning = false;
                     }
                     currentToolCallId = data.toolCallId;
                     currentToolName = data.toolName || '';
@@ -1568,12 +1614,12 @@
                         artifactMap[currentArtifactId] = {
                           ...artifactMap[currentArtifactId],
                           code: '',
+                          errors: undefined,
+                          hasErrors: false,
+                          isStreaming: true,
+                          operation: op,
                           previousCode:
                             artifactMap[currentArtifactId].code || $stateStore.code || '',
-                          operation: op,
-                          isStreaming: true,
-                          hasErrors: false,
-                          errors: undefined,
                           title: titleMap[currentToolName] || 'Processing'
                         };
                         artifactMap = { ...artifactMap };
@@ -1581,11 +1627,11 @@
                         currentArtifactId = `artifact-${currentToolCallId}`;
                         const prevCode = $stateStore.code || '';
                         artifactMap[currentArtifactId] = {
-                          id: currentArtifactId,
                           code: '',
-                          previousCode: prevCode,
-                          operation: op,
+                          id: currentArtifactId,
                           isStreaming: true,
+                          operation: op,
+                          previousCode: prevCode,
                           title: titleMap[currentToolName] || 'Processing'
                         };
                         artifactMap = { ...artifactMap };
@@ -1598,11 +1644,11 @@
                       const qId = `q-${currentToolCallId || Date.now()}`;
                       const parts = messageParts[assistantIndex] || [];
                       parts.push({
-                        type: 'questionnaire',
-                        id: qId,
                         context: '',
+                        id: qId,
+                        isStreaming: true,
                         questions: [],
-                        isStreaming: true
+                        type: 'questionnaire'
                       });
                       messageParts[assistantIndex] = [...parts];
                       questionnaireResponses[qId] = {};
@@ -1615,12 +1661,12 @@
                       const mdId = `md-${currentToolCallId || Date.now()}`;
                       const parts = messageParts[assistantIndex] || [];
                       parts.push({
-                        type: 'markdown',
-                        id: mdId,
                         content: '',
-                        operation: currentToolName === 'markdownRead' ? 'read' : 'write',
+                        id: mdId,
+                        isStreaming: true,
                         lines: 0,
-                        isStreaming: true
+                        operation: currentToolName === 'markdownRead' ? 'read' : 'write',
+                        type: 'markdown'
                       });
                       messageParts[assistantIndex] = [...parts];
                       scrollToBottom();
@@ -1630,28 +1676,28 @@
                       // Generic tool-status UI for all other tools
                       const statusId = `status-${currentToolCallId}`;
                       const statusLabel: Record<string, string> = {
-                        iconifier: 'Adding icons…',
-                        webSearch: 'Searching the web…',
-                        autoStyler: 'Styling diagram…',
-                        fileManager: 'Managing files…',
-                        errorChecker: 'Checking for errors…',
-                        planner: 'Creating plan…',
                         actionItemExtractor: 'Extracting action items…',
-                        tableAnalytics: 'Analyzing data…',
-                        selfCritique: 'Reviewing & improving…',
+                        autoStyler: 'Styling diagram…',
+                        dataAnalyzer: 'Analyzing data…',
                         diagramDelete: 'Clearing diagram…',
+                        errorChecker: 'Checking for errors…',
+                        fileManager: 'Managing files…',
+                        iconifier: 'Adding icons…',
                         longTermMemory: 'Accessing memory…',
                         planWithProgress: 'Managing plan…',
+                        planner: 'Creating plan…',
+                        selfCritique: 'Reviewing & improving…',
                         sequentialThinking: 'Thinking step by step…',
-                        dataAnalyzer: 'Analyzing data…'
+                        tableAnalytics: 'Analyzing data…',
+                        webSearch: 'Searching the web…'
                       };
                       const parts = messageParts[assistantIndex] || [];
                       parts.push({
-                        type: 'tool-status',
                         id: statusId,
-                        toolName: currentToolName,
+                        message: statusLabel[currentToolName] || `Running ${currentToolName}…`,
                         status: 'running',
-                        message: statusLabel[currentToolName] || `Running ${currentToolName}…`
+                        toolName: currentToolName,
+                        type: 'tool-status'
                       });
                       messageParts[assistantIndex] = [...parts];
                       scrollToBottom();
@@ -1739,7 +1785,6 @@
                       }
                     } else if (currentToolName === 'markdownWrite') {
                       // Delta-based streaming: parse content field and stream incrementally
-                      const delta = data.inputTextDelta || '';
                       const mdId = `md-${currentToolCallId || Date.now()}`;
                       const parts = messageParts[assistantIndex] || [];
                       const mdIdx = parts.findIndex(
@@ -1889,23 +1934,26 @@
                       if (readCode.trim().length > 0 && !output.isPartial) {
                         try {
                           await mermaidParse(readCode);
-                        } catch (parseErr: any) {
+                        } catch (parseErr: unknown) {
                           readHasErrors = true;
-                          readErrors = [parseErr?.message || 'Invalid Mermaid syntax'];
+                          readErrors = [
+                            (parseErr instanceof Error ? parseErr.message : String(parseErr)) ||
+                              'Invalid Mermaid syntax'
+                          ];
                         }
                       }
 
                       artifactMap[aid] = {
-                        id: aid,
                         code: readCode,
-                        previousCode: '',
-                        operation: 'read',
-                        isStreaming: false,
-                        title: readHasErrors ? 'Errors Found' : 'Current Diagram',
-                        hasErrors: readHasErrors,
                         errors: readErrors,
+                        hasErrors: readHasErrors,
+                        id: aid,
+                        isStreaming: false,
+                        operation: 'read',
+                        previousCode: '',
                         readFrom,
                         readTo,
+                        title: readHasErrors ? 'Errors Found' : 'Current Diagram',
                         totalLines
                       };
                       artifactMap = { ...artifactMap };
@@ -1963,16 +2011,16 @@
                         } else {
                           const aid = `result-${data.toolCallId || Date.now()}`;
                           artifactMap[aid] = {
-                            id: aid,
                             code: diagramCode,
-                            previousCode: $stateStore.code || '',
+                            id: aid,
+                            isStreaming: false,
                             operation:
                               toolName === 'diagramWrite'
                                 ? 'create'
                                 : toolName === 'diagramPatch'
                                   ? 'patch'
                                   : 'update',
-                            isStreaming: false,
+                            previousCode: $stateStore.code || '',
                             title: titleStr
                           };
                           artifactMap = { ...artifactMap };
@@ -1990,8 +2038,10 @@
                       ) {
                         try {
                           await mermaidParse(diagramCode);
-                        } catch (parseErr: any) {
-                          const errMsg = parseErr?.message || 'Invalid Mermaid syntax';
+                        } catch (parseErr: unknown) {
+                          const errMsg =
+                            (parseErr instanceof Error ? parseErr.message : String(parseErr)) ||
+                            'Invalid Mermaid syntax';
                           // Update artifact to show error
                           const errArtifactId = currentArtifactId || Object.keys(artifactMap).pop();
                           if (errArtifactId && artifactMap[errArtifactId]) {
@@ -2025,13 +2075,13 @@
                         (p: ContentPart) => p.type === 'tool-status' && p.id === statusId
                       );
                       const statusPart: ContentPart = {
-                        type: 'tool-status',
-                        id: statusId,
-                        toolName: 'iconifier',
-                        status: 'done',
-                        message: output.summary || 'Iconifier complete',
+                        iconMode: output.mode,
                         iconResults: output.results || [],
-                        iconMode: output.mode
+                        id: statusId,
+                        message: output.summary || 'Iconifier complete',
+                        status: 'done',
+                        toolName: 'iconifier',
+                        type: 'tool-status'
                       };
                       if (idx >= 0) {
                         parts[idx] = statusPart;
@@ -2059,12 +2109,12 @@
                       if (output.subgraphsStyled !== undefined)
                         stylerDetails.push(`${output.subgraphsStyled} subgraph(s) styled`);
                       const statusPart: ContentPart = {
-                        type: 'tool-status',
+                        details: stylerDetails.length > 0 ? stylerDetails : undefined,
                         id: statusId,
-                        toolName: 'autoStyler',
-                        status: 'done',
                         message: output.summary || 'Styling complete',
-                        details: stylerDetails.length > 0 ? stylerDetails : undefined
+                        status: 'done',
+                        toolName: 'autoStyler',
+                        type: 'tool-status'
                       };
                       if (idx >= 0) {
                         parts[idx] = statusPart;
@@ -2086,14 +2136,14 @@
                         (p: ContentPart) => p.type === 'tool-status' && p.id === statusId
                       );
                       const statusPart: ContentPart = {
-                        type: 'tool-status',
                         id: statusId,
-                        toolName: 'webSearch',
-                        status: 'done',
                         message: output.summary || `Searched for "${output.query}"`,
                         searchQuery: output.query,
                         searchReason: output.reason,
-                        searchResults: output.results || []
+                        searchResults: output.results || [],
+                        status: 'done',
+                        toolName: 'webSearch',
+                        type: 'tool-status'
                       };
                       if (idx >= 0) {
                         parts[idx] = statusPart;
@@ -2119,11 +2169,11 @@
                         msg = `${output.totalMatches} match${output.totalMatches !== 1 ? 'es' : ''} found`;
                       else if (output.message) msg = output.message;
                       const statusPart: ContentPart = {
-                        type: 'tool-status',
                         id: statusId,
-                        toolName: 'fileManager',
+                        message: msg,
                         status: 'done',
-                        message: msg
+                        toolName: 'fileManager',
+                        type: 'tool-status'
                       };
                       if (idx >= 0) {
                         parts[idx] = statusPart;
@@ -2163,38 +2213,41 @@
                             await mermaidParse(output.content);
                             checkerValid = true;
                             checkerErrors = [];
-                          } catch (parseErr: any) {
+                          } catch (parseErr: unknown) {
                             checkerValid = false;
-                            const errMsg = parseErr?.message || 'Invalid Mermaid syntax';
+                            const errMsg =
+                              (parseErr instanceof Error ? parseErr.message : String(parseErr)) ||
+                              'Invalid Mermaid syntax';
                             checkerErrors = [{ line: 0, message: errMsg }];
                           }
                         }
 
                         const doneLabel: Record<string, string> = {
-                          errorChecker: !checkerValid
-                            ? `Found ${checkerErrors.length} error(s)`
-                            : 'No errors found ✓',
-                          planner: output.task
-                            ? `Plan ready for: ${output.task.slice(0, 50)}${output.task.length > 50 ? '…' : ''}`
-                            : 'Plan created',
                           actionItemExtractor: output.actionItems
                             ? `Extracted ${output.actionItems.length} item(s)`
                             : 'Extraction complete',
-                          tableAnalytics: output.summary || 'Analysis complete',
-                          selfCritique: output.summary || 'Review complete',
+                          dataAnalyzer: output.summary || 'Analysis complete',
+                          errorChecker: !checkerValid
+                            ? `Found ${checkerErrors.length} error(s)`
+                            : 'No errors found ✓',
                           longTermMemory: output.message || 'Memory accessed',
                           planWithProgress: output.progress || output.message || 'Plan updated',
+                          planner: output.task
+                            ? `Plan ready for: ${output.task.slice(0, 50)}${output.task.length > 50 ? '…' : ''}`
+                            : 'Plan created',
+                          selfCritique: output.summary || 'Review complete',
                           sequentialThinking: output.isComplete
                             ? `Thinking complete (${output.totalThoughts} steps)`
                             : `Thought ${output.thoughtNumber}/${output.totalThoughts}`,
-                          dataAnalyzer: output.summary || 'Analysis complete'
+                          tableAnalytics: output.summary || 'Analysis complete'
                         };
                         // Build details array for dropdown
                         let toolDetails: string[] = [];
                         if (toolName === 'errorChecker') {
                           if (!checkerValid) {
-                            toolDetails = checkerErrors.map((e: any) =>
-                              e.line > 0 ? `Line ${e.line}: ${e.message}` : e.message
+                            toolDetails = checkerErrors.map(
+                              (e: { line: number; message: string }) =>
+                                e.line > 0 ? `Line ${e.line}: ${e.message}` : e.message
                             );
                           } else {
                             toolDetails = ['All syntax checks passed'];
@@ -2214,10 +2267,13 @@
                           if (output.instruction) toolDetails.push(output.instruction);
                         } else if (toolName === 'selfCritique') {
                           if (output.improvements)
-                            toolDetails = output.improvements.map((imp: any) =>
-                              typeof imp === 'string'
-                                ? imp
-                                : imp.description || imp.title || JSON.stringify(imp)
+                            toolDetails = output.improvements.map(
+                              (imp: string | Record<string, unknown>) =>
+                                typeof imp === 'string'
+                                  ? imp
+                                  : (imp.description as string) ||
+                                    (imp.title as string) ||
+                                    JSON.stringify(imp)
                             );
                         }
                         parts[idx] = {
@@ -2242,13 +2298,13 @@
                       const mdLines = output.lines || mdContent.split('\n').length;
                       const isAppend = toolName === 'markdownWrite' && output.append === true;
                       const mdPart: ContentPart = {
-                        type: 'markdown',
-                        id: mdId,
                         content: mdContent,
+                        id: mdId,
+                        isStreaming: false,
+                        lines: mdLines,
                         operation:
                           toolName === 'markdownRead' ? 'read' : isAppend ? 'append' : 'write',
-                        lines: mdLines,
-                        isStreaming: false
+                        type: 'markdown'
                       };
                       const parts = messageParts[assistantIndex] || [];
                       // Update existing streaming card or add new one
@@ -2289,11 +2345,11 @@
                         (p: ContentPart) => p.type === 'questionnaire' && p.id === qId
                       );
                       const finalPart: ContentPart = {
-                        type: 'questionnaire',
-                        id: qId,
                         context: args.context || '',
+                        id: qId,
+                        isStreaming: false,
                         questions: args.questions || [],
-                        isStreaming: false
+                        type: 'questionnaire'
                       };
                       if (existingIdx >= 0) {
                         parts[existingIdx] = finalPart;
@@ -2344,7 +2400,7 @@
                     for (let pi = 0; pi < doneParts.length; pi++) {
                       if (
                         doneParts[pi].type === 'questionnaire' &&
-                        (doneParts[pi] as any).isStreaming
+                        (doneParts[pi] as ContentPart & { isStreaming?: boolean }).isStreaming
                       ) {
                         doneParts[pi] = { ...doneParts[pi], isStreaming: false } as ContentPart;
                         qChanged = true;
@@ -2434,10 +2490,7 @@
       <!-- Loading State — Data restoring -->
       <div class="flex h-full flex-col items-center justify-center gap-4 px-6 py-8">
         <div class="relative">
-          <img
-            src="/brand/logo.png"
-            alt="Graphini"
-            class="size-12 rounded-xl opacity-60" />
+          <img src="/brand/logo.png" alt="Graphini" class="size-12 rounded-xl opacity-60" />
         </div>
         <div class="flex items-center gap-2">
           <div
@@ -2477,9 +2530,10 @@
                 handleSubmit({ text: suggestion.prompt });
               }}
               class="group relative flex flex-col items-center gap-2 rounded-lg border border-border bg-card px-3 py-4 text-center transition-colors duration-150 hover:border-foreground/20 hover:bg-accent">
-              <svelte:component this={suggestion.icon} class="h-6 w-6 text-foreground/70 group-hover:text-foreground transition-colors" />
-              <span
-                class="text-xs font-medium text-foreground/80 group-hover:text-foreground"
+              <svelte:component
+                this={suggestion.icon}
+                class="h-6 w-6 text-foreground/70 transition-colors group-hover:text-foreground" />
+              <span class="text-xs font-medium text-foreground/80 group-hover:text-foreground"
                 >{suggestion.label}</span>
             </button>
           {/each}
@@ -2508,7 +2562,7 @@
               <div class="flex max-w-[92%] flex-col items-end gap-1.5">
                 {#if message.attachments?.length > 0}
                   <div class="flex flex-wrap justify-end gap-1.5">
-                    {#each message.attachments as att}
+                    {#each message.attachments as att, attIdx (attIdx)}
                       {#if att.mediaType?.startsWith('image/') && att.url}
                         <div
                           class="h-[56px] w-[56px] overflow-hidden rounded-xl border border-border">
@@ -2633,7 +2687,9 @@
                           onclick={() =>
                             retryMessage(
                               part.userMessage ||
-                                messages.filter((m: any) => m.role === 'user').pop()?.content ||
+                                (messages
+                                  .filter((m: Record<string, unknown>) => m.role === 'user')
+                                  .pop()?.content as string) ||
                                 ''
                             )}>
                           <RotateCcw class="size-3" />
@@ -2662,36 +2718,34 @@
                       {@const isDiagramRead = part.toolName === 'diagramRead'}
                       {@const isChecker =
                         part.toolName === 'errorChecker' || part.toolName === 'selfCritique'}
-                      {@const isPlanner =
-                        part.toolName === 'planner' || part.toolName === 'actionItemExtractor'}
                       {@const isAnalytics = part.toolName === 'tableAnalytics'}
                       {@const toolIconColor = isDiagramRead
-                            ? 'bg-blue-500/10 text-blue-500'
-                            : isIconifier
-                              ? 'bg-violet-500/10 text-violet-500'
-                              : part.toolName === 'autoStyler'
-                                ? 'bg-pink-500/10 text-pink-500'
-                                : isSearch
-                                  ? 'bg-sky-500/10 text-sky-500'
-                                  : isFileManager
-                                    ? 'bg-amber-500/10 text-amber-500'
-                                    : part.toolName === 'selfCritique'
-                                      ? 'bg-rose-500/10 text-rose-500'
-                                      : isChecker
-                                        ? 'bg-red-500/10 text-red-500'
-                                        : part.toolName === 'planner'
-                                          ? 'bg-emerald-500/10 text-emerald-500'
-                                          : part.toolName === 'actionItemExtractor'
-                                            ? 'bg-orange-500/10 text-orange-500'
-                                            : isAnalytics
-                                              ? 'bg-indigo-500/10 text-indigo-500'
-                                              : part.toolName === 'longTermMemory'
-                                                ? 'bg-teal-500/10 text-teal-500'
-                                                : part.toolName === 'planWithProgress'
-                                                  ? 'bg-emerald-500/10 text-emerald-500'
-                                                  : part.toolName === 'sequentialThinking'
-                                                    ? 'bg-yellow-500/10 text-yellow-500'
-                                                    : 'bg-muted text-muted-foreground'}
+                        ? 'bg-blue-500/10 text-blue-500'
+                        : isIconifier
+                          ? 'bg-violet-500/10 text-violet-500'
+                          : part.toolName === 'autoStyler'
+                            ? 'bg-pink-500/10 text-pink-500'
+                            : isSearch
+                              ? 'bg-sky-500/10 text-sky-500'
+                              : isFileManager
+                                ? 'bg-amber-500/10 text-amber-500'
+                                : part.toolName === 'selfCritique'
+                                  ? 'bg-rose-500/10 text-rose-500'
+                                  : isChecker
+                                    ? 'bg-red-500/10 text-red-500'
+                                    : part.toolName === 'planner'
+                                      ? 'bg-emerald-500/10 text-emerald-500'
+                                      : part.toolName === 'actionItemExtractor'
+                                        ? 'bg-orange-500/10 text-orange-500'
+                                        : isAnalytics
+                                          ? 'bg-indigo-500/10 text-indigo-500'
+                                          : part.toolName === 'longTermMemory'
+                                            ? 'bg-teal-500/10 text-teal-500'
+                                            : part.toolName === 'planWithProgress'
+                                              ? 'bg-emerald-500/10 text-emerald-500'
+                                              : part.toolName === 'sequentialThinking'
+                                                ? 'bg-yellow-500/10 text-yellow-500'
+                                                : 'bg-muted text-muted-foreground'}
                       <div
                         class="group overflow-hidden rounded-lg border transition-all duration-200
                         {part.status === 'running'
@@ -2711,33 +2765,47 @@
                           <div
                             class="flex size-5 shrink-0 items-center justify-center rounded-md {toolIconColor}">
                             {#if isDiagramRead}
-                              <Network class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                              <Network
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if isIconifier}
-                              <Palette class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                              <Palette
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if part.toolName === 'autoStyler'}
-                              <Paintbrush class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                              <Paintbrush
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if isSearch}
-                              <Globe class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                              <Globe
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if isFileManager}
-                              <FileText class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                              <FileText
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if part.toolName === 'selfCritique'}
-                              <Brain class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                              <Brain
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if isChecker}
-                              <ShieldCheck class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                              <ShieldCheck
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if part.toolName === 'planner'}
-                              <ClipboardCheck class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                              <ClipboardCheck
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if part.toolName === 'actionItemExtractor'}
-                              <ListChecks class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                              <ListChecks
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if isAnalytics}
-                              <ChartBar class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                              <ChartBar
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if part.toolName === 'longTermMemory'}
-                              <BookOpen class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                              <BookOpen
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if part.toolName === 'planWithProgress'}
-                              <Target class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                              <Target
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else if part.toolName === 'sequentialThinking'}
-                              <Lightbulb class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                              <Lightbulb
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {:else}
-                              <Wrench class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
+                              <Wrench
+                                class="size-3 {part.status === 'running' ? 'animate-pulse' : ''}" />
                             {/if}
                           </div>
                           <span
@@ -2788,7 +2856,7 @@
                             style="max-height: 250px; overflow-y: auto;">
                             {#if isIconifier && part.iconResults}
                               <div class="space-y-1">
-                                {#each part.iconResults as icon}
+                                {#each part.iconResults as icon (icon.nodeId)}
                                   <div class="flex items-center gap-2 text-[11px]">
                                     <span
                                       class="shrink-0 {icon.status === 'added'
@@ -2827,7 +2895,7 @@
                                 </p>
                               {/if}
                               <div class="space-y-1">
-                                {#each part.searchResults as result}
+                                {#each part.searchResults as result, rIdx (rIdx)}
                                   <div class="text-[11px]">
                                     <span class="font-medium text-foreground/70"
                                       >{result.title}</span>
@@ -2840,7 +2908,7 @@
                               </div>
                             {:else if part.details && part.details.length > 0}
                               <div class="space-y-1">
-                                {#each part.details as detail}
+                                {#each part.details as detail, dIdx (dIdx)}
                                   <div class="flex items-start gap-1.5 text-[11px]">
                                     <span class="mt-0.5 shrink-0 text-muted-foreground/50">·</span>
                                     <span class="leading-relaxed text-foreground/70">{detail}</span>
@@ -2921,8 +2989,8 @@
                             : 'border-border bg-card'}">
                         <!-- Header -->
                         <div
-                          class="flex items-center gap-2 border-b px-3 py-2
-                          border-border">
+                          class="flex items-center gap-2 border-b border-border px-3
+                          py-2">
                           <div
                             class="flex size-5 shrink-0 items-center justify-center rounded-md
                             {part.submitted
@@ -2993,14 +3061,14 @@
                             </div>
                           {:else}
                             <div class="space-y-3">
-                              {#each part.questions as q, qi}
+                              {#each part.questions as q, qi (q.id)}
                                 <div>
                                   <p class="mb-1.5 text-[11px] font-semibold text-foreground/80">
                                     {qi + 1}. {q.text}
                                   </p>
                                   {#if q.options.length > 0}
                                     <div class="space-y-1">
-                                      {#each q.options as opt}
+                                      {#each q.options as opt (opt.id)}
                                         <label
                                           class="flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-[11px] transition-all duration-150
                                           {part.submitted
@@ -3085,7 +3153,8 @@
                   {/each}
                 {:else if isLoading && i === messages.length - 1}
                   <div class="flex items-center py-2">
-                    <span class="thinking-shimmer text-[12px] font-medium text-muted-foreground/60">Thinking...</span>
+                    <span class="thinking-shimmer text-[12px] font-medium text-muted-foreground/60"
+                      >Thinking...</span>
                   </div>
                 {/if}
               </div>
@@ -3094,7 +3163,6 @@
         {/each}
       </div>
     {/if}
-
   </div>
   <!-- Scroll to bottom button -->
   {#if showScrollButton && hasMessages}
@@ -3102,7 +3170,7 @@
       <button
         type="button"
         onclick={scrollToBottom}
-        class="absolute right-3 -top-10 z-10 flex size-7 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-all duration-150 hover:bg-accent hover:text-foreground">
+        class="absolute -top-10 right-3 z-10 flex size-7 items-center justify-center rounded-full border border-border bg-card text-muted-foreground transition-all duration-150 hover:bg-accent hover:text-foreground">
         <ArrowDown class="size-3.5" />
       </button>
     </div>
@@ -3173,7 +3241,7 @@
       </PromptInputAttachments>
       <PromptInputBody>
         <Textarea
-          class="field-sizing-content min-h-10 w-full resize-none rounded-none border-none bg-transparent dark:bg-transparent px-3.5 py-2.5 text-[13px] text-foreground shadow-none ring-0 outline-none placeholder:text-muted-foreground/60 focus-visible:ring-0 sm:min-h-[44px]"
+          class="field-sizing-content min-h-10 w-full resize-none rounded-none border-none bg-transparent px-3.5 py-2.5 text-[13px] text-foreground shadow-none ring-0 outline-none placeholder:text-muted-foreground/60 focus-visible:ring-0 sm:min-h-[44px] dark:bg-transparent"
           style="max-height: min(240px, 40vh);"
           name="message"
           placeholder={selectedContext.type
@@ -3257,7 +3325,9 @@
                 {#if modelsStore.isLoading}
                   <div class="flex items-center justify-center py-8">
                     <div class="flex items-center gap-2 text-xs text-muted-foreground">
-                      <div class="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground"></div>
+                      <div
+                        class="size-3 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground">
+                      </div>
                       Loading models...
                     </div>
                   </div>
@@ -3271,7 +3341,7 @@
                     {#if groupedModels.length > 1}
                       <div class="sticky top-0 z-10 bg-popover px-3 pt-2 pb-1">
                         <span
-                          class="text-[10px] font-medium uppercase tracking-wider text-muted-foreground/50"
+                          class="text-[10px] font-medium tracking-wider text-muted-foreground/50 uppercase"
                           >{category}</span>
                       </div>
                     {/if}
@@ -3340,8 +3410,7 @@
                 y="19"
                 text-anchor="middle"
                 dominant-baseline="middle"
-                class="fill-current {contextColor} text-[10px] font-bold"
-                >{contextPercent}</text>
+                class="fill-current {contextColor} text-[10px] font-bold">{contextPercent}</text>
             </svg>
           </div>
         </PromptInputTools>
@@ -3418,12 +3487,7 @@
 
 <style>
   .thinking-shimmer {
-    background: linear-gradient(
-      90deg,
-      currentColor 0%,
-      var(--foreground) 40%,
-      currentColor 80%
-    );
+    background: linear-gradient(90deg, currentColor 0%, var(--foreground) 40%, currentColor 80%);
     background-size: 200% 100%;
     -webkit-background-clip: text;
     background-clip: text;
@@ -3432,7 +3496,11 @@
   }
 
   @keyframes shimmer-slide {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
   }
 </style>

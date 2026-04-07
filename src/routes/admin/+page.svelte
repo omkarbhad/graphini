@@ -67,38 +67,43 @@
       isAdminAuthed = true;
       adminAuthError = '';
       loadDashboard();
-    } catch (e) {
+    } catch {
       adminAuthError = 'Login failed. Please try again.';
     } finally {
       adminLoading = false;
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function adminLogout() {
     try {
       await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-    } catch {}
+    } catch {
+      // ignore logout errors
+    }
     isAdminAuthed = false;
   }
 
   // State
-  let stats = $state<any>(null);
-  let conversations = $state<any[]>([]);
-  let selectedConversation = $state<any>(null);
-  let conversationMessages = $state<any[]>([]);
-  let settingsData = $state<Record<string, any[]>>({});
-  let errors = $state<any[]>([]);
-  let cacheInfo = $state<any>(null);
-  let recentActivity = $state<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let stats = $state<Record<string, any> | null>(null);
+  let conversations = $state<Record<string, unknown>[]>([]);
+  let selectedConversation = $state<Record<string, unknown> | null>(null);
+  let conversationMessages = $state<Record<string, unknown>[]>([]);
+  let settingsData = $state<Record<string, Record<string, unknown>[]>>({});
+  let errors = $state<Record<string, unknown>[]>([]);
+  let cacheInfo = $state<Record<string, unknown> | null>(null);
+  let recentActivity = $state<Record<string, unknown>[]>([]);
   let loading = $state(true);
   let activeTab = $state('overview');
 
   // Users state
-  let users = $state<any[]>([]);
+  let users = $state<Record<string, unknown>[]>([]);
   let usersTotal = $state(0);
   let usersPage = $state(0);
-  let selectedUser = $state<any>(null);
-  let userDetails = $state<any>(null);
+  let selectedUser = $state<Record<string, unknown> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let userDetails = $state<Record<string, any> | null>(null);
   let userSearchQuery = $state('');
   let addGemsDialogOpen = $state(false);
   let addGemsUserId = $state('');
@@ -109,25 +114,29 @@
   let setGemsAmount = $state(0);
 
   // Enabled Models state (from DB)
-  let enabledModels = $state<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let enabledModels = $state<Record<string, any>[]>([]);
   let enabledModelsLoading = $state(false);
   let editModelDialogOpen = $state(false);
-  let editModel = $state<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let editModel = $state<Record<string, any> | null>(null);
 
   // OpenRouter state
-  let openRouterModels = $state<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let openRouterModels = $state<Record<string, any>[]>([]);
   let openRouterLoading = $state(false);
   let openRouterSearch = $state('');
   let importingModel = $state<string | null>(null);
   let importDialogOpen = $state(false);
-  let importModelData = $state<any>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let importModelData = $state<Record<string, any> | null>(null);
   let importGems = $state(2);
   let importCategory = $state('General');
   let importIsFree = $state(false);
 
   // DB Viewer state
   let dbTable = $state('users');
-  let dbRows = $state<any[]>([]);
+  let dbRows = $state<Record<string, unknown>[]>([]);
   let dbTotal = $state(0);
   let dbPage = $state(0);
   let dbLoading = $state(false);
@@ -140,10 +149,12 @@
     try {
       const data = await fetchData('settings', { category: 'prompt_enhancer' });
       if (Array.isArray(data)) {
-        const modelSetting = data.find((s: any) => s.key === 'model');
-        if (modelSetting?.value) promptEnhancerModel = modelSetting.value;
+        const modelSetting = data.find((s: Record<string, unknown>) => s.key === 'model');
+        if (modelSetting?.value) promptEnhancerModel = modelSetting.value as string;
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
   }
 
   async function savePromptEnhancerModel() {
@@ -152,11 +163,13 @@
       await postData({
         action: 'setSetting',
         category: 'prompt_enhancer',
+        description: 'Model used for the prompt enhancer/improve prompt feature',
         key: 'model',
-        value: promptEnhancerModel,
-        description: 'Model used for the prompt enhancer/improve prompt feature'
+        value: promptEnhancerModel
       });
-    } catch {}
+    } catch {
+      // ignore
+    }
     promptEnhancerSaving = false;
   }
 
@@ -180,7 +193,7 @@
     if (!appDataFilter.trim()) return appData;
     const q = appDataFilter.toLowerCase();
     return appData.filter(
-      (d: any) =>
+      (d) =>
         d.category?.toLowerCase().includes(q) ||
         d.key?.toLowerCase().includes(q) ||
         JSON.stringify(d.value).toLowerCase().includes(q)
@@ -188,14 +201,16 @@
   });
 
   let appDataCategories = $derived.by(() => {
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const cats = new Set<string>();
     for (const d of appData) cats.add(d.category);
     return Array.from(cats).sort();
   });
 
   // Usage tracking state
-  let usageStats = $state<any[]>([]);
-  let usageSummary = $state<any>(null);
+  let usageStats = $state<Record<string, unknown>[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let usageSummary = $state<Record<string, any> | null>(null);
 
   async function loadUsage() {
     loading = true;
@@ -275,7 +290,7 @@
     return data.success ? data.data : null;
   }
 
-  async function postData(body: any) {
+  async function postData(body: Record<string, unknown>) {
     const res = await fetch('/api/admin', {
       method: 'POST',
       credentials: 'include',
@@ -422,7 +437,8 @@
     await loadEnabledModels();
   }
 
-  function openEditModel(model: any) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function openEditModel(model: Record<string, any>) {
     editModel = { ...model };
     editModelDialogOpen = true;
   }
@@ -450,7 +466,7 @@
       dragOverModelId = null;
       return;
     }
-    const order = enabledModels.map((m: any) => m.model_id);
+    const order = enabledModels.map((m) => m.model_id);
     const fromIdx = order.indexOf(dragModelId);
     const toIdx = order.indexOf(targetModelId);
     if (fromIdx >= 0 && toIdx >= 0) {
@@ -470,7 +486,7 @@
   }
 
   async function moveModel(modelId: string, direction: 'up' | 'down') {
-    const order = enabledModels.map((m: any) => m.model_id);
+    const order = enabledModels.map((m) => m.model_id);
     const idx = order.indexOf(modelId);
     if (idx < 0) return;
     const newIdx = direction === 'up' ? idx - 1 : idx + 1;
@@ -493,7 +509,8 @@
     openRouterLoading = false;
   }
 
-  function openImportDialog(model: any) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function openImportDialog(model: Record<string, any>) {
     const isFree = model.pricing?.prompt === '0' && model.pricing?.completion === '0';
     importModelData = model;
     importGems = isFree ? 0 : 2;
@@ -509,21 +526,21 @@
     const result = await postData({
       action: 'importOpenRouterModel',
       modelData: {
-        model_id: modelId,
-        model_name: importModelData.name || importModelData.id,
-        provider: 'openrouter',
         category: importCategory,
         description: (importModelData.description || '').slice(0, 200),
-        is_free: importIsFree,
         gems_per_message: importGems,
+        is_free: importIsFree,
         max_tokens: importModelData.context_length || 4000,
-        tool_support: true,
-        sort_order: 0,
         metadata: {
           openrouter_id: importModelData.id,
           pricing: importModelData.pricing,
           architecture: importModelData.architecture
-        }
+        },
+        model_id: modelId,
+        model_name: importModelData.name || importModelData.id,
+        provider: 'openrouter',
+        sort_order: 0,
+        tool_support: true
       }
     });
     if (!result.success) {
@@ -538,7 +555,7 @@
   // Check if an OpenRouter model is already imported
   function isModelImported(orModelId: string): boolean {
     const fullId = `openrouter/${orModelId}`;
-    return enabledModels.some((m: any) => m.model_id === fullId);
+    return enabledModels.some((m) => m.model_id === fullId);
   }
 
   let filteredOpenRouterModels = $derived.by(() => {
@@ -546,8 +563,7 @@
     const q = openRouterSearch.toLowerCase();
     return openRouterModels
       .filter(
-        (m: any) =>
-          (m.id || '').toLowerCase().includes(q) || (m.name || '').toLowerCase().includes(q)
+        (m) => (m.id || '').toLowerCase().includes(q) || (m.name || '').toLowerCase().includes(q)
       )
       .slice(0, 100);
   });
@@ -562,7 +578,7 @@
   async function loadConversationMessages(conversationId: string) {
     loading = true;
     conversationMessages = (await fetchData('conversation_messages', { conversationId })) || [];
-    selectedConversation = conversations.find((c: any) => c.id === conversationId);
+    selectedConversation = conversations.find((c) => c.id === conversationId) ?? null;
     loading = false;
   }
 
@@ -657,7 +673,9 @@
         isAdminAuthed = true;
         loadDashboard();
       }
-    } catch {}
+    } catch {
+      // ignore auth check errors
+    }
   });
 </script>
 
@@ -729,7 +747,7 @@
           </div>
         </div>
         <div class="grid gap-0.5">
-          {#each tabs as tab}
+          {#each tabs as tab (tab.id)}
             {@const Icon = tab.icon}
             <button
               type="button"
@@ -756,7 +774,7 @@
           <div class="space-y-6">
             {#if stats}
               <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                {#each [{ label: 'Conversations', value: stats.totalConversations, today: stats.conversationsToday, icon: MessageSquare, color: 'blue' }, { label: 'Messages', value: stats.totalMessages, today: stats.messagesToday, icon: Activity, color: 'green' }, { label: 'Tokens Used', value: stats.totalTokensUsed, today: null, icon: Zap, color: 'purple', sub: `Cost: ${formatCost(stats.estimatedCostUsd)}` }, { label: 'Users', value: stats.totalUsers, today: null, icon: Users, color: 'orange', sub: `${formatNumber(stats.activeSessions)} active sessions` }] as card}
+                {#each [{ color: 'blue', icon: MessageSquare, label: 'Conversations', today: stats.conversationsToday, value: stats.totalConversations }, { color: 'green', icon: Activity, label: 'Messages', today: stats.messagesToday, value: stats.totalMessages }, { color: 'purple', icon: Zap, label: 'Tokens Used', sub: `Cost: ${formatCost(stats.estimatedCostUsd)}`, today: null, value: stats.totalTokensUsed }, { color: 'orange', icon: Users, label: 'Users', sub: `${formatNumber(stats.activeSessions)} active sessions`, today: null, value: stats.totalUsers }] as card (card.label)}
                   {@const CardIcon = card.icon}
                   <div class="rounded-lg border border-border bg-card p-5">
                     <div class="flex items-center justify-between">
@@ -785,7 +803,7 @@
                 {#if recentActivity.length === 0}
                   <p class="p-4 text-center text-sm text-muted-foreground">No recent activity</p>
                 {:else}
-                  {#each recentActivity.slice(0, 10) as act}
+                  {#each recentActivity.slice(0, 10) as act, i (i)}
                     <div class="flex items-center gap-3 px-4 py-2.5 text-sm">
                       <div class="flex h-7 w-7 items-center justify-center rounded-full bg-muted">
                         <Activity class="h-3.5 w-3.5 text-muted-foreground" />
@@ -870,7 +888,7 @@
                     <div>
                       <h4 class="mb-2 text-xs font-semibold">Recent Transactions</h4>
                       <div class="max-h-48 space-y-1 overflow-y-auto">
-                        {#each (userDetails.transactions || []).slice(0, 20) as tx}
+                        {#each (userDetails.transactions || []).slice(0, 20) as tx, i (i)}
                           <div
                             class="flex items-center justify-between rounded-md bg-muted/30 px-3 py-1.5 text-xs">
                             <span
@@ -906,7 +924,7 @@
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-border">
-                      {#each users as user}
+                      {#each users as user (user.id)}
                         <tr class="transition-colors hover:bg-accent/30">
                           <td class="px-4 py-2.5">
                             <button
@@ -1050,7 +1068,7 @@
             </div>
             {#if selectedConversation}
               <div class="max-h-[60vh] space-y-2 overflow-y-auto p-4">
-                {#each conversationMessages as message}
+                {#each conversationMessages as message, i (i)}
                   <div
                     class="rounded-lg border border-border p-3 {message.role === 'user'
                       ? 'bg-blue-50 dark:bg-blue-950/20'
@@ -1081,7 +1099,7 @@
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-border">
-                    {#each conversations as c}
+                    {#each conversations as c (c.id)}
                       <tr
                         class="cursor-pointer hover:bg-accent/30"
                         onclick={() => loadConversationMessages(c.id)}>
@@ -1155,8 +1173,7 @@
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-border">
-                    {#each enabledModels as model, mi}
-                      <!-- svelte-ignore a11y_no_static_element_interactions -->
+                    {#each enabledModels as model, mi (model.model_id)}
                       <tr
                         class="transition-all hover:bg-accent/30 {!model.is_enabled
                           ? 'opacity-50'
@@ -1318,7 +1335,7 @@
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-border">
-                      {#each filteredOpenRouterModels as model}
+                      {#each filteredOpenRouterModels as model (model.id)}
                         {@const imported = isModelImported(model.id)}
                         {@const isFree =
                           model.pricing?.prompt === '0' && model.pricing?.completion === '0'}
@@ -1412,7 +1429,7 @@
                 </p>
               </div>
             {:else}
-              {#each appDataCategories as cat}
+              {#each appDataCategories as cat (cat)}
                 {@const catEntries = filteredAppData.filter((d) => d.category === cat)}
                 {#if catEntries.length > 0}
                   <div class="rounded-lg border border-border bg-card">
@@ -1425,7 +1442,7 @@
                       </div>
                     </div>
                     <div class="divide-y divide-border">
-                      {#each catEntries as entry}
+                      {#each catEntries as entry (entry.key)}
                         <div class="px-4 py-2.5">
                           <div class="flex items-start justify-between gap-4">
                             <div class="min-w-0 flex-1">
@@ -1493,7 +1510,7 @@
                 No settings configured
               </div>
             {:else}
-              {#each Object.entries(settingsData) as [category, items]}
+              {#each Object.entries(settingsData) as [category, items] (category)}
                 <div class="rounded-lg border border-border bg-card">
                   <div class="flex items-center justify-between border-b border-border px-4 py-2.5">
                     <div class="flex items-center gap-2">
@@ -1503,7 +1520,7 @@
                     <Badge variant="secondary" class="text-[9px]">{items.length}</Badge>
                   </div>
                   <div class="divide-y divide-border">
-                    {#each items as item}
+                    {#each items as item (item.key)}
                       <div class="flex items-center justify-between gap-4 px-4 py-2">
                         <div class="min-w-0 flex-1">
                           <div class="text-xs font-medium">{item.key}</div>
@@ -1533,7 +1550,7 @@
               <Badge variant="outline">{dbTotal} rows</Badge>
             </div>
             <div class="flex flex-wrap gap-1">
-              {#each dbTables as t}
+              {#each dbTables as t (t)}
                 <Button
                   size="sm"
                   variant={dbTable === t ? 'default' : 'outline'}
@@ -1557,16 +1574,16 @@
                       <thead
                         class="sticky top-0 border-b border-border bg-muted/30 text-muted-foreground">
                         <tr>
-                          {#each Object.keys(dbRows[0]).slice(0, 8) as col}
+                          {#each Object.keys(dbRows[0]).slice(0, 8) as col (col)}
                             <th class="px-3 py-1.5 text-left font-medium whitespace-nowrap"
                               >{col}</th>
                           {/each}
                         </tr>
                       </thead>
                       <tbody class="divide-y divide-border">
-                        {#each dbRows as row}
+                        {#each dbRows as row, i (i)}
                           <tr class="hover:bg-accent/30">
-                            {#each Object.entries(row).slice(0, 8) as [key, val]}
+                            {#each Object.values(row).slice(0, 8) as val, j (j)}
                               <td class="max-w-[200px] truncate px-3 py-1.5 font-mono">
                                 {#if val === null}<span class="text-muted-foreground italic"
                                     >null</span>
@@ -1630,7 +1647,7 @@
               {#if errors.length === 0}
                 <div class="p-8 text-center text-sm text-muted-foreground">No errors</div>
               {:else}
-                {#each errors as err}
+                {#each errors as err, i (i)}
                   <div class="px-4 py-2.5">
                     <div class="flex items-center justify-between">
                       <span class="text-xs font-medium"
@@ -1675,7 +1692,7 @@
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-border">
-                      {#each cacheInfo.entries as entry}
+                      {#each cacheInfo.entries as entry (entry.key)}
                         <tr class="hover:bg-accent/30">
                           <td class="max-w-[200px] truncate px-3 py-1.5 font-mono">{entry.key}</td>
                           <td class="px-3 py-1.5">{entry.hitCount}</td>
@@ -1754,7 +1771,7 @@
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-border/30">
-                      {#each usageSummary.byUser as userUsage}
+                      {#each usageSummary.byUser as userUsage (userUsage.id)}
                         <tr class="hover:bg-muted/20">
                           <td class="px-3 py-1.5 font-mono text-[10px]"
                             >{userUsage.id.slice(0, 12)}...</td>
@@ -1764,7 +1781,7 @@
                             >{formatNumber(userUsage.tokens)}</td>
                           <td class="px-3 py-1.5">
                             <div class="flex flex-wrap gap-1">
-                              {#each userUsage.models.slice(0, 3) as m}
+                              {#each userUsage.models.slice(0, 3) as m (m)}
                                 <span class="rounded bg-muted px-1 py-0.5 text-[9px]"
                                   >{m.split('/').pop()}</span>
                               {/each}
@@ -1798,7 +1815,7 @@
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-border/30">
-                      {#each usageSummary.byModel as modelUsage}
+                      {#each usageSummary.byModel as modelUsage (modelUsage.model)}
                         <tr class="hover:bg-muted/20">
                           <td class="px-3 py-1.5 font-mono text-[10px]">{modelUsage.model}</td>
                           <td class="px-3 py-1.5 text-right tabular-nums"
@@ -1833,7 +1850,7 @@
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-border/30">
-                      {#each usageStats.slice(0, 100) as row}
+                      {#each usageStats.slice(0, 100) as row, i (i)}
                         <tr class="hover:bg-muted/20">
                           <td class="px-3 py-1.5 text-[10px] text-muted-foreground"
                             >{formatDate(row.created_at)}</td>
@@ -1968,7 +1985,7 @@
                 id="import-category"
                 class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                 bind:value={importCategory}>
-                {#each categories as cat}
+                {#each categories as cat (cat)}
                   <option value={cat}>{cat}</option>
                 {/each}
               </select>
@@ -2048,7 +2065,7 @@
                 id="edit-category"
                 class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                 bind:value={editModel.category}>
-                {#each categories as cat}
+                {#each categories as cat (cat)}
                   <option value={cat}>{cat}</option>
                 {/each}
               </select>

@@ -40,56 +40,64 @@ export const GET: RequestHandler = async ({ url, request }) => {
 
   try {
     switch (action) {
-      case 'stats':
+      case 'stats': {
         const stats = await adminDashboard.getStats();
         return json({ success: true, data: stats });
+      }
 
-      case 'conversations':
+      case 'conversations': {
         const conversations = await adminDashboard.getAllConversations({ limit, offset });
         return json({ success: true, data: conversations });
+      }
 
-      case 'conversation_messages':
+      case 'conversation_messages': {
         const conversationId = url.searchParams.get('conversationId');
         if (!conversationId) {
           return json({ success: false, error: 'conversationId required' }, { status: 400 });
         }
         const messages = await adminDashboard.getConversationMessages(conversationId);
         return json({ success: true, data: messages });
+      }
 
-      case 'activity':
+      case 'activity': {
         const activity = await adminDashboard.getRecentActivity(limit);
         return json({ success: true, data: activity });
+      }
 
-      case 'settings':
+      case 'settings': {
         const category = url.searchParams.get('category');
         const userId = url.searchParams.get('userId');
         const settings = category
           ? await settingsManager.getAll(userId, category)
           : await settingsManager.getGrouped(userId);
         return json({ success: true, data: settings });
+      }
 
-      case 'errors':
+      case 'errors': {
         const errors = await adminDashboard.getErrors(limit);
         return json({ success: true, data: errors });
+      }
 
-      case 'states':
+      case 'states': {
         const stateType = url.searchParams.get('type');
         const sessionId = url.searchParams.get('sessionId');
         let states;
         if (sessionId) {
           states = await stateManager.getBySession(sessionId, limit);
         } else if (stateType) {
-          states = await stateManager.getByType(stateType as any, limit);
+          states = await stateManager.getByType(stateType as string, limit);
         } else {
           states = await stateManager.getByType('debug', limit);
         }
         return json({ success: true, data: states });
+      }
 
-      case 'cache':
+      case 'cache': {
         const cacheInfo = await adminDashboard.getCacheInfo();
         return json({ success: true, data: cacheInfo });
+      }
 
-      case 'analytics':
+      case 'analytics': {
         const eventType = url.searchParams.get('eventType');
         const since = url.searchParams.get('since');
         if (eventType) {
@@ -99,6 +107,7 @@ export const GET: RequestHandler = async ({ url, request }) => {
           const counts = await analyticsManager.getEventCounts(since ? new Date(since) : undefined);
           return json({ success: true, data: counts });
         }
+      }
 
       case 'models': {
         const db = getDb();
@@ -163,7 +172,8 @@ export const GET: RequestHandler = async ({ url, request }) => {
         const db = getDb();
         // Get all app_settings across all users for admin view
         try {
-          const client = (db as any).client;
+          const client = // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (db as any).client;
           if (!client)
             return json(
               { success: false, error: 'Direct DB access not available' },
@@ -177,12 +187,12 @@ export const GET: RequestHandler = async ({ url, request }) => {
           if (dbErr) throw new Error(dbErr.message);
           return json({
             success: true,
-            data: (rows || []).map((r: any) => ({
+            data: (rows || []).map((r: Record<string, unknown>) => ({
               category: r.category,
               key: r.key,
-              value: r.value,
+              updated_at: r.updated_at,
               user_id: r.user_id,
-              updated_at: r.updated_at
+              value: r.value
             }))
           });
         } catch (e) {
@@ -276,12 +286,12 @@ export const POST: RequestHandler = async ({ request }) => {
       case 'saveState': {
         const { userId, sessionId, stateType, stateData, metadata, expiresIn } = body;
         const id = await stateManager.save({
-          userId: userId || null,
-          sessionId: sessionId || null,
-          stateType,
-          stateData,
+          expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
           metadata: metadata || {},
-          expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null
+          sessionId: sessionId || null,
+          stateData,
+          stateType,
+          userId: userId || null
         });
         return json({ success: true, id });
       }
@@ -289,11 +299,11 @@ export const POST: RequestHandler = async ({ request }) => {
       case 'trackEvent': {
         const { eventType, userId, sessionId, conversationId, eventData } = body;
         await analyticsManager.track({
-          eventType,
-          userId,
-          sessionId,
           conversationId,
-          eventData
+          eventData,
+          eventType,
+          sessionId,
+          userId
         });
         return json({ success: true });
       }
@@ -363,7 +373,7 @@ export const POST: RequestHandler = async ({ request }) => {
         // Check if model already exists
         const existingModels = await settingsManager.getAll(null, 'models');
         const modelKey = `${provider}:${modelData.id}`;
-        if (existingModels.some((m: any) => m.key === modelKey)) {
+        if (existingModels.some((m) => m.key === modelKey)) {
           return json(
             { success: false, error: 'Model already exists for this provider' },
             { status: 409 }
@@ -418,7 +428,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
         // Check if model exists
         const existingModels = await settingsManager.getAll(null, 'models');
-        if (!existingModels.some((m: any) => m.key === modelKey)) {
+        if (!existingModels.some((m) => m.key === modelKey)) {
           return json({ success: false, error: 'Model not found' }, { status: 404 });
         }
 
@@ -483,7 +493,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
         // Check if provider already exists
         const existingProviders = await settingsManager.getAll(null, 'providers');
-        if (existingProviders.some((p: any) => p.key === providerId)) {
+        if (existingProviders.some((p) => p.key === providerId)) {
           return json({ success: false, error: 'Provider already exists' }, { status: 409 });
         }
 
@@ -521,7 +531,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
         // Check if provider exists
         const existingProviders = await settingsManager.getAll(null, 'providers');
-        if (!existingProviders.some((p: any) => p.key === providerId)) {
+        if (!existingProviders.some((p) => p.key === providerId)) {
           return json({ success: false, error: 'Provider not found' }, { status: 404 });
         }
 
@@ -632,18 +642,18 @@ export const POST: RequestHandler = async ({ request }) => {
           return json({ success: false, error: 'Model already exists' }, { status: 409 });
         }
         await db.upsertEnabledModel({
+          category: orModelData.category || 'General',
+          description: orModelData.description || '',
+          gems_per_message: orModelData.gems_per_message ?? 2,
+          is_enabled: true,
+          is_free: orModelData.is_free || false,
+          max_tokens: orModelData.max_tokens || 4000,
+          metadata: orModelData.metadata || {},
           model_id: orModelData.model_id,
           model_name: orModelData.model_name,
           provider: orModelData.provider || 'openrouter',
-          category: orModelData.category || 'General',
-          description: orModelData.description || '',
-          is_free: orModelData.is_free || false,
-          gems_per_message: orModelData.gems_per_message ?? 2,
-          max_tokens: orModelData.max_tokens || 4000,
-          tool_support: orModelData.tool_support ?? true,
-          is_enabled: true,
           sort_order: orModelData.sort_order || 0,
-          metadata: orModelData.metadata || {}
+          tool_support: orModelData.tool_support ?? true
         });
         await adminDashboard.logAction(null, 'import_model', 'enabled_model', orModelData.model_id);
         return json({ success: true });
@@ -720,7 +730,8 @@ export const POST: RequestHandler = async ({ request }) => {
         if (!user) return json({ success: false, error: 'User not found' }, { status: 404 });
         // Delete all user data in order (respecting foreign keys)
         try {
-          const client = (db as any).client;
+          const client = // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (db as any).client;
           if (!client)
             return json(
               { success: false, error: 'Direct DB access not available' },
@@ -732,7 +743,7 @@ export const POST: RequestHandler = async ({ request }) => {
             .select('id')
             .eq('user_id', userId);
           if (convs && convs.length > 0) {
-            const convIds = convs.map((c: any) => c.id);
+            const convIds = convs.map((c: Record<string, unknown>) => c.id);
             await client.from('messages').delete().in('conversation_id', convIds);
           }
           // Delete conversations, sessions, credits, usage, settings
@@ -748,9 +759,12 @@ export const POST: RequestHandler = async ({ request }) => {
             newValue: { email: user.email, display_name: user.display_name }
           });
           return json({ success: true });
-        } catch (e: any) {
+        } catch (e) {
           console.error('Delete user failed:', e);
-          return json({ success: false, error: e?.message || 'Delete failed' }, { status: 500 });
+          return json(
+            { success: false, error: e instanceof Error ? e.message : 'Delete failed' },
+            { status: 500 }
+          );
         }
       }
 
@@ -767,7 +781,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
         // Check if provider exists
         const existingProviders = await settingsManager.getAll(null, 'providers');
-        if (!existingProviders.some((p: any) => p.key === providerId)) {
+        if (!existingProviders.some((p) => p.key === providerId)) {
           return json({ success: false, error: 'Provider not found' }, { status: 404 });
         }
 
@@ -775,8 +789,8 @@ export const POST: RequestHandler = async ({ request }) => {
         const allSettings = await settingsManager.getGrouped(null);
         const models = allSettings.models || [];
         const modelsToDelete = models
-          .filter((model: any) => model.key.startsWith(`${providerId}:`))
-          .map((model: any) => model.key);
+          .filter((model) => model.key.startsWith(`${providerId}:`))
+          .map((model) => model.key);
 
         // Delete models first
         for (const modelKey of modelsToDelete) {
