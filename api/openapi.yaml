@@ -1,17 +1,17 @@
 openapi: 3.0.3
 info:
-  title: Mermaid Live Editor Chat API
-  description: API for managing chat conversations, messages, and AI-powered diagram generation
+  title: Graphini API
+  description: API for AI-powered diagram generation with natural language
   version: 1.0.0
   contact:
-    name: Mermaid Live Editor Team
-    email: support@mermaid.live
+    name: Graphini Team
+    email: support@graphini.magnova.ai
   license:
     name: MIT
     url: https://opensource.org/licenses/MIT
 
 servers:
-  - url: https://mermaid.live/api
+  - url: https://graphini.magnova.ai/api
     description: Production server
   - url: http://localhost:5173/api
     description: Development server

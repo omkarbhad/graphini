@@ -12,7 +12,7 @@ export const initAnalytics = async (): Promise<void> => {
   try {
     const { default: Plausible } = await import('plausible-tracker');
     plausible = Plausible({
-      // All tracked stats are public and available at https://p.mermaid.live/mermaid.live
+      // All tracked stats are public and available at https://p.graphini.magnova.ai/graphini.magnova.ai
       apiHost: env.analyticsUrl,
       domain: env.domain,
       hashMode: false
