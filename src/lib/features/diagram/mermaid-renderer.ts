@@ -339,11 +339,12 @@ export const render = async (
     console.log = origLog;
     console.error = origError;
     console.warn = origWarn;
+    // Always clean up mermaid's temporary DOM elements, even if render throws.
+    // Mermaid injects a `d${id}` div with error bomb SVGs that persist if not removed.
+    const tempDiv = document.getElementById(`d${id}`);
+    if (tempDiv) tempDiv.remove();
+    if (offscreen) offscreen.innerHTML = '';
   }
-
-  const tempDiv = document.getElementById(`d${id}`);
-  if (tempDiv) tempDiv.remove();
-  if (offscreen) offscreen.innerHTML = '';
 
   // Safety check for error SVGs
   if (
@@ -354,10 +355,16 @@ export const render = async (
       result.svg.includes('class="error-icon"') ||
       result.svg.includes('class="error-text"'))
   ) {
-    const errorDiv = document.getElementById(`d${id}`);
-    if (errorDiv) errorDiv.remove();
     throw new Error('Syntax error in diagram');
   }
+
+  // Remove any stray mermaid error elements that leaked into the visible DOM
+  document
+    .querySelectorAll('[aria-roledescription="error"], [id^="d"][id$="mermaid"] .error-icon')
+    .forEach((el) => {
+      const parent = el.closest('[id^="d"]');
+      if (parent && parent !== offscreen) parent.remove();
+    });
 
   // Post-process SVG: remove icon CSS overrides and inject AWS icons
   if (typeof result.svg === 'string') {

@@ -286,7 +286,7 @@
 
     window.dispatchEvent(
       new CustomEvent('node-selected', {
-        detail: { nodeId, nodeIds: selectedNodeIds, label: nodeLabel, element: nodeG, bbox }
+        detail: { bbox, element: nodeG, label: nodeLabel, nodeId, nodeIds: selectedNodeIds }
       })
     );
   };
@@ -421,7 +421,7 @@
 
     window.dispatchEvent(
       new CustomEvent('edge-selected', {
-        detail: { edgeId, edgeIds: selectedEdgeIds, label: edgeLabel, edgeIndex, element: edgePath }
+        detail: { edgeId, edgeIds: selectedEdgeIds, edgeIndex, element: edgePath, label: edgeLabel }
       })
     );
   };
@@ -639,6 +639,10 @@
       }
     } catch (error_) {
       isRendering = false;
+      // Remove any stray mermaid error bomb SVGs that leaked into the visible DOM
+      document
+        .querySelectorAll('[aria-roledescription="error"]')
+        .forEach((el) => el.closest('[id^="d"]')?.remove());
       // Keep last valid SVG visible to prevent layout shift — only clear if no SVG exists
       if (container && !container.querySelector('svg')) {
         container.innerHTML = '';
@@ -931,11 +935,11 @@
       window.dispatchEvent(
         new CustomEvent('element-selected', {
           detail: {
+            element: nodeEl,
             elementType: 'icon',
-            nodeId: selectedNodeId,
-            nodeIds: selectedNodeIds,
             label: getNodeLabel(nodeEl),
-            element: nodeEl
+            nodeId: selectedNodeId,
+            nodeIds: selectedNodeIds
           }
         })
       );
@@ -950,11 +954,11 @@
       window.dispatchEvent(
         new CustomEvent('element-selected', {
           detail: {
+            element: nodeEl,
             elementType: 'subgraph',
-            nodeId: rawId || subgraphTitle,
-            nodeIds: selectedNodeIds,
             label: subgraphTitle,
-            element: nodeEl
+            nodeId: rawId || subgraphTitle,
+            nodeIds: selectedNodeIds
           }
         })
       );
@@ -963,11 +967,11 @@
       window.dispatchEvent(
         new CustomEvent('element-selected', {
           detail: {
+            element: nodeEl,
             elementType: nodeHasIcon ? 'icon' : 'node',
-            nodeId: selectedNodeId,
-            nodeIds: selectedNodeIds,
             label: getNodeLabel(nodeEl),
-            element: nodeEl
+            nodeId: selectedNodeId,
+            nodeIds: selectedNodeIds
           }
         })
       );
@@ -977,12 +981,12 @@
       window.dispatchEvent(
         new CustomEvent('element-selected', {
           detail: {
-            elementType: 'edge',
             edgeId: selectedEdgeId,
             edgeIds: selectedEdgeIds,
             edgeIndex: edgeIdx,
-            label: getEdgeLabel(edgePath),
-            element: edgePath
+            element: edgePath,
+            elementType: 'edge',
+            label: getEdgeLabel(edgePath)
           }
         })
       );

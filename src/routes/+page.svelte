@@ -127,6 +127,24 @@
       </div>
     </section>
 
+    <!-- Demo images -->
+    <section class="mx-auto mt-20 max-w-5xl px-5 sm:px-8 md:px-10">
+      <div class="mb-10 text-center">
+        <h2 class="section-heading">See it in action</h2>
+        <p class="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-muted-foreground">
+          Describe your architecture in plain English, get a diagram instantly.
+        </p>
+      </div>
+      <div class="grid gap-8">
+        <div class="overflow-hidden rounded-xl border border-border">
+          <img src="/demo2.png" alt="Graphini Interface" class="w-full" />
+        </div>
+        <div class="overflow-hidden rounded-xl border border-border">
+          <img src="/demo1.png" alt="Generated Microservices Diagram" class="w-full" />
+        </div>
+      </div>
+    </section>
+
     <!-- Features -->
     <section class="mx-auto max-w-6xl px-5 py-24 sm:px-8 md:px-10">
       <div class="mb-16 text-center">

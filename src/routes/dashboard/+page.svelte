@@ -632,12 +632,6 @@
     color: var(--foreground);
   }
 
-  .sidebar-divider {
-    @apply mx-3 my-3;
-    height: 1px;
-    background: var(--surface-border);
-  }
-
   .sidebar-footer {
     @apply p-3;
     border-top: 1px solid var(--surface-border);
@@ -693,13 +687,6 @@
   .mobile-header {
     @apply flex items-center justify-between border-b px-4 py-3;
     border-color: var(--surface-border);
-  }
-
-  .mobile-new-btn {
-    @apply flex size-9 items-center justify-center rounded-lg;
-    color: #fff;
-    background: var(--foreground);
-    cursor: pointer;
   }
 
   .mobile-filters {
@@ -798,37 +785,6 @@
   /* ── Card Grid ── */
   .card-grid {
     @apply grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4;
-  }
-
-  /* ── New Card ── */
-  .new-card {
-    @apply relative flex min-h-[200px] items-center justify-center rounded-xl;
-    @apply focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none;
-    border: 1.5px dashed var(--surface-border);
-    cursor: pointer;
-    transition:
-      border-color 150ms ease,
-      background 150ms ease;
-  }
-  .new-card:hover {
-    border-color: var(--dash-text-faint);
-    background: var(--surface-overlay);
-  }
-
-  .new-card-inner {
-    @apply flex flex-col items-center justify-center;
-  }
-
-  .new-card-icon {
-    @apply flex size-10 items-center justify-center rounded-lg;
-    color: var(--dash-text-secondary);
-    background: var(--surface-overlay);
-    border: 1px solid var(--surface-border);
-  }
-
-  .new-card-label {
-    @apply mt-3 text-[12px] font-medium;
-    color: var(--dash-text-secondary);
   }
 
   /* ── Workspace Card ── */

@@ -2530,8 +2530,7 @@
                 handleSubmit({ text: suggestion.prompt });
               }}
               class="group relative flex flex-col items-center gap-2 rounded-lg border border-border bg-card px-3 py-4 text-center transition-colors duration-150 hover:border-foreground/20 hover:bg-accent">
-              <svelte:component
-                this={suggestion.icon}
+              <suggestion.icon
                 class="h-6 w-6 text-foreground/70 transition-colors group-hover:text-foreground" />
               <span class="text-xs font-medium text-foreground/80 group-hover:text-foreground"
                 >{suggestion.label}</span>
@@ -3319,7 +3318,7 @@
                   class="h-5 w-full bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground/40"
                   bind:value={modelSearchQuery} />
               </div>
-              <div class="h-px bg-border" />
+              <div class="h-px bg-border"></div>
               <!-- Model list -->
               <div class="max-h-[300px] overflow-y-auto overscroll-contain py-1">
                 {#if modelsStore.isLoading}
